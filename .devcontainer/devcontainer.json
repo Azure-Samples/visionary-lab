@@ -1,0 +1,48 @@
+{
+  "name": "Visionary Lab Development",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "19"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  
+  "forwardPorts": [8000, 3000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Backend API",
+      "onAutoForward": "notify"
+    },
+    "3000": {
+      "label": "Frontend",
+      "onAutoForward": "notify"
+    }
+  },
+  
+  "postCreateCommand": "bash -c 'echo \"Installing system dependencies...\" && sudo apt update && sudo apt install -y libgl1-mesa-glx && echo \"Installing UV package manager...\" && curl -LsSf https://astral.sh/uv/install.sh | sh && echo \"Installing Python dependencies...\" && cd backend && cp .env.example .env && echo \"Installing frontend dependencies...\" && cd ../frontend && npm install --legacy-peer-deps && echo \"Running setup configuration script...\" && cd .. && chmod +x .devcontainer/setup-config.sh && ./.devcontainer/setup-config.sh'",
+  
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": true,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "always"
+        }
+      }
+    }
+  },
+  
+  "remoteUser": "vscode"
+}
