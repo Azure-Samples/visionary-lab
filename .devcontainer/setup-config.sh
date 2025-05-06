@@ -5,6 +5,9 @@ echo "==========================================="
 echo "Visionary Lab Setup Script"
 echo "===========================================" 
 
+# Set a timeout for read commands - prevents hanging indefinitely
+TIMEOUT=60  # seconds
+
 # Determine the repository root directory
 # For local testing
 if [ -d "/Users/ali/Dev/ip/visionary-lab" ]; then
@@ -35,8 +38,10 @@ echo "  - AZURE_STORAGE_ACCOUNT"
 echo "  - AZURE_STORAGE_KEY"
 echo "  - AZURE_CONTAINER_NAME"
 echo ""
-echo "Would you like to open the .env file now? (y/n)"
-read open_env
+echo "Would you like to open the .env file now? (y/n, will auto-continue after $TIMEOUT seconds)"
+
+# Non-blocking read with timeout
+read -t $TIMEOUT open_env || open_env="n"
 
 if [[ "$open_env" == "y" || "$open_env" == "Y" ]]; then
   if command -v code &> /dev/null; then
@@ -54,33 +59,34 @@ if [ ! -f "$NEXT_CONFIG_PATH" ]; then
   exit 1
 fi
 
-# Ask for Azure storage account name
+# Ask for Azure storage account name with a default if none provided
 echo ""
-echo "Please enter your Azure storage account name:"
-read storage_account_name
+echo "Please enter your Azure storage account name (or press Enter to use 'yourstorageaccount'):"
+read -t $TIMEOUT storage_account_name || storage_account_name="yourstorageaccount"
 
 # Check if input is not empty
 if [ -z "$storage_account_name" ]; then
-  echo "No storage account name provided. You can manually update next.config.ts later."
+  storage_account_name="yourstorageaccount"
+  echo "Using default storage account name: $storage_account_name"
+fi
+
+echo "Updating next.config.ts with storage account name: $storage_account_name"
+
+# Update next.config.ts with the storage account name
+# Using sed to replace the placeholder in the hostname field
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  # macOS requires an empty string for -i
+  sed -i '' "s/<storage-account-name>/$storage_account_name/g" "$NEXT_CONFIG_PATH"
 else
-  echo "Updating next.config.ts with storage account name: $storage_account_name"
-  
-  # Update next.config.ts with the storage account name
-  # Using sed to replace the placeholder in the hostname field
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS requires an empty string for -i
-    sed -i '' "s/<storage-account-name>/$storage_account_name/g" "$NEXT_CONFIG_PATH"
-  else
-    # Linux
-    sed -i "s/<storage-account-name>/$storage_account_name/g" "$NEXT_CONFIG_PATH"
-  fi
-  
-  # Verify the update
-  if grep -q "$storage_account_name" "$NEXT_CONFIG_PATH"; then
-    echo "next.config.ts has been updated successfully!"
-  else
-    echo "Warning: Failed to update next.config.ts. You may need to manually update it."
-  fi
+  # Linux
+  sed -i "s/<storage-account-name>/$storage_account_name/g" "$NEXT_CONFIG_PATH"
+fi
+
+# Verify the update
+if grep -q "$storage_account_name" "$NEXT_CONFIG_PATH"; then
+  echo "next.config.ts has been updated successfully!"
+else
+  echo "Warning: Failed to update next.config.ts. You may need to manually update it."
 fi
 
 echo ""
