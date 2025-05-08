@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
 
-from backend.models.common import BaseResponse
+from models.common import BaseResponse
 
 
 class MediaType(str, Enum):

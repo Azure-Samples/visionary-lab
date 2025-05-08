@@ -12,7 +12,7 @@ import tempfile
 import os
 import uuid
 
-from backend.models.images import (
+from models.images import (
     ImageGenerationRequest,
     ImageEditRequest,
     ImageGenerationResponse,
@@ -33,12 +33,12 @@ from backend.models.images import (
     TokenUsage,
     InputTokensDetails
 )
-from backend.models.gallery import MediaType
-from backend.core import llm_client, dalle_client, image_sas_token
-from backend.core.azure_storage import AzureBlobStorageService
-from backend.core.analyze import ImageAnalyzer
-from backend.core.config import settings
-from backend.core.instructions import (analyze_image_system_message,
+from models.gallery import MediaType
+from core import llm_client, dalle_client, image_sas_token
+from core.azure_storage import AzureBlobStorageService
+from core.analyze import ImageAnalyzer
+from core.config import settings
+from core.instructions import (analyze_image_system_message,
                                        img_prompt_enhance_msg,
                                        brand_protect_replace_msg,
                                        brand_protect_neutralize_msg,

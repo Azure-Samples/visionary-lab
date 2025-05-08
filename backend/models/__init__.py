@@ -1,8 +1,8 @@
 # Import models to expose them at the package level
-from backend.models import common, images, gallery
+from models import common, images, gallery
 
 # Image models used by the skeleton API
-from backend.models.images import (
+from models.images import (
     ImageGenerationRequest,
     ImageEditRequest,
     ImageGenerationResponse,
@@ -21,7 +21,7 @@ from backend.models.images import (
 )
 
 # Gallery models
-from backend.models.gallery import (
+from models.gallery import (
     GalleryItem,
     GalleryResponse,
     MediaType,

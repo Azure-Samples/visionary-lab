@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": ""
+    },
+    "containerAppEnvName": {
+      "value": ""
+    },
+    "containerAppNameBackend": {
+      "value": ""
+    },
+    "containerAppNameFrontend": {
+      "value": ""
+    },
+    "logAnalyticsWorkspaceName": {
+      "value": ""
+    },
+    "storageAccountName": {
+      "value": ""
+    },
+    "llmOpenAiAccountName": {
+      "value": ""
+    },
+    "llmDeploymentName": {
+      "value": ""
+    },
+    "llmModelType": {
+      "value": ""
+    },
+    "imageGenOpenAiAccountName": {
+      "value": ""
+    },
+    "imageGenDeploymentName": {
+      "value": ""
+    },
+    "imageGenModelType": {
+      "value": ""
+    },
+    "IMAGEGEN_AOAI_API_KEY": {
+      "value": ""
+    },
+    "LLM_AOAI_API_KEY": {
+      "value": ""
+    },
+    "DOCKER_IMAGE_BACKEND": {
+      "value": ""
+    },
+    "DOCKER_IMAGE_FRONTEND": {
+      "value": ""
+    }
+  }
+}

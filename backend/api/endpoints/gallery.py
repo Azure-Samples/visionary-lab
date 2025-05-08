@@ -7,9 +7,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from azure.storage.blob import generate_container_sas, ContainerSasPermissions
 
-from backend.core.azure_storage import AzureBlobStorageService
-from backend.core.config import settings
-from backend.models.gallery import (
+from core.azure_storage import AzureBlobStorageService
+from core.config import settings
+from models.gallery import (
     GalleryResponse,
     GalleryItem,
     MediaType,

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from backend.core.config import settings
-from backend.core import dalle_client, llm_client
+from core.config import settings
+from core import dalle_client, llm_client
 import os
 from typing import Dict, List, Any
 

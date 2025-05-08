@@ -8,7 +8,7 @@ import requests
 from typing import List, Union, Optional, Dict, Any
 from openai import OpenAI, AzureOpenAI
 from PIL import Image
-from backend.core.config import settings
+from core.config import settings
 
 from tempfile import SpooledTemporaryFile
 

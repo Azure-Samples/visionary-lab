@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional, Dict, Any, Union
-from backend.models.common import BaseResponse
+from models.common import BaseResponse
 from pydantic import validator
 
 # TODO: Implement full image models with all required parameters and fields

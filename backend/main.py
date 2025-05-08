@@ -4,8 +4,8 @@ from fastapi.staticfiles import StaticFiles
 import os
 import logging
 
-from .core.config import settings
-from .api.endpoints import images, gallery, env
+from core.config import settings
+from api.endpoints import images, gallery, env
 
 # Configure logging to suppress Azure Blob Storage verbose logs
 logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(
@@ -55,4 +55,4 @@ def health_check():
 # This allows the file to be run directly with `python backend/main.py`
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=80, reload=True)

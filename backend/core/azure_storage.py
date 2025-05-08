@@ -6,7 +6,7 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from datetime import datetime
 
-from backend.core.config import settings
+from core.config import settings
 
 
 class AzureBlobStorageService:
