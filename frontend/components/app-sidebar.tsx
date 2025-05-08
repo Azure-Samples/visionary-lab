@@ -62,15 +62,23 @@ export function AppSidebar() {
   useEffect(() => {
     const loadFolders = async () => {
       try {
+        console.log('AppSidebar: Attempting to fetch folders');
         const response = await fetchFolders(MediaType.IMAGE);
-        setFolders(response.folders);
-        setFolderHierarchy(response.folder_hierarchy);
+        console.log('AppSidebar: Folders fetched successfully:', response);
+        setFolders(response.folders || []);
+        setFolderHierarchy(response.folder_hierarchy || {});
       } catch (error) {
-        console.error("Error fetching folders:", error);
+        console.error("AppSidebar: Error fetching folders:", error);
+        // Set empty arrays/objects to prevent UI errors
+        setFolders([]);
+        setFolderHierarchy({});
       }
     };
 
-    loadFolders();
+    // Add a small delay to ensure environment variables are loaded
+    setTimeout(() => {
+      loadFolders();
+    }, 500);
   }, []);
 
   // Determine logo based on theme

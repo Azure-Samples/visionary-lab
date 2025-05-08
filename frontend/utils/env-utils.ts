@@ -43,11 +43,20 @@ export async function getEnvironmentVariables(): Promise<EnvVariables> {
   }
 }
 
+// Build API URL from environment variables
+const getApiUrl = (endpoint: string): string => {
+  const protocol = process.env.API_PROTOCOL || 'http';
+  const hostname = process.env.API_HOSTNAME || 'localhost';
+  const port = process.env.API_PORT || '8000';
+  return `${protocol}://${hostname}${port ? `:${port}` : ''}/api/v1/${endpoint}`;
+};
+
 export async function getApiStatus(): Promise<ApiStatus | null> {
   try {
-    const response = await fetch('http://127.0.0.1:8000/api/v1/env/status');
+    const apiUrl = getApiUrl('env/status');
+    const response = await fetch(apiUrl);
     if (!response.ok) {
-      throw new Error('Failed to fetch API status');
+      throw new Error(`Failed to fetch API status from ${apiUrl}`);
     }
     return await response.json();
   } catch (error) {

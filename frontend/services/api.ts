@@ -2,10 +2,36 @@
  * API service for interacting with the backend API
  */
 
-// API base URL - adjust as needed for your environment
-// const API_BASE_URL = '/api/v1';
-// Using absolute URL to ensure proper connection to backend
-export const API_BASE_URL = 'http://localhost:8000/api/v1';
+// Build API base URL from environment variables
+// These variables are set in next.config.ts and available at runtime
+const getApiBaseUrl = () => {
+  const protocol = process.env.API_PROTOCOL || 'http';
+  const hostname = process.env.API_HOSTNAME || 'localhost';
+  const port = process.env.API_PORT || '8000';
+  
+  // Only include port in the URL if it's non-standard
+  // Standard ports: 80 for HTTP, 443 for HTTPS
+  let includePort = true;
+  if ((protocol === 'http' && port === '80') || (protocol === 'https' && port === '443')) {
+    includePort = false;
+  }
+  
+  // Build the API base URL
+  const baseUrl = `${protocol}://${hostname}${includePort && port ? `:${port}` : ''}/api/v1`;
+  
+  // Log the constructed URL for debugging
+  console.log('API Base URL:', baseUrl);
+  console.log('Environment variables:', { 
+    API_PROTOCOL: process.env.API_PROTOCOL,
+    API_HOSTNAME: process.env.API_HOSTNAME,
+    API_PORT: process.env.API_PORT,
+    includePort: includePort
+  });
+  
+  return baseUrl;
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 // Enable debug mode to log API requests
 const DEBUG = true;
@@ -494,38 +520,55 @@ export async function fetchFolders(
     url += `?media_type=${mediaType}`;
   }
   
-  if (DEBUG) {
-    console.log(`Fetching folders`);
-    console.log(`GET ${url}`);
-  }
+  // Always log for debugging this issue
+  console.log(`Fetching folders from: ${url}`);
+  console.log('Current API_BASE_URL:', API_BASE_URL);
   
   try {
-    const response = await fetch(url);
+    // Add a timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     
-    if (DEBUG) {
-      console.log(`Response status: ${response.status} ${response.statusText}`);
-      if (!response.ok) {
-        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
-      }
-    }
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+      signal: controller.signal
+    });
+    
+    // Clear the timeout
+    clearTimeout(timeoutId);
+    
+    console.log(`Response status: ${response.status} ${response.statusText}`);
     
     if (!response.ok) {
-      throw new Error(`Failed to fetch folders: ${response.status} ${response.statusText}`);
+      const errorText = await response.text().catch(() => 'Could not read response text');
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to fetch folders: ${response.status} ${response.statusText} - ${errorText}`);
     }
     
     const data = await response.json();
-    
-    if (DEBUG) {
-      console.log('Folders response data:', data);
-    }
+    console.log('Folders response data:', data);
     
     return {
       folders: data.folders || [],
       folder_hierarchy: data.folder_hierarchy || {}
     };
   } catch (error) {
+    // Enhanced error logging
     console.error('Error fetching folders:', error);
-    throw error;
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : 'No stack trace available',
+      url: url
+    });
+    
+    // Return empty data instead of throwing to prevent UI errors
+    return {
+      folders: [],
+      folder_hierarchy: {}
+    };
   }
 }
 
