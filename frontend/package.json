@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "build-docker": "NEXT_TELEMETRY_DISABLED=1 NEXT_DISABLE_ESLINT=1 NEXT_DISABLE_TYPESCRIPT=1 ESLINT_DISABLE=1 next build",
     "start": "next start",
     "lint": "next lint"
   },
