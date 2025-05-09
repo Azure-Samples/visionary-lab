@@ -35,8 +35,8 @@ param IMAGEGEN_AOAI_API_KEY string
 param LLM_AOAI_API_KEY string
 
 // Parameters for the Docker images for the backend and frontend container apps
-param DOCKER_IMAGE_BACKEND string = 'aigbbemea.azurecr.io/visionarylab:0.1'
-param DOCKER_IMAGE_FRONTEND string = 'aigbbemea.azurecr.io/visionarylab-frontend:0.1'
+param DOCKER_IMAGE_BACKEND string = 'aigbbemea.azurecr.io/visionarylab:latest'
+param DOCKER_IMAGE_FRONTEND string = 'aigbbemea.azurecr.io/visionarylab-frontend:latest'
 
 // Azure Storage Account
 module storageAccountMod './modules/storageAccount.bicep' = {
