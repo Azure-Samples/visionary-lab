@@ -1,9 +1,9 @@
 param location string
-param storageAccountName string
+param storageAccountName string = 'a${toLower(uniqueString(resourceGroup().id, 'storage'))}'
 // param keyVaultName string
 param deployNew bool = true
 
-resource storageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = if(deployNew) {
+resource storageAccount 'Microsoft.Storage/storageAccounts@2024-01-01' = if(deployNew) {
   name: storageAccountName
   location: location
   sku: {

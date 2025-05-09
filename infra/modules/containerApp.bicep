@@ -23,7 +23,9 @@ param AZURE_STORAGE_ACCOUNT_KEY string
 param AZURE_BLOB_IMAGE_CONTAINER string = 'images'
 
 param targetPort int = 80
-
+param API_PROTOCOL string = 'http'
+param API_HOSTNAME string = 'localhost'
+param API_PORT string = '80'
 
 resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
   name: containerAppName
@@ -90,9 +92,28 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
               name: 'AZURE_BLOB_IMAGE_CONTAINER'
               value: AZURE_BLOB_IMAGE_CONTAINER
             }
+            {
+              name: 'API_PROTOCOL'
+              value: API_PROTOCOL
+            }
+            {
+              name: 'API_HOSTNAME'
+              value: API_HOSTNAME
+            }
+            {
+              name: 'API_PORT'
+                value: API_PORT
+            }
+            {
+              name: 'STORAGE_ACCOUNT_NAME'
+              value: AZURE_STORAGE_ACCOUNT_NAME
+            }
           ]
         }
       ]
     }
   }
 }
+
+output containerAppId string = containerApp.id
+output containerAppFqdn string = containerApp.properties.configuration.ingress.fqdn

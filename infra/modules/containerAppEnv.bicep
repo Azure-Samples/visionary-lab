@@ -26,3 +26,4 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2025-01-01' = if(dep
 }
 
 output containerAppEnvId string = containerAppEnv.id
+output containerAppDefaultDomain string = containerAppEnv.properties.defaultDomain
