@@ -3,6 +3,7 @@
 **Create high-quality visual content with the gpt-image-1 model on Azure OpenAI—tailored for professional use cases.**
 
 ## Key Features
+
 - Generate polished image assets from text prompts, input images, or both
 - Refine prompts using AI best practices to ensure high-impact visuals
 - Analyze outputs with AI for quality control, metadata tagging, and asset optimization
@@ -12,132 +13,140 @@
 
 > Note: You can also use the [notebook](notebooks/gpt-image-1.ipynb) if you want to explore gpt-image-1 using the API.
 
-## Requirements
+## Prerequisites
 
 Azure resources:
+
 - Azure OpenAI resource with deployed `gpt-image-1` model
-- Azure OpenAI `gpt-4.1` model deployment 
+- Azure OpenAI `gpt-4.1` model deployment (used for prompt enhancements and image analysis)
 - Azure Storage Account with a Blob Container for your images. You can use virtual folders to organize your content.
 
 Compute environment:
-- Python 3.12+ 
+
+- Python 3.12+
 - Node.js 19+ and npm
 - Git
+- uv package manager
+- Code editor (we are using VSCode in the instructions)
 
-## 1. Clone the Repository
+## Step 1: Installation (One-time)
+
+### Option A: Quick Start with GitHub Codespaces
+
+The quickest way to get started is using GitHub Codespaces, a hosted environment that is automatically set up for you. Click this button to create a Codespace (4-core machine recommended):
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://github.com/codespaces/new?hide_repo_select=true&ref=main&repo=Azure-Samples/visionary-lab)
+
+Wait for the Codespace to initialize. Python 3.12, Node.js 19, and dependencies will be automatically installed.
+
+Now you can continue with [Step 2: Configure Resources.](#step-2-configure-resources)
+
+### Option B: Local Installation on your device
+
+#### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/Azure-Samples/visionary-lab
 ```
-Alternatively, you can get started quickly using Codespaces directly on the GitHub repository.
 
-   
-## 2. Backend Setup
+#### 2. Backend Setup
 
-### 2.1 Install UV Package Manager
+##### 2.1 Install UV Package Manager
 
 UV is a fast Python package installer and resolver that we use for managing dependencies.
 
-#### Mac/Linux
+Mac/Linux:
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-#### Windows
+Windows (using PowerShell):
+
 ```powershell
-# Using PowerShell
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-### 2.2 Configure Environment Variables
+##### 2.2 Copy environment file template
 
 ```bash
-# Copy the template environment file
 cd backend
 cp .env.example .env
 ```
 
-Now open the `.env` file in your editor and fill in the required credentials:
-- Azure OpenAI keys (`AOAI_RESOURCE`, `AOAI_API_KEY`, etc.)
-- Azure Storage account details
+The environment variables will be defined below.
 
-### 2.3 Run Backend
+#### 3. Frontend Setup
 
-#### Using UV (Recommended)
-```bash
-# Create and activate a new virtual environment
-uv run fastapi dev
-```
-The backend server will start on http://localhost:8000. You can verify it's running by visiting http://localhost:8000/api/v1/health in your browser.
-
-__Note:__ If you encounter the following error: `ImportError: libGL.so.1: cannot open shared object file: No such file or directory`  
-In this case, your system is missing the shared `libGL.so.1` library which is required by OpenCV.  
-On a Linux system, you can install the missing library as follows:
-```bash
-sudo apt update
-sudo apt install libgl1-mesa-glx
-```
-
-## 3. Frontend Setup
-
-### 3.1 Navigate to the Frontend Directory
+##### 3.1 Navigate to the Frontend Directory
 
 ```bash
 cd frontend
 ```
 
-### 3.2 Install Dependencies
+##### 3.2 Install Dependencies
 
 ```bash
-# Install dependencies with legacy peer deps flag to avoid compatibility issues
 npm install --legacy-peer-deps
 ```
 
+## Step 2: Configure Resources
 
-### 3.3 Configure your blob storage as a trusted source by adding it to `next.config.js`
+1. Configure Azure credentials in the backend:
 
-Your new `next.config.js` should look like this
+   ```bash
+   code backend/.env
+   ```
 
-```typescript
-import type { NextConfig } from "next";
+   Replace the placeholders with your actual Azure values:
 
-const nextConfig: NextConfig = {
-  /* config options here */
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'http',
-        hostname: 'localhost',
-        port: '8000',
-        pathname: '/api/v1/gallery/asset/**',
-      },
-      {
-        protocol: 'https',
-        hostname: '<your-storage-account-name>.blob.core.windows.net',
-        port: '',
-        pathname: '/**',
-      },
-    ],
-  },
-};
+   - `IMAGEGEN_AOAI_RESOURCE`: name of the Azure OpenAI resource used for the gpt-image-1 deployment
+   - `IMAGEGEN_DEPLOYMENT`: deployment name for the gpt-image-1 model
+   - `IMAGEGEN_AOAI_API_KEY`
+   - `LLM_AOAI_RESOURCE`: name of the Azure OpenAI resource used for the GPT-4.1 deployment
+   - `LLM_DEPLOYMENT`: deployment name for the GPT-4.1 model
+   - `LLM_AOAI_API_KEY`
+   - `AZURE_BLOB_SERVICE_URL`
+   - `AZURE_STORAGE_ACCOUNT_NAME`
+   - `AZURE_STORAGE_ACCOUNT_KEY`
+   - `AZURE_BLOB_IMAGE_CONTAINER`
 
-export default nextConfig;
+2. Configure your Storage Account in the frontend:
+   ```bash
+   code frontend/next.config.ts
+   ```
+   Replace `<storage-account-name>` with your actual Azure storage account name.
 
-```
+## Step 3: Running the Application
 
+Once everything is set up:
 
-### 3.4 Run the Development Server
+1. Start the backend:
 
-```bash
-npm run dev
-```
+   ```bash
+   cd backend
+   uv run fastapi dev
+   ```
 
-The frontend will be available at http://localhost:3000.
+   The backend server will start on http://localhost:8000. You can verify it's running by visiting http://localhost:8000/api/v1/health in your browser.
 
+   **Note:**  
+   If you encounter the error: `ImportError: libGL.so.1: cannot open shared object file: No such file or directory`, install the missing OpenCV library:
 
-## 4. Next Steps
+   ```bash
+   sudo apt update
+   sudo apt install libgl1-mesa-glx
+   ```
 
-Once both the backend and frontend are running, you can:
+   This step is not needed in Codespaces as it's automatically installed
 
-1. Visit http://localhost:3000 to access the main application
-2. Use the API documentation at http://localhost:8000/docs to explore available endpoints
+2. Open a new terminal to start the frontend:
+
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+   The frontend will be available at http://localhost:3000.
+
+   In Codespaces, both the backend and frontend will be available via forwarded URLs that GitHub Codespaces provides.
