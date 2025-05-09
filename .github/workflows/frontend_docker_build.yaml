@@ -1,4 +1,7 @@
-name: Docker Image CI
+name: Docker Image CI - Frontend
+
+# This workflow will build a Docker image and push it to Azure Container Registry
+# It is triggered on push or pull request to the main branch
 
 on:
   push:
@@ -7,7 +10,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  build-frontend:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
@@ -24,7 +27,7 @@ jobs:
         context: .
         file: docker/frontend.dockerfile
         push: true
-        tags: aigbbemea.azurecr.io/visionarylab-frontend:${{ github.run_number }}
-
-
+        tags: |
+          aigbbemea.azurecr.io/visionarylab-frontend:${{ github.run_number }}
+          aigbbemea.azurecr.io/visionarylab-frontend:latest
         
