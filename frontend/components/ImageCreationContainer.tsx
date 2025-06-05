@@ -140,11 +140,8 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
       
       // Apply brand protection if enabled
       let generationPrompt = originalPrompt;
+      let brandProtectionApplied = false;
       if (newSettings.brandsProtection !== "off" && newSettings.brandsList && newSettings.brandsList.length > 0) {
-        toast.info("Brand protection activated", {
-          description: `Applying ${newSettings.brandsProtection} protection for ${newSettings.brandsList.length} brand${newSettings.brandsList.length > 1 ? 's' : ''}...`
-        });
-        
         try {
           // Call the brand protection API
           generationPrompt = await protectImagePrompt(
@@ -157,14 +154,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           if (generationPrompt !== originalPrompt) {
             console.log("Original prompt:", originalPrompt);
             console.log("Protected prompt:", generationPrompt);
-            
-            toast.success("Brand protection applied", {
-              description: "The prompt has been modified for brand safety"
-            });
-          } else {
-            toast.info("Brand protection processed", {
-              description: "No changes were needed to protect the specified brands"
-            });
+            brandProtectionApplied = true;
           }
         } catch (error) {
           console.error('Error applying brand protection:', error);
@@ -181,9 +171,9 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
       
       // If source images are provided, use the edit endpoint
       if (newSettings.sourceImages && newSettings.sourceImages.length > 0) {
-        // Show toast for image editing
-        toast.info("Image editing started", {
-          description: `Editing ${newSettings.sourceImages.length} image${newSettings.sourceImages.length > 1 ? 's' : ''} with prompt: "${originalPrompt.substring(0, 50)}${originalPrompt.length > 50 ? '...' : ''}"`,
+        // Show single consolidated toast for image editing
+        const editingToast = toast.loading("Editing images...", {
+          description: `Processing ${newSettings.sourceImages.length} image${newSettings.sourceImages.length > 1 ? 's' : ''} with your prompt${brandProtectionApplied ? ' (brand protection applied)' : ''}`,
         });
         
         // Call the image edit API with the protected prompt
@@ -195,13 +185,15 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           newSettings.quality // Quality parameter
         );
         
+        // Update the loading toast to success
         toast.success("Image editing completed", {
-          description: "Processing edited images..."
+          id: editingToast,
+          description: `Successfully edited ${newSettings.variations} image${newSettings.variations > 1 ? 's' : ''}`
         });
       } else {
-        // Show toast for image generation
-        toast.info("Image generation started", {
-          description: `Generating image with prompt: "${originalPrompt.substring(0, 50)}${originalPrompt.length > 50 ? '...' : ''}"`,
+        // Show single consolidated toast for image generation
+        const generatingToast = toast.loading("Generating images...", {
+          description: `Creating ${newSettings.variations} image${newSettings.variations > 1 ? 's' : ''} with your prompt${brandProtectionApplied ? ' (brand protection applied)' : ''}`,
         });
         
         // Call the image generation API with the protected prompt
@@ -215,8 +207,10 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           newSettings.quality // Quality parameter
         );
         
+        // Update the loading toast to success
         toast.success("Image generation completed", {
-          description: "Processing generated images..."
+          id: generatingToast,
+          description: `Successfully generated ${newSettings.variations} image${newSettings.variations > 1 ? 's' : ''}`
         });
       }
       
@@ -238,11 +232,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         );
         
         if (hasBase64Images) {
-          toast.info("AI analysis started", {
-            description: "Analyzing generated images before saving..."
-          });
-          
-          // Process each image and collect analysis results
+          // Process each image and collect analysis results (silently)
           const analysisPromises = response.imgen_model_response.data.map(
             async (imageData: ImageData, idx: number) => {
               if (imageData.b64_json) {
@@ -265,15 +255,10 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           );
           
           const analysisResults = await Promise.all(analysisPromises);
-          const successCount = analysisResults.filter(r => r && r.analysis).length;
           successfulAnalysis = analysisResults.filter(r => r && r.analysis); // Assign here
           
-          if (successCount > 0) {
-            toast.success(`AI analysis completed`, {
-              description: `Successfully analyzed ${successCount} of ${response.imgen_model_response.data.length} images`
-            });
-            
-            // Store analysis results to use when saving
+          // Store analysis results to use when saving (no toast needed)
+          if (successfulAnalysis.length > 0) {
             setGenerationResponseData((prev: GenerationResponse | null) => ({
               ...(prev || {}),
               analysisResults: successfulAnalysis
@@ -321,9 +306,9 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
     try {
       setIsUploading(true);
       
-      // Show toast for upload process
-      toast.info("Uploading images", {
-        description: `Saving generated images${folder ? ' to ' + folder : ' to root folder'}...`
+      // Show consolidated saving toast
+      const savingToast = toast.loading("Saving images...", {
+        description: `Uploading to ${folder || 'root folder'}${preAnalysisResults && preAnalysisResults.length > 0 ? ' with AI analysis' : ''}...`
       });
       
       // Add brand protection metadata if available
@@ -340,9 +325,9 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         try {
           enhancedResponse.metadata = {
             ...(enhancedResponse.metadata || {}),
-            brand_protection_mode: generationResponse.brandProtection.mode,
-            protected_brands: generationResponse.brandProtection.brands.join(', '),
-            protected_prompt: generationResponse.brandProtection.protectedPrompt
+            brand_protection_mode: generationResponse.brandProtection!.mode,
+            protected_brands: generationResponse.brandProtection!.brands.join(', '),
+            protected_prompt: generationResponse.brandProtection!.protectedPrompt
           };
         } catch (error) {
           console.error("Error adding brand protection metadata:", error);
@@ -361,11 +346,12 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         imageSize // Pass imageSize here
       );
       
-      // Show success message with details
+      // Update the loading toast to success
       toast.success(`${saveResponse.total_saved} images saved`, {
+        id: savingToast,
         description: folder 
-          ? `Images have been saved to folder: ${folder}` 
-          : "Images have been saved to root folder"
+          ? `Successfully saved to folder: ${folder}` 
+          : "Successfully saved to root folder"
       });
       
       // If we have pre-computed analysis results passed directly, apply them
@@ -373,9 +359,6 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           saveResponse.saved_images && saveResponse.saved_images.length > 0) {
         
         setIsAnalyzing(true);
-        toast.info("Applying AI analysis", {
-          description: "Updating metadata with pre-computed analysis..."
-        });
         
         let successCount = 0;
         
@@ -419,11 +402,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           }
         }
         
-        if (successCount > 0) {
-          toast.success(`AI analysis applied`, {
-            description: `Successfully updated metadata for ${successCount} of ${saveResponse.saved_images.length} images`
-          });
-        }
+        // AI analysis is applied silently - no additional toast needed
         
         setIsAnalyzing(false);
       }

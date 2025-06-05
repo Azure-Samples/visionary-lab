@@ -11,6 +11,7 @@ from tempfile import SpooledTemporaryFile
 import tempfile
 import os
 import uuid
+from pathlib import Path
 
 from backend.models.images import (
     ImageGenerationRequest,
@@ -45,6 +46,85 @@ router = APIRouter()
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def normalize_filename(filename: str) -> str:
+    """
+    Normalize a filename to be safe for file systems.
+
+    Args:
+        filename: The filename to normalize
+
+    Returns:
+        A normalized filename safe for most file systems
+    """
+    if not filename:
+        return filename
+
+    # Use pathlib to handle the filename safely
+    path = Path(filename)
+
+    # Get the stem (filename without extension) and suffix (extension)
+    stem = path.stem
+    suffix = path.suffix
+
+    # Remove or replace invalid characters for most filesystems
+    # Keep alphanumeric, hyphens, underscores, and dots
+    stem = re.sub(r'[^a-zA-Z0-9_\-.]', '_', stem)
+
+    # Remove multiple consecutive underscores
+    stem = re.sub(r'_+', '_', stem)
+
+    # Remove leading/trailing underscores and dots
+    stem = stem.strip('_.')
+
+    # Ensure the filename isn't empty
+    if not stem:
+        stem = "generated_image"
+
+    # Reconstruct the filename
+    normalized = f"{stem}{suffix}" if suffix else stem
+
+    # Ensure the filename isn't too long (most filesystems support 255 chars)
+    if len(normalized) > 200:  # Leave some room for additional suffixes
+        # Truncate the stem but keep the extension
+        max_stem_length = 200 - len(suffix)
+        stem = stem[:max_stem_length]
+        normalized = f"{stem}{suffix}" if suffix else stem
+
+    return normalized
+
+
+async def generate_filename_for_prompt(prompt: str, extension: str = None) -> str:
+    """
+    Generate a filename using the existing filename generation endpoint.
+
+    Args:
+        prompt: The prompt used for image generation
+        extension: File extension (e.g., '.png', '.jpg')
+
+    Returns:
+        Generated filename or None if generation fails
+    """
+    try:
+        # Create request for filename generation
+        filename_request = ImageFilenameGenerateRequest(
+            prompt=prompt,
+            extension=extension
+        )
+
+        # Call the filename generation function directly
+        filename_response = generate_image_filename(filename_request)
+
+        # Normalize the generated filename
+        generated_filename = normalize_filename(filename_response.filename)
+
+        logger.info(f"Generated filename: {generated_filename}")
+        return generated_filename
+
+    except Exception as e:
+        logger.warning(f"Failed to generate filename for prompt: {str(e)}")
+        return None
 
 
 @router.post("/generate", response_model=ImageGenerationResponse)
@@ -477,10 +557,32 @@ async def save_generated_images(
                 # Reset file pointer
                 img_file.seek(0)
 
-                # Create filename
-                quality_suffix = f"_{request.quality}" if request.model == "gpt-image-1" and hasattr(
-                    request, "quality") else ""
-                filename = f"generated_image_{idx+1}{quality_suffix}.{img_format.lower()}"
+                # Generate intelligent filename using the existing endpoint
+                if request.prompt:
+                    filename = await generate_filename_for_prompt(
+                        request.prompt,
+                        f".{img_format.lower()}"
+                    )
+
+                    # Add index suffix for multiple images
+                    if filename and len(images_data) > 1:
+                        # Insert index before the extension
+                        path = Path(filename)
+                        stem = path.stem
+                        suffix = path.suffix
+                        filename = f"{stem}_{idx+1}{suffix}"
+                        logger.info(
+                            f"Using generated filename with index: {filename}")
+                    elif filename:
+                        logger.info(f"Using generated filename: {filename}")
+
+                # Fallback to default naming if filename generation fails
+                if not filename:
+                    quality_suffix = f"_{request.quality}" if request.model == "gpt-image-1" and hasattr(
+                        request, "quality") else ""
+                    filename = f"generated_image_{idx+1}{quality_suffix}.{img_format.lower()}"
+                    filename = normalize_filename(filename)
+                    logger.info(f"Using fallback filename: {filename}")
 
             elif "url" in img_data:
                 # Download image from URL
@@ -507,10 +609,32 @@ async def save_generated_images(
                 # Reset file pointer
                 img_file.seek(0)
 
-                # Create filename
-                quality_suffix = f"_{request.quality}" if request.model == "gpt-image-1" and hasattr(
-                    request, "quality") else ""
-                filename = f"generated_image_{idx+1}{quality_suffix}.{ext}"
+                # Generate intelligent filename using the existing endpoint
+                if request.prompt:
+                    filename = await generate_filename_for_prompt(
+                        request.prompt,
+                        f".{ext}"
+                    )
+
+                    # Add index suffix for multiple images
+                    if filename and len(images_data) > 1:
+                        # Insert index before the extension
+                        path = Path(filename)
+                        stem = path.stem
+                        suffix = path.suffix
+                        filename = f"{stem}_{idx+1}{suffix}"
+                        logger.info(
+                            f"Using generated filename with index: {filename}")
+                    elif filename:
+                        logger.info(f"Using generated filename: {filename}")
+
+                # Fallback to default naming if filename generation fails
+                if not filename:
+                    quality_suffix = f"_{request.quality}" if request.model == "gpt-image-1" and hasattr(
+                        request, "quality") else ""
+                    filename = f"generated_image_{idx+1}{quality_suffix}.{ext}"
+                    filename = normalize_filename(filename)
+                    logger.info(f"Using fallback filename: {filename}")
             else:
                 logger.warning(
                     f"Unsupported image data format for image {idx+1}")

@@ -473,6 +473,7 @@ function NewVideoPageContent() {
     
     try {
       let generationPrompt = settings.prompt;
+      let brandProtectionApplied = false;
       
       // Apply brand protection if enabled from global settings
       if (imageSettings.settings.brandsProtection !== "off" && imageSettings.settings.brandsList.length > 0) {
@@ -481,11 +482,6 @@ function NewVideoPageContent() {
           mode: imageSettings.settings.brandsProtection,
           brands: imageSettings.settings.brandsList
         });
-        
-        toast.info("Brand protection activated", {
-          description: `Applying ${imageSettings.settings.brandsProtection} protection for ${imageSettings.settings.brandsList.length} brand${imageSettings.settings.brandsList.length > 1 ? 's' : ''}...`
-        });
-        
         try {
           // Call the brand protection API
           generationPrompt = await protectImagePrompt(
@@ -498,14 +494,7 @@ function NewVideoPageContent() {
           if (generationPrompt !== settings.prompt) {
             console.log("Original prompt:", settings.prompt);
             console.log("Protected prompt:", generationPrompt);
-            
-            toast.success("Brand protection applied", {
-              description: "The prompt has been modified for brand safety"
-            });
-          } else {
-            toast.info("Brand protection processed", {
-              description: "No changes were needed to protect the specified brands"
-            });
+            brandProtectionApplied = true;
           }
         } catch (error) {
           console.error('Error applying brand protection:', error);
@@ -516,9 +505,6 @@ function NewVideoPageContent() {
           generationPrompt = settings.prompt;
         }
       }
-      
-      // Show generation started toast
-      toast(`Starting ${settings.modality} generation with your prompt...`);
       
       {
         // For real video generation
@@ -545,10 +531,10 @@ function NewVideoPageContent() {
             [jobId]: true
           }));
           
-          // Show detailed toast about the generation process
-          toast.success("Video generation queued", {
-            description: `Creating ${videoSettings.variants} video variant${videoSettings.variants > 1 ? 's' : ''} with ${videoSettings.aspectRatio} aspect ratio`,
-            duration: 5000,
+          // Show single consolidated toast about the generation process
+          toast.success("Video generation started", {
+            description: `Creating ${videoSettings.variants} video${videoSettings.variants > 1 ? 's' : ''} (${videoSettings.aspectRatio}, ~1-2 min)${brandProtectionApplied ? ' with brand protection' : ''}`,
+            duration: 6000,
             action: {
               label: "View Status",
               onClick: () => {
@@ -560,14 +546,6 @@ function NewVideoPageContent() {
               }
             }
           });
-          
-          // Provide info about when to expect results
-          setTimeout(() => {
-            toast.info("Video generation in progress", {
-              description: `This will take about 1-2 minutes. The gallery will automatically update when done.`,
-              duration: 8000
-            });
-          }, 2000);
           
           // No need to reset lastCompletedJobId now that we're tracking in jobsInProgress
           
