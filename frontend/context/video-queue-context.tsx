@@ -34,7 +34,6 @@ export function unregisterGalleryRefreshCallback(callback: RefreshCallback) {
 
 // Trigger all registered callbacks
 function notifyGalleryRefreshNeeded() {
-  console.log(`Notifying ${refreshCallbacks.length} gallery components to refresh`);
   refreshCallbacks.forEach(callback => {
     try {
       callback();
@@ -134,8 +133,6 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
 
             // Handle uploading multiple generations if they exist
             if (updatedJob.generations && updatedJob.generations.length > 0) {
-              console.log(`Job ${updatedJob.id} completed with ${updatedJob.generations.length} generations`);
-              
               // Handle each generation
               const uploadPromises = updatedJob.generations
                 .filter(generation => !uploadedGenerations.has(generation.id)) // Only process generations not already uploaded
@@ -143,7 +140,6 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   // Mark this generation as being processed to prevent duplicate uploads
                   uploadedGenerations.add(generation.id);
                   
-                  console.log(`Uploading generation ${generation.id} (not previously uploaded)`);
                   const fileName = generateVideoFilename(generation.prompt || item.prompt, generation.id);
                   
                   // Define metadata for the uploaded asset
@@ -164,7 +160,6 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   
                   try {
                     await downloadThenUploadToGallery(generation.id, fileName, metadata, folder);
-                    console.log(`Successfully uploaded generation ${generation.id}`);
                     
                     // Analyze the video if analysis is enabled for this queue item
                     const queueItem = queueItems.find(item => item.job?.id === updatedJob.id);
@@ -172,26 +167,16 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                     
                     if (analysisSettings?.analyzeVideo) {
                       try {
-                        console.log(`🔍 Starting video analysis for uploaded generation: ${generation.id}`);
-                        console.log(`📊 Using stored analysis settings:`, analysisSettings);
-                        
                         // Wait 10 seconds for Azure Blob Storage to propagate the uploaded video
-                        console.log(`⏳ Waiting 10 seconds for video to be available in Azure Blob Storage...`);
                         await new Promise(resolve => setTimeout(resolve, 10000));
                         
                         const analysisResult = await analyzeAndUpdateVideoMetadata(fileName);
-                        console.log(`✅ Video analysis completed for ${generation.id}:`, analysisResult.analysis);
                         
                         // Don't show individual analysis toasts - we'll show a consolidated one later
                                               } catch (analysisError) {
-                          console.error(`❌ Video analysis failed for ${generation.id}:`, analysisError);
+                          console.error(`Video analysis failed for ${generation.id}:`, analysisError);
                           // Don't show individual analysis error toasts - log the error for debugging
                         }
-                    } else {
-                      console.log(`⏭️ Skipping video analysis for ${generation.id}:`, {
-                        analyzeVideo: analysisSettings?.analyzeVideo,
-                        reason: !analysisSettings?.analyzeVideo ? 'Analysis disabled' : 'Unknown'
-                      });
                     }
                     
                     return true;
@@ -364,8 +349,6 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
         
         // Check if we should use the unified endpoint with analysis
         if (settings.analyzeVideo) {
-          console.log("🚀 Using unified video generation with analysis endpoint");
-          
           // Use the unified endpoint that handles generation + analysis atomically
           const unifiedRequest: VideoGenerationWithAnalysisRequest = {
             ...apiRequest,
@@ -379,7 +362,6 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
             
             // Don't show immediate success toast for unified endpoint
             // The regular polling mechanism will handle the final success notification
-            console.log(`🎉 Unified endpoint completed: ${job.generations?.length || 0} videos generated with analysis`);
             
             // Update the queue item with the completed job
             setQueueItems(prev => 

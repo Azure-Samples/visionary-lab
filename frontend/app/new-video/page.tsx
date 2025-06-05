@@ -173,7 +173,6 @@ function NewVideoPageContent() {
   useEffect(() => {
     // Create a callback function to refresh the gallery
     const refreshGalleryCallback = () => {
-      console.log("Gallery refresh callback triggered, reloading videos");
       // Check if we're already loading to avoid duplicate refreshes
       if (!loading && !isRefreshing) {
         loadVideos(true, true);
@@ -292,8 +291,6 @@ function NewVideoPageContent() {
       setTimeout(() => {
         // Don't refresh unnecessarily if we just refreshed or are loading
         if (!loading && !isRefreshing) {
-          console.log("Videos uploaded - refreshing gallery");
-          
           // Do a full refresh of the gallery
           loadVideos(true);
           
@@ -468,11 +465,6 @@ function NewVideoPageContent() {
       
       // Apply brand protection if enabled from global settings
       if (imageSettings.settings.brandsProtection !== "off" && imageSettings.settings.brandsList.length > 0) {
-        // Log that protection is active
-        console.log("🛡️ Brand Protection Activated:", {
-          mode: imageSettings.settings.brandsProtection,
-          brands: imageSettings.settings.brandsList
-        });
         try {
           // Call the brand protection API
           generationPrompt = await protectImagePrompt(
@@ -481,10 +473,7 @@ function NewVideoPageContent() {
             imageSettings.settings.brandsProtection
           );
           
-          // Log the resulting prompt
           if (generationPrompt !== settings.prompt) {
-            console.log("Original prompt:", settings.prompt);
-            console.log("Protected prompt:", generationPrompt);
             brandProtectionApplied = true;
           }
         } catch (error) {

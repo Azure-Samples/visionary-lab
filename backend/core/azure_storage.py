@@ -273,8 +273,6 @@ class AzureBlobStorageService:
                 # Create blob name with the provided filename
                 blob_name = f"{normalized_folder_path}{filename_without_ext}{ext}"
                 file_id = filename_without_ext  # For backward compatibility in response
-                print(f"Azure Storage: Using provided filename: {blob_name}")
-
                 # Check if blob already exists and handle conflicts
                 container_client = self.blob_service_client.get_container_client(
                     container_name)
@@ -286,13 +284,10 @@ class AzureBlobStorageService:
                     unique_suffix = str(uuid.uuid4())[:8]
                     blob_name = f"{normalized_folder_path}{filename_without_ext}_{unique_suffix}{ext}"
                     file_id = f"{filename_without_ext}_{unique_suffix}"
-                    print(
-                        f"Azure Storage: Filename conflict resolved, using: {blob_name}")
             else:
                 # Fallback to UUID if no filename provided
                 file_id = str(uuid.uuid4())
                 blob_name = f"{normalized_folder_path}{file_id}{ext}"
-                print(f"Azure Storage: Using UUID fallback: {blob_name}")
 
             # Create blob client (container_client already created above for conflict checking)
             if 'container_client' not in locals():
@@ -344,9 +339,6 @@ class AzureBlobStorageService:
                 "folder_path": normalized_folder_path
             }
         except Exception as e:
-            import traceback
-            print(f"Azure upload error: {str(e)}")
-            print(f"Error trace: {traceback.format_exc()}")
             raise
 
     def get_asset_metadata(self, blob_name: str, container_name: str) -> Optional[Dict[str, str]]:
@@ -406,9 +398,6 @@ class AzureBlobStorageService:
         except ResourceNotFoundError:
             return False
         except Exception as e:
-            import traceback
-            print(f"Metadata update error: {str(e)}")
-            print(f"Error trace: {traceback.format_exc()}")
             return False
 
     def _get_content_type(self, extension: str, asset_type: str) -> str:
@@ -553,5 +542,4 @@ class AzureBlobStorageService:
             # Convert to sorted list
             return sorted(list(folders))
         except Exception as e:
-            print(f"Error listing folders: {str(e)}")
             return []

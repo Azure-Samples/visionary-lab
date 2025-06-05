@@ -7,17 +7,9 @@ export function createAndShowDebugMask(
   originalWidth: number,
   originalHeight: number
 ): void {
-  console.log("Creating debug mask for visualization...");
-  console.log("Original drawing dimensions:", maskCanvas.width, "x", maskCanvas.height);
-  console.log("Target image dimensions:", originalWidth, "x", originalHeight);
-  
   // Check aspect ratios
   const drawingAspectRatio = maskCanvas.width / maskCanvas.height;
   const targetAspectRatio = originalWidth / originalHeight;
-  
-  console.log("Drawing aspect ratio:", drawingAspectRatio.toFixed(2));
-  console.log("Target aspect ratio:", targetAspectRatio.toFixed(2));
-  console.log("Aspect ratio difference:", Math.abs(drawingAspectRatio - targetAspectRatio).toFixed(2));
   
   // Create a debug mask with proper dimensions
   const debugMaskUrl = createDebugMask(maskCanvas, originalWidth, originalHeight);
@@ -26,7 +18,6 @@ export function createAndShowDebugMask(
   // Open in new tab
   const win = window.open();
   if (!win) {
-    console.error("Could not open debug window");
     return;
   }
   

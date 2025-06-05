@@ -152,8 +152,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           
           // Log the difference if in debug mode
           if (generationPrompt !== originalPrompt) {
-            console.log("Original prompt:", originalPrompt);
-            console.log("Protected prompt:", generationPrompt);
+            
             brandProtectionApplied = true;
           }
         } catch (error) {

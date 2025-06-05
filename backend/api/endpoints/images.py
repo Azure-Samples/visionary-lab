@@ -119,11 +119,9 @@ async def generate_filename_for_prompt(prompt: str, extension: str = None) -> st
         # Normalize the generated filename
         generated_filename = normalize_filename(filename_response.filename)
 
-        logger.info(f"Generated filename: {generated_filename}")
         return generated_filename
 
     except Exception as e:
-        logger.warning(f"Failed to generate filename for prompt: {str(e)}")
         return None
 
 
@@ -154,9 +152,6 @@ async def generate_image(request: ImageGenerationRequest):
             if request.user:
                 params["user"] = request.user
 
-            logger.info(
-                f"Generating image with gpt-image-1, quality: {request.quality}, size: {request.size}")
-
         # Generate image
         response = dalle_client.generate_image(**params)
 
@@ -178,10 +173,6 @@ async def generate_image(request: ImageGenerationRequest):
                 output_tokens=response["usage"].get("output_tokens", 0),
                 input_tokens_details=input_tokens_details
             )
-
-            # Log token usage for cost tracking
-            logger.info(
-                f"Token usage - Total: {token_usage.total_tokens}, Input: {token_usage.input_tokens}, Output: {token_usage.output_tokens}")
 
         return ImageGenerationResponse(
             success=True,
@@ -225,19 +216,12 @@ async def edit_image(request: ImageEditRequest):
             if request.user:
                 params["user"] = request.user
 
-            # Log information about multiple images if applicable
+            # Check if organization is verified when using multiple images
             if isinstance(request.image, list):
                 image_count = len(request.image)
-                logger.info(
-                    f"Editing with {image_count} reference images using gpt-image-1, quality: {request.quality}, size: {request.size}")
-
-                # Check if organization is verified when using multiple images
                 if image_count > 1 and not settings.OPENAI_ORG_VERIFIED:
                     logger.warning(
                         "Using multiple reference images requires organization verification")
-            else:
-                logger.info(
-                    f"Editing single image using gpt-image-1, quality: {request.quality}, size: {request.size}")
 
         # Perform image editing
         response = dalle_client.edit_image(**params)
@@ -289,10 +273,6 @@ async def edit_image_upload(
 ):
     """Edit input images uploaded via multipart form data"""
     try:
-        # Log request info
-        logger.info(
-            f"Received {len(image)} image(s) for editing with prompt: {prompt}")
-
         # Validate file size for all images
         max_file_size_mb = settings.GPT_IMAGE_MAX_FILE_SIZE_MB
         temp_files = []
@@ -623,10 +603,6 @@ async def save_generated_images(
                         stem = path.stem
                         suffix = path.suffix
                         filename = f"{stem}_{idx+1}{suffix}"
-                        logger.info(
-                            f"Using generated filename with index: {filename}")
-                    elif filename:
-                        logger.info(f"Using generated filename: {filename}")
 
                 # Fallback to default naming if filename generation fails
                 if not filename:
@@ -634,7 +610,6 @@ async def save_generated_images(
                         request, "quality") else ""
                     filename = f"generated_image_{idx+1}{quality_suffix}.{ext}"
                     filename = normalize_filename(filename)
-                    logger.info(f"Using fallback filename: {filename}")
             else:
                 logger.warning(
                     f"Unsupported image data format for image {idx+1}")
@@ -751,7 +726,6 @@ def analyze_image(req: ImageAnalyzeRequest):
                     file_path += f"?{image_sas_token}"
 
             # Download the image from the URL
-            logger.info(f"Downloading image for analysis from: {file_path}")
             response = requests.get(file_path, timeout=30)
             if response.status_code != 200:
                 raise HTTPException(
@@ -764,7 +738,6 @@ def analyze_image(req: ImageAnalyzeRequest):
 
         # Option 2: Process from base64 string
         elif req.base64_image:
-            logger.info("Processing image from base64 data")
             try:
                 # Decode base64 to binary
                 image_content = base64.b64decode(req.base64_image)
@@ -782,8 +755,6 @@ def analyze_image(req: ImageAnalyzeRequest):
                 has_transparency = img.mode == 'RGBA' and 'A' in img.getbands()
 
                 if has_transparency:
-                    logger.info(
-                        "Image has transparency, converting for analysis")
                     # Create a white background
                     background = Image.new(
                         'RGBA', img.size, (255, 255, 255, 255))
@@ -802,8 +773,6 @@ def analyze_image(req: ImageAnalyzeRequest):
                 # This is optional but can help with very large images
                 width, height = img.size
                 if width > 1500 or height > 1500:
-                    logger.info(
-                        f"Image is large ({width}x{height}), resizing for analysis")
                     # Calculate new dimensions
                     max_dimension = 1500
                     if width > height:
@@ -837,7 +806,6 @@ def analyze_image(req: ImageAnalyzeRequest):
         image_base64 = re.sub(r"^data:image/.+;base64,", "", image_base64)
 
         # analyze the image using the LLM
-        logger.info("Sending image to LLM for analysis")
         image_analyzer = ImageAnalyzer(llm_client, settings.LLM_DEPLOYMENT)
         insights = image_analyzer.image_chat(
             image_base64, analyze_image_system_message)
@@ -898,17 +866,12 @@ def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
     try:
         if req.brands_to_protect:
             if req.protection_mode == "replace":
-                logger.info(
-                    f"Replace competitor brands of: {req.brands_to_protect}")
                 system_message = brand_protect_replace_msg.format(
                     brands=req.brands_to_protect)
             elif req.protection_mode == "neutralize":
-                logger.info(
-                    f"Neutralize competitor brands of: {req.brands_to_protect}")
                 system_message = brand_protect_neutralize_msg.format(
                     brands=req.brands_to_protect)
         else:
-            logger.info(f"No brand protection specified.")
             return ImagePromptBrandProtectionResponse(enhanced_prompt=req.original_prompt)
 
         # Ensure LLM client is available
