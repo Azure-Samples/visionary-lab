@@ -31,7 +31,6 @@ interface VideoOverlayProps {
     variants: string;
     modality: string;
     analyzeVideo: boolean;
-    mode: string;
     brandsProtection: string;
     imageModel: string;
     hd: boolean;
@@ -82,8 +81,7 @@ export function VideoOverlay({
   const [prompt, setPrompt] = useState("");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [modality, setModality] = useState("text-to-video");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [mode, setMode] = useState<"dev" | "sora">("sora");
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [model, setModel] = useState("sora-v1.1");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -293,7 +291,6 @@ export function VideoOverlay({
       variants,
       modality,
       analyzeVideo,
-      mode,
       brandsProtection,
       imageModel,
       hd,

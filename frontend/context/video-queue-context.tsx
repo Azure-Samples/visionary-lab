@@ -55,8 +55,8 @@ export interface VideoQueueItem {
   uploadStarted?: boolean; // Flag to track when uploads are starting
   analysisSettings?: {
     analyzeVideo: boolean;
-    mode: string;
   };
+  folder?: string; // Store folder information directly in queue item
 }
 
 export interface VideoSettings {
@@ -69,7 +69,6 @@ export interface VideoSettings {
   brandsList?: string[]; // Add list of brands to protect
   folder?: string; // Add folder information
   analyzeVideo?: boolean; // Add video analysis setting
-  mode?: string; // Add mode setting (dev/sora)
 }
 
 interface VideoQueueContextType {
@@ -160,7 +159,8 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   };
 
                   // Pass folder information to the download/upload function if available
-                  const folder = item.job?.metadata?.folder || undefined;
+                  // Use folder from queue item first, then fall back to job metadata
+                  const folder = item.folder || item.job?.metadata?.folder || undefined;
                   
                   try {
                     await downloadThenUploadToGallery(generation.id, fileName, metadata, folder);
@@ -170,7 +170,7 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                     const queueItem = queueItems.find(item => item.job?.id === updatedJob.id);
                     const analysisSettings = queueItem?.analysisSettings;
                     
-                    if (analysisSettings?.analyzeVideo && analysisSettings?.mode === "sora") {
+                    if (analysisSettings?.analyzeVideo) {
                       try {
                         console.log(`🔍 Starting video analysis for uploaded generation: ${generation.id}`);
                         console.log(`📊 Using stored analysis settings:`, analysisSettings);
@@ -196,9 +196,7 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                     } else {
                       console.log(`⏭️ Skipping video analysis for ${generation.id}:`, {
                         analyzeVideo: analysisSettings?.analyzeVideo,
-                        mode: analysisSettings?.mode,
-                        reason: !analysisSettings?.analyzeVideo ? 'Analysis disabled' : 
-                               analysisSettings?.mode !== 'sora' ? 'Mode not sora' : 'Unknown'
+                        reason: !analysisSettings?.analyzeVideo ? 'Analysis disabled' : 'Unknown'
                       });
                     }
                     
@@ -321,9 +319,9 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
         status: "pending",
         createdAt: new Date(),
         analysisSettings: settings ? {
-          analyzeVideo: settings.analyzeVideo || false,
-          mode: settings.mode || "dev"
+          analyzeVideo: settings.analyzeVideo || false
         } : undefined,
+        folder: settings?.folder, // Store folder directly in queue item
       };
       
       // Update queue with pending item
@@ -354,12 +352,9 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
         if (settings.analyzeVideo !== undefined) {
           jobMetadata.analyzeVideo = settings.analyzeVideo.toString();
         }
-        if (settings.mode) {
-          jobMetadata.mode = settings.mode;
-        }
         
         // Check if we should use the unified endpoint with analysis
-        if (settings.analyzeVideo && settings.mode === "sora") {
+        if (settings.analyzeVideo) {
           console.log("🚀 Using unified video generation with analysis endpoint");
           
           // Use the unified endpoint that handles generation + analysis atomically
@@ -391,7 +386,8 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                       job,
                       status: "completed",
                       progress: 100,
-                      uploadComplete: true // Mark as complete since unified endpoint handles everything
+                      uploadComplete: true, // Mark as complete since unified endpoint handles everything
+                      folder: item.folder // Preserve folder information
                     }
                   : item
               )
@@ -412,7 +408,7 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
             setQueueItems(prev => 
               prev.map(item => 
                 item.id === tempId
-                  ? { ...item, id: job.id, job }
+                  ? { ...item, id: job.id, job, folder: item.folder } // Preserve folder information
                   : item
               )
             );
@@ -420,7 +416,7 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
             return job.id;
           }
         } else {
-          // Use traditional endpoint for non-analysis jobs or dev mode
+          // Use traditional endpoint for non-analysis jobs
           const job = await createVideoGenerationJob({
             ...apiRequest,
             metadata: jobMetadata
@@ -430,7 +426,7 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
           setQueueItems(prev => 
             prev.map(item => 
               item.id === tempId
-                ? { ...item, id: job.id, job }
+                ? { ...item, id: job.id, job, folder: item.folder } // Preserve folder information
                 : item
             )
           );

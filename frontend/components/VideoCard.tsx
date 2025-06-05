@@ -40,7 +40,7 @@ export function VideoCard({
   description,
   aspectRatio = "16:9",
   className,
-  tags = ["AI Generated", "Landscape"],
+  tags,
   blobName,
   onDelete,
   onClick,

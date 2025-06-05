@@ -280,11 +280,27 @@ def create_video_generation_with_analysis(req: VideoGenerationWithAnalysisReques
                             from backend.core.azure_storage import AzureBlobStorageService
                             from azure.storage.blob import ContentSettings
 
-                            # Generate the final filename for gallery
-                            final_filename = f"{req.prompt.replace(' ', '_')}_{generation_id}.mp4"
-
                             # Create Azure storage service
                             azure_service = AzureBlobStorageService()
+
+                            # Generate the base filename
+                            base_filename = f"{req.prompt.replace(' ', '_')}_{generation_id}.mp4"
+
+                            # Extract folder path from request metadata and normalize it
+                            folder_path = req.metadata.get(
+                                'folder') if req.metadata else None
+                            final_filename = base_filename
+
+                            if folder_path and folder_path != 'root':
+                                # Use Azure service's normalize_folder_path method for consistency
+                                normalized_folder = azure_service.normalize_folder_path(
+                                    folder_path)
+                                final_filename = f"{normalized_folder}{base_filename}"
+                                logger.info(
+                                    f"Uploading video to folder: {normalized_folder}")
+                            else:
+                                logger.info(
+                                    "Uploading video to root directory")
 
                             # Upload to Azure Blob Storage
                             container_client = azure_service.blob_service_client.get_container_client(
@@ -305,6 +321,11 @@ def create_video_generation_with_analysis(req: VideoGenerationWithAnalysisReques
                                 "upload_date": datetime.now().isoformat()
                             }
 
+                            # Add folder path to metadata if specified
+                            if folder_path and folder_path != 'root':
+                                upload_metadata["folder_path"] = azure_service.normalize_folder_path(
+                                    folder_path)
+
                             # Read the file and upload with metadata
                             with open(downloaded_path, 'rb') as video_file:
                                 blob_client.upload_blob(
@@ -318,6 +339,9 @@ def create_video_generation_with_analysis(req: VideoGenerationWithAnalysisReques
                             blob_url = blob_client.url
                             logger.info(
                                 f"Uploaded video to gallery: {blob_url}")
+                            if folder_path and folder_path != 'root':
+                                logger.info(
+                                    f"Video uploaded to folder '{folder_path}' with normalized path '{azure_service.normalize_folder_path(folder_path)}'")
 
                         except Exception as upload_error:
                             logger.warning(
