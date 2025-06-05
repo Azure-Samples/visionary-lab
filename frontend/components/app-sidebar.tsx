@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useEffect, useState } from "react";
 import { fetchFolders, MediaType } from "@/services/api";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useFolderContext } from "@/context/folder-context";
 import { motion } from "framer-motion";
 
 import {
@@ -89,13 +90,14 @@ export function AppSidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentFolderParam = searchParams.get('folder');
+  const { folderRefreshTrigger } = useFolderContext();
   
   // Only render logo after mounted on client to avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Fetch folders on component mount
+  // Fetch folders on component mount and when refresh is triggered
   useEffect(() => {
     const loadImageFolders = async () => {
       setIsImageFoldersLoading(true);
@@ -123,7 +125,7 @@ export function AppSidebar() {
 
     loadImageFolders();
     loadVideoFolders();
-  }, []);
+  }, [folderRefreshTrigger]); // Re-run when folders are created/updated
 
   // Determine logo based on theme
   const logoSrc = mounted && theme === "dark" 

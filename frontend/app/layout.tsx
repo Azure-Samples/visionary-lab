@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { VideoQueueProvider } from "@/context/video-queue-context";
 import { JobsProvider } from "@/context/jobs-context";
 import { ImageSettingsProvider } from "@/context/image-settings-context";
+import { FolderProvider } from "@/context/folder-context";
 import { VideoQueueClient } from "@/components/video-queue-client";
 import { RefreshJobsButton } from "@/components/refresh-jobs-button";
 import { Toaster } from "@/components/ui/sonner";
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
           <VideoQueueProvider>
             <JobsProvider>
               <ImageSettingsProvider>
+                <FolderProvider>
                 {/* Main layout with sidebar */}
                 <div className="relative flex min-h-screen h-screen">              
                   {/* Content area with sidebar */}
@@ -82,6 +84,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
                   </SidebarProvider>
                 </div>
                 <Toaster />
+                </FolderProvider>
               </ImageSettingsProvider>
             </JobsProvider>
           </VideoQueueProvider>

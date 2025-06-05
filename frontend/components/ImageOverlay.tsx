@@ -23,6 +23,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Input } from "@/components/ui/input";
 import { useImageSettings } from "@/context/image-settings-context";
 import { useTheme } from "next-themes";
+import { useFolderContext } from "@/context/folder-context";
 
 interface ImageOverlayProps {
   onGenerate: (settings: {
@@ -82,6 +83,7 @@ export function ImageOverlay({
   // Add theme context
   const { theme, resolvedTheme } = useTheme();
   const [isDarkTheme, setIsDarkTheme] = useState(false);
+  const { refreshFolders } = useFolderContext();
   
   // Move theme detection to useEffect to prevent hydration mismatch
   useEffect(() => {
@@ -247,6 +249,9 @@ export function ImageOverlay({
         if (onFolderCreated) {
           onFolderCreated(newFolderPath);
         }
+        
+        // Trigger sidebar refresh
+        refreshFolders();
       }
     } catch (error) {
       console.error("Error creating folder:", error);
@@ -280,6 +285,9 @@ export function ImageOverlay({
       if (result.folders && onFolderCreated) {
         // Update the parent component with the full folder list
         onFolderCreated(result.folders);
+        
+        // Trigger sidebar refresh
+        refreshFolders();
         
         toast.success("Folders refreshed", {
           description: `${result.folders.length} folders available`

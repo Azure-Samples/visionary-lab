@@ -20,6 +20,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { enhancePrompt, createFolder, MediaType, fetchFolders } from "@/services/api";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
+import { useFolderContext } from "@/context/folder-context";
 import { Input } from "@/components/ui/input";
 
 interface VideoOverlayProps {
@@ -66,6 +67,7 @@ export function VideoOverlay({
   // Add theme context
   const { theme, resolvedTheme } = useTheme();
   const [isDarkTheme, setIsDarkTheme] = useState(false);
+  const { refreshFolders } = useFolderContext();
   
   // Move theme detection to useEffect to prevent hydration mismatch
   useEffect(() => {
@@ -218,6 +220,9 @@ export function VideoOverlay({
         if (onFolderCreated) {
           onFolderCreated(newFolderPath);
         }
+        
+        // Trigger sidebar refresh
+        refreshFolders();
       }
     } catch (error) {
       console.error("Error creating folder:", error);
@@ -251,6 +256,9 @@ export function VideoOverlay({
       if (result.folders && onFolderCreated) {
         // Update the parent component with the full folder list
         onFolderCreated(result.folders);
+        
+        // Trigger sidebar refresh
+        refreshFolders();
         
         toast.success("Folders refreshed", {
           description: `${result.folders.length} folders available`
