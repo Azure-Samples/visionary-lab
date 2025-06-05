@@ -297,21 +297,7 @@ function NewVideoPageContent() {
           // Do a full refresh of the gallery
           loadVideos(true);
           
-          // Show success notification after videos load
-          toast.success(`Videos added to gallery`, {
-            description: "Your videos are now visible in the gallery",
-            duration: 3000,
-            action: {
-              label: "View",
-              onClick: () => {
-                // Scroll to the top of the gallery to show new content
-                const galleryContainer = document.querySelector('.gallery-container');
-                if (galleryContainer) {
-                  galleryContainer.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-              }
-            }
-          });
+          // Don't show additional toast here - the video queue context already shows success notification
         }
       }, 1000);
     }
@@ -321,9 +307,9 @@ function NewVideoPageContent() {
   // and can be refreshed manually or with auto-refresh
   
   // Function to handle video deletion
-  const handleVideoDeleted = (deletedVideoId: string) => {
-    // Remove the deleted video from the state
-    setVideos(prevVideos => prevVideos.filter(video => video.id !== deletedVideoId));
+  const handleVideoDeleted = (deletedVideoName: string) => {
+    // Remove the deleted video from the state using the unique video name (blob name)
+    setVideos(prevVideos => prevVideos.filter(video => video.name !== deletedVideoName));
     
     // If we've deleted a video, we might want to load another one to replace it
     if (hasMore && videos.length < limit * 2) {
@@ -471,6 +457,11 @@ function NewVideoPageContent() {
     
     setIsGenerating(true);
     
+    // Show immediate feedback to the user
+    const toastId = toast.loading(`Creating ${settings.variants} video${parseInt(settings.variants) > 1 ? 's' : ''}...`, {
+      description: `${settings.aspectRatio}, ${settings.duration} duration - this may take 1-2 minutes`
+    });
+    
     try {
       let generationPrompt = settings.prompt;
       let brandProtectionApplied = false;
@@ -498,10 +489,8 @@ function NewVideoPageContent() {
           }
         } catch (error) {
           console.error('Error applying brand protection:', error);
-          toast.error("Brand protection failed", {
-            description: "Using original prompt instead"
-          });
-          // Fallback to original prompt on error
+          // Don't show a separate error toast for brand protection - just log and continue
+          // The main generation will still proceed with the original prompt
           generationPrompt = settings.prompt;
         }
       }
@@ -531,21 +520,8 @@ function NewVideoPageContent() {
             [jobId]: true
           }));
           
-          // Show single consolidated toast about the generation process
-          toast.success("Video generation started", {
-            description: `Creating ${videoSettings.variants} video${videoSettings.variants > 1 ? 's' : ''} (${videoSettings.aspectRatio}, ~1-2 min)${brandProtectionApplied ? ' with brand protection' : ''}`,
-            duration: 6000,
-            action: {
-              label: "View Status",
-              onClick: () => {
-                // Scroll to the top to show the active generation badge
-                const galleryContainer = document.querySelector('.gallery-container');
-                if (galleryContainer) {
-                  galleryContainer.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-              }
-            }
-          });
+          // Dismiss the loading toast - the job is now in progress
+          toast.dismiss(toastId);
           
           // No need to reset lastCompletedJobId now that we're tracking in jobsInProgress
           
@@ -554,6 +530,7 @@ function NewVideoPageContent() {
         } catch (error) {
           console.error("Error starting video generation:", error);
           toast.error("Could not connect to the backend API", {
+            id: toastId,
             description: "Please try again later"
           });
           setIsGenerating(false);
@@ -563,6 +540,7 @@ function NewVideoPageContent() {
       console.error("Error during generation:", error);
       setIsGenerating(false);
       toast.error("An error occurred while generating the video", {
+        id: toastId,
         description: "Please try again later"
       });
     }
@@ -745,7 +723,7 @@ function NewVideoPageContent() {
                       const isLarge = (videoIndex * 3 + columnIndex) % 5 === 0;
                       
                       return (
-                        <div key={video.id} className="w-full">
+                        <div key={video.name} className="w-full">
                           <VideoCard
                             src={video.src}
                             title={video.title}
@@ -755,7 +733,7 @@ function NewVideoPageContent() {
                             tags={sampleTags}
                             id={video.id}
                             blobName={video.name}
-                            onDelete={() => handleVideoDeleted(video.id)}
+                            onDelete={() => handleVideoDeleted(video.name)}
                             onClick={() => handleVideoClick(video)}
                             autoPlay={autoPlay}
                           />

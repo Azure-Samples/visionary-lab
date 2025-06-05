@@ -471,7 +471,7 @@ function NewImagePageContent() {
                 className="columns-1 sm:columns-2 md:columns-2 lg:columns-3 gap-4 space-y-4"
               >
                 {images.map((image, index) => (
-                  <div key={image.id} className="break-inside-avoid mb-4">
+                                          <div key={image.name} className="break-inside-avoid mb-4">
                     <ImageGalleryCard
                       image={image}
                       index={index}

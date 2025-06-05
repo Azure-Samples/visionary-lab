@@ -182,17 +182,11 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                         const analysisResult = await analyzeAndUpdateVideoMetadata(fileName);
                         console.log(`✅ Video analysis completed for ${generation.id}:`, analysisResult.analysis);
                         
-                        toast.success("Video analysis completed", {
-                          description: "AI analysis has been added to the video metadata",
-                          duration: 3000
-                        });
-                      } catch (analysisError) {
-                        console.error(`❌ Video analysis failed for ${generation.id}:`, analysisError);
-                        toast.error("Video analysis failed", {
-                          description: "The video was uploaded but analysis could not be completed",
-                          duration: 5000
-                        });
-                      }
+                        // Don't show individual analysis toasts - we'll show a consolidated one later
+                                              } catch (analysisError) {
+                          console.error(`❌ Video analysis failed for ${generation.id}:`, analysisError);
+                          // Don't show individual analysis error toasts - log the error for debugging
+                        }
                     } else {
                       console.log(`⏭️ Skipping video analysis for ${generation.id}:`, {
                         analyzeVideo: analysisSettings?.analyzeVideo,
@@ -208,7 +202,8 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                 });
               
               if (uploadPromises.length > 0) {
-                toast.info(`Uploading ${uploadPromises.length} video${uploadPromises.length > 1 ? 's' : ''} to gallery...`);
+                // Use a loading toast that transforms into success/error
+                const uploadToastId = toast.loading(`Uploading ${uploadPromises.length} video${uploadPromises.length > 1 ? 's' : ''} to gallery...`);
                 
                 try {
                   // Wait for all uploads to complete
@@ -216,7 +211,17 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   const successCount = results.filter(Boolean).length;
                   
                   if (successCount > 0) {
-                    toast.success(`${successCount} video${successCount > 1 ? 's' : ''} uploaded to gallery`, {
+                    // Check if analysis was enabled for this job
+                    const queueItem = queueItems.find(item => item.job?.id === updatedJob.id);
+                    const analysisEnabled = queueItem?.analysisSettings?.analyzeVideo;
+                    
+                    const description = analysisEnabled 
+                      ? `${successCount} video${successCount > 1 ? 's' : ''} uploaded with AI analysis`
+                      : `${successCount} video${successCount > 1 ? 's' : ''} ready in your gallery`;
+                    
+                    toast.success(`Videos uploaded successfully`, {
+                      id: uploadToastId,
+                      description,
                       duration: 5000
                     });
                     
@@ -225,11 +230,15 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   }
                   
                   if (successCount < uploadPromises.length) {
-                    toast.error(`${uploadPromises.length - successCount} video${uploadPromises.length - successCount > 1 ? 's' : ''} failed to upload`);
+                    toast.error(`${uploadPromises.length - successCount} video${uploadPromises.length - successCount > 1 ? 's' : ''} failed to upload`, {
+                      id: uploadToastId
+                    });
                   }
                 } catch (uploadError) {
                   console.error(`Error handling uploads:`, uploadError);
-                  toast.error(`Some videos failed to upload`);
+                  toast.error(`Some videos failed to upload`, {
+                    id: uploadToastId
+                  });
                 }
               } else {
                 console.log(`All generations for job ${updatedJob.id} were already uploaded`);
@@ -368,13 +377,9 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
             const unifiedResponse = await createVideoGenerationWithAnalysis(unifiedRequest);
             const job = unifiedResponse.job;
             
-            // If analysis was completed, show success message
-            if (unifiedResponse.analysis_results && unifiedResponse.analysis_results.length > 0) {
-              toast.success("Video generation and analysis completed!", {
-                description: `Generated ${job.generations?.length || 0} videos with AI analysis`,
-                duration: 5000
-              });
-            }
+            // Don't show immediate success toast for unified endpoint
+            // The regular polling mechanism will handle the final success notification
+            console.log(`🎉 Unified endpoint completed: ${job.generations?.length || 0} videos generated with analysis`);
             
             // Update the queue item with the completed job
             setQueueItems(prev => 

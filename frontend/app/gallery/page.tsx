@@ -151,9 +151,9 @@ export default function GalleryPage() {
   }, []);
 
   // Function to handle video deletion
-  const handleVideoDeleted = (deletedVideoId: string) => {
-    // Remove the deleted video from the state
-    setVideos(prevVideos => prevVideos.filter(video => video.id !== deletedVideoId));
+  const handleVideoDeleted = (deletedVideoName: string) => {
+    // Remove the deleted video from the state using the unique video name (blob name)
+    setVideos(prevVideos => prevVideos.filter(video => video.name !== deletedVideoName));
     
     // If we've deleted a video, we might want to load another one to replace it
     if (hasMore && videos.length < limit * 2) {
@@ -298,9 +298,12 @@ export default function GalleryPage() {
                 ) : videos.length > 0 ? (
                   videos.map((video, index) => (
                     <VideoCard
-                      key={video.id}
-                      video={video}
-                      onDelete={handleVideoDeleted}
+                      key={video.name}
+                      src={video.src}
+                      title={video.title}
+                      description={video.description}
+                      blobName={video.name}
+                      onDelete={() => handleVideoDeleted(video.name)}
                       autoPlay={autoPlay}
                       tags={generateTagsForVideo(video, index)}
                     />
