@@ -638,7 +638,16 @@ async def create_folder(
             "is_folder_marker": "true",
             "folder_path": normalized_path
         }
-        blob_client.upload_blob(data=b"", overwrite=True, metadata=metadata)
+
+        # Preprocess metadata values to ensure Azure compatibility
+        processed_metadata = {}
+        for k, v in metadata.items():
+            if v is not None:
+                processed_metadata[k] = azure_storage_service._preprocess_metadata_value(
+                    str(v))
+
+        blob_client.upload_blob(data=b"", overwrite=True,
+                                metadata=processed_metadata)
 
         return {
             "success": True,
@@ -684,13 +693,20 @@ async def _move_asset_background(
         # Update metadata with new folder path
         metadata['folder_path'] = normalized_folder
 
+        # Preprocess metadata values to ensure Azure compatibility
+        processed_metadata = {}
+        for k, v in metadata.items():
+            if v is not None:
+                processed_metadata[k] = azure_storage_service._preprocess_metadata_value(
+                    str(v))
+
         # Set content type
         from azure.storage.blob import ContentSettings
         content_settings = ContentSettings(content_type=content_type)
 
         # Upload to new location
         blob_client.upload_blob(data=content, overwrite=True,
-                                metadata=metadata, content_settings=content_settings)
+                                metadata=processed_metadata, content_settings=content_settings)
 
         # Delete original blob after successful copy
         azure_storage_service.delete_asset(blob_name, container_name)
@@ -762,10 +778,18 @@ async def move_asset(
                 "is_folder_marker": "true",
                 "folder_path": normalized_folder
             }
+
+            # Preprocess metadata values to ensure Azure compatibility
+            processed_marker_metadata = {}
+            for k, v in marker_metadata.items():
+                if v is not None:
+                    processed_marker_metadata[k] = azure_storage_service._preprocess_metadata_value(
+                        str(v))
+
             folder_blob_client = container_client.get_blob_client(
                 folder_marker)
             folder_blob_client.upload_blob(
-                data=b"", overwrite=True, metadata=marker_metadata)
+                data=b"", overwrite=True, metadata=processed_marker_metadata)
 
         # Check if target already exists (to avoid overwrite if interrupted)
         try:

@@ -165,8 +165,8 @@ export function ImageOverlay({
     
     const numVariations = parseInt(variations);
     
-    if (isNaN(numVariations) || numVariations < 1 || numVariations > 4) {
-      toast.error("Please select a valid number of variations (1-4)");
+    if (isNaN(numVariations) || numVariations < 1 || numVariations > 10) {
+      toast.error("Please select a valid number of variations (1-10)");
       return;
     }
     

@@ -326,13 +326,20 @@ def create_video_generation_with_analysis(req: VideoGenerationWithAnalysisReques
                                 upload_metadata["folder_path"] = azure_service.normalize_folder_path(
                                     folder_path)
 
+                            # Preprocess metadata values to ensure Azure compatibility
+                            processed_metadata = {}
+                            for k, v in upload_metadata.items():
+                                if v is not None:
+                                    processed_metadata[k] = azure_service._preprocess_metadata_value(
+                                        str(v))
+
                             # Read the file and upload with metadata
                             with open(downloaded_path, 'rb') as video_file:
                                 blob_client.upload_blob(
                                     data=video_file,
                                     content_settings=ContentSettings(
                                         content_type="video/mp4"),
-                                    metadata=upload_metadata,
+                                    metadata=processed_metadata,
                                     overwrite=True
                                 )
 
