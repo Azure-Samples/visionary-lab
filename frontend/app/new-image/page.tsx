@@ -147,26 +147,71 @@ function NewImagePageContent() {
     setAutoRefresh(prev => !prev);
   };
 
+  // Create a separate auto-refresh function to avoid dependency issues
+  const autoRefreshImages = useCallback(async () => {
+    try {
+      setIsRefreshing(true);
+      
+      // Fetch fresh images
+      const fetchedImages = await fetchImages(limit, 0, folderPath || undefined);
+      
+      // Map to the expected format
+      const mappedImages: ImageMetadata[] = fetchedImages.map(image => ({
+        src: image.src,
+        title: image.title,
+        description: image.description,
+        id: image.id,
+        name: image.name,
+        tags: image.tags,
+        originalItem: {
+          src: image.src,
+          id: image.id,
+          name: image.name,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          metadata: image.originalItem.metadata as any
+        },
+        width: image.width,
+        height: image.height,
+        size: image.size
+      }));
+      
+      setImages(mappedImages);
+      setOffset(0);
+      setHasMore(mappedImages.length >= limit);
+      
+      // Update last refreshed time
+      const now = new Date();
+      setLastRefreshed(now);
+      setLastRefreshedText(`Last refreshed ${formatDistanceToNow(now, { addSuffix: true })}`);
+      
+    } catch (error) {
+      console.error("Auto-refresh failed:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [limit, folderPath]);
+
   // Handle auto refresh toggle
   useEffect(() => {
     if (autoRefresh) {
       // Set up a refresh interval (every 30 seconds)
       const interval = setInterval(() => {
-        loadImages(true, true);
+        autoRefreshImages();
       }, 30000); // 30 seconds
       
       setRefreshInterval(interval);
       
       // Cleanup interval on component unmount or when autoRefresh is turned off
       return () => {
-        if (interval) clearInterval(interval);
+        clearInterval(interval);
+        setRefreshInterval(null);
       };
     } else if (refreshInterval) {
       // Clear the interval if auto refresh is turned off
       clearInterval(refreshInterval);
       setRefreshInterval(null);
     }
-  }, [autoRefresh, loadImages, refreshInterval]);
+  }, [autoRefresh, autoRefreshImages]); // Only depend on autoRefresh and the stable autoRefreshImages function
 
   // Update the "time ago" text every minute
   useEffect(() => {
