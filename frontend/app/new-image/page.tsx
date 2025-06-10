@@ -18,6 +18,7 @@ import { useSearchParams } from "next/navigation";
 import { FolderIcon } from "lucide-react";
 import { PageTransition } from "@/components/ui/page-transition";
 import { ImageDetailView } from "@/components/ImageDetailView";
+import { RowBasedMasonryGrid } from "@/components/RowBasedMasonryGrid";
 
 // For the 'any' type issue, let's define a proper interface
 interface GalleryImageItem {
@@ -202,26 +203,24 @@ function NewImagePageContent() {
   // Generate skeleton placeholders for loading state
   const renderSkeletons = (count: number) => {
     return Array.from({ length: count }).map((_, index) => (
-      <div 
+      <Card 
         key={`skeleton-${index}`}
-        className="break-inside-avoid mb-4"
+        className="overflow-hidden border-0 rounded-xl h-full w-full"
       >
-        <Card className="overflow-hidden border-0 rounded-xl h-full w-full">
-          <AspectRatio ratio={
-            index % 5 === 0 
-              ? 16/9  // Landscape ratio for large items
-              : index % 3 === 0 
-                ? 3/4  // Portrait ratio for tall items
-                : 4/3  // Standard ratio for medium items
-          } className="bg-muted">
-            <Skeleton className="h-full w-full rounded-none" />
-          </AspectRatio>
-          <div className="p-3 space-y-2">
-            <Skeleton className="h-4 w-2/3" />
-            <Skeleton className="h-3 w-1/2" />
-          </div>
-        </Card>
-      </div>
+        <AspectRatio ratio={
+          index % 5 === 0 
+            ? 16/9  // Landscape ratio for large items
+            : index % 3 === 0 
+              ? 3/4  // Portrait ratio for tall items
+              : 4/3  // Standard ratio for medium items
+        } className="bg-muted">
+          <Skeleton className="h-full w-full rounded-none" />
+        </AspectRatio>
+        <div className="p-3 space-y-2">
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+      </Card>
     ));
   };
 
@@ -459,55 +458,50 @@ function NewImagePageContent() {
           </div>
           
           {loading ? (
-            <div className="w-full">
-              <div className="columns-1 sm:columns-2 md:columns-2 lg:columns-3 gap-4 space-y-4">
-                {renderSkeletons(16)}
-              </div>
-            </div>
+            <RowBasedMasonryGrid columns={3} gap={4}>
+              {renderSkeletons(16)}
+            </RowBasedMasonryGrid>
           ) : images.length > 0 ? (
             <div className="w-full">
-              {/* Masonry grid using CSS columns instead of grid for better space filling */}
-              <div 
-                className="columns-1 sm:columns-2 md:columns-2 lg:columns-3 gap-4 space-y-4"
-              >
+              {/* Row-based masonry grid for left-to-right, top-to-bottom ordering */}
+              <RowBasedMasonryGrid columns={3} gap={4}>
                 {images.map((image, index) => (
-                                          <div key={image.name} className="break-inside-avoid mb-4">
-                    <ImageGalleryCard
-                      image={image}
-                      index={index}
-                      onClick={() => handleImageClick(image)}
-                      onDelete={(deletedImageId) => {
-                        // Remove the deleted image from the state
-                        setImages(prevImages => prevImages.filter(img => img.id !== deletedImageId));
+                  <ImageGalleryCard
+                    key={image.name}
+                    image={image}
+                    index={index}
+                    onClick={() => handleImageClick(image)}
+                    onDelete={(deletedImageId) => {
+                      // Remove the deleted image from the state
+                      setImages(prevImages => prevImages.filter(img => img.id !== deletedImageId));
+                      
+                      // If we've deleted an image, we might want to load another one to replace it
+                      if (hasMore && images.length < limit * 2) {
+                        loadMoreImages();
+                      }
+                    }}
+                    onMove={(movedImageId) => {
+                      // Only remove the moved image if we're in a folder view
+                      if (folderPath) {
+                        // Remove the moved image from the current state
+                        setImages(prevImages => prevImages.filter(img => img.id !== movedImageId));
                         
-                        // If we've deleted an image, we might want to load another one to replace it
+                        // If we've moved an image, we might want to load another one to replace it
                         if (hasMore && images.length < limit * 2) {
                           loadMoreImages();
                         }
-                      }}
-                      onMove={(movedImageId) => {
-                        // Only remove the moved image if we're in a folder view
-                        if (folderPath) {
-                          // Remove the moved image from the current state
-                          setImages(prevImages => prevImages.filter(img => img.id !== movedImageId));
-                          
-                          // If we've moved an image, we might want to load another one to replace it
-                          if (hasMore && images.length < limit * 2) {
-                            loadMoreImages();
-                          }
-                        } else {
-                          // When in "All Images" view, refresh the gallery to update
-                          loadImages(true);
-                        }
-                        
-                        toast.success("Image moved", {
-                          description: "The image was moved to another folder"
-                        });
-                      }}
-                    />
-                  </div>
+                      } else {
+                        // When in "All Images" view, refresh the gallery to update
+                        loadImages(true);
+                      }
+                      
+                      toast.success("Image moved", {
+                        description: "The image was moved to another folder"
+                      });
+                    }}
+                  />
                 ))}
-              </div>
+              </RowBasedMasonryGrid>
               
               {/* Load more button */}
               {hasMore && (
