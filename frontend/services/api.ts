@@ -465,10 +465,14 @@ export async function downloadThenUploadToGallery(
 export function generateVideoFilename(prompt: string, generationId: string, extension: string = ".mp4"): string {
   // Take first 50 chars of prompt, or full prompt if shorter
   const promptPart = prompt.substring(0, 50).trim();
+  // Replace newlines and multiple whitespace with single space first
+  const normalizedPrompt = promptPart.replace(/\s+/g, ' ');
   // Replace non-alphanumeric characters (except spaces, underscores, hyphens) with underscore
-  const sanitizedPrompt = promptPart.replace(/[^a-zA-Z0-9 _-]/g, '_').replace(/\s+/g, '_');
+  const sanitizedPrompt = normalizedPrompt.replace(/[^a-zA-Z0-9 _-]/g, '_').replace(/\s+/g, '_');
+  // Remove multiple consecutive underscores and trim underscores from ends
+  const cleanedPrompt = sanitizedPrompt.replace(/_+/g, '_').replace(/^_+|_+$/g, '');
   // Ensure it's not empty after sanitization
-  const finalPromptPart = sanitizedPrompt || "video";
+  const finalPromptPart = cleanedPrompt || "video";
   return `${finalPromptPart}_${generationId}${extension}`;
 }
 

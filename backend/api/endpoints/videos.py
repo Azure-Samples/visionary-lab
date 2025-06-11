@@ -237,7 +237,6 @@ def create_video_generation_with_analysis(req: VideoGenerationWithAnalysisReques
 
                     # Use the Sora client to download the video content directly
                     # This bypasses the Azure Blob Storage timing issue
-                    video_filename = f"{req.prompt.replace(' ', '_')}_{generation_id}.mp4"
 
                     # Download video directly from Sora to a temporary file
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
@@ -283,8 +282,23 @@ def create_video_generation_with_analysis(req: VideoGenerationWithAnalysisReques
                             # Create Azure storage service
                             azure_service = AzureBlobStorageService()
 
-                            # Generate the base filename
-                            base_filename = f"{req.prompt.replace(' ', '_')}_{generation_id}.mp4"
+                            # Generate proper filename using the dedicated API
+                            try:
+                                filename_req = VideoFilenameGenerateRequest(
+                                    prompt=req.prompt,
+                                    gen_id=generation_id,
+                                    extension=".mp4"
+                                )
+                                filename_response = generate_video_filename(
+                                    filename_req)
+                                base_filename = filename_response.filename
+                            except Exception as filename_error:
+                                logger.warning(
+                                    f"Failed to generate filename using API, falling back to simple sanitization: {filename_error}")
+                                # Fallback to simple sanitization
+                                sanitized_prompt = re.sub(
+                                    r'[^a-zA-Z0-9_\-]', '_', req.prompt.strip()[:50])
+                                base_filename = f"{sanitized_prompt}_{generation_id}.mp4"
 
                             # Extract folder path from request metadata and normalize it
                             folder_path = req.metadata.get(
