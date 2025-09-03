@@ -3,6 +3,7 @@ param containerAppName string
 param containerAppEnvId string
 param DOCKER_IMAGE string
 param deployNew bool = true
+param azdServiceName string = ''
 
 // Env Variables
 param MODEL_PROVIDER string = 'azure'
@@ -32,9 +33,19 @@ param API_PROTOCOL string = 'http'
 param API_HOSTNAME string = 'localhost'
 param API_PORT string = '80'
 
+// Azure Container Registry parameters
+param AZURE_CONTAINER_REGISTRY_ENDPOINT string = ''
+@secure()
+param AZURE_CONTAINER_REGISTRY_USERNAME string = ''
+@secure()
+param AZURE_CONTAINER_REGISTRY_PASSWORD string = ''
+
 resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
   name: containerAppName
   location: location
+  tags: azdServiceName != '' ? {
+    'azd-service-name': azdServiceName
+  } : {}
   properties: {
     managedEnvironmentId: containerAppEnvId
     configuration: {
@@ -42,6 +53,19 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
         external: true
         targetPort: targetPort
       }
+      registries: AZURE_CONTAINER_REGISTRY_ENDPOINT != '' ? [
+        {
+          server: AZURE_CONTAINER_REGISTRY_ENDPOINT
+          username: AZURE_CONTAINER_REGISTRY_USERNAME
+          passwordSecretRef: 'acr-password'
+        }
+      ] : []
+      secrets: AZURE_CONTAINER_REGISTRY_ENDPOINT != '' ? [
+        {
+          name: 'acr-password'
+          value: AZURE_CONTAINER_REGISTRY_PASSWORD
+        }
+      ] : []
     }
     template: {
       containers: [
@@ -119,7 +143,7 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
             }
             {
               name: 'API_PORT'
-                value: API_PORT
+              value: API_PORT
             }
             {
               name: 'NEXT_PUBLIC_API_PROTOCOL'
@@ -131,11 +155,15 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
             }
             {
               name: 'NEXT_PUBLIC_API_PORT'
-                value: API_PORT
+              value: API_PORT
             }
             {
               name: 'STORAGE_ACCOUNT_NAME'
               value: AZURE_STORAGE_ACCOUNT_NAME
+            }
+            {
+              name: 'AZURE_CONTAINER_REGISTRY_ENDPOINT'
+              value: AZURE_CONTAINER_REGISTRY_ENDPOINT
             }
           ]
         }

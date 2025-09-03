@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: visionary-lab
+metadata:
+  template: visionary-lab@0.0.1-beta
+services:
+  backend:
+    project: .
+    language: python
+    host: containerapp
+    docker:
+      path: ./backend/Dockerfile
+      context: .
+  frontend:
+    project: ./frontend
+    language: js
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+
+hooks:
+  postprovision:
+    posix:
+      shell: sh
+      run: echo "Infrastructure provisioned successfully"
+    windows:
+      shell: pwsh
+      run: echo "Infrastructure provisioned successfully"
+
+infra:
+  provider: bicep
+  path: infra
+
+pipeline:
+  provider: github

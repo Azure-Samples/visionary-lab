@@ -2,5 +2,47 @@
   "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "principalId": {
+      "value": "${AZURE_PRINCIPAL_ID}"
+    },
+    "DOCKER_IMAGE_BACKEND": {
+      "value": "${SERVICE_BACKEND_IMAGE_NAME}"
+    },
+    "DOCKER_IMAGE_FRONTEND": {
+      "value": "${SERVICE_FRONTEND_IMAGE_NAME}"
+    },
+    "IMAGEGEN_AOAI_API_KEY": {
+      "value": "${IMAGEGEN_AOAI_API_KEY}"
+    },
+    "LLM_AOAI_API_KEY": {
+      "value": "${LLM_AOAI_API_KEY}"
+    },
+    "SORA_AOAI_API_KEY": {
+      "value": "${SORA_AOAI_API_KEY}"
+    },
+    "LLM_AOAI_RESOURCE": {
+      "value": "${LLM_AOAI_RESOURCE}"
+    },
+    "LLM_DEPLOYMENT": {
+      "value": "${LLM_DEPLOYMENT}"
+    },
+    "IMAGEGEN_AOAI_RESOURCE": {
+      "value": "${IMAGEGEN_AOAI_RESOURCE}"
+    },
+    "IMAGEGEN_DEPLOYMENT": {
+      "value": "${IMAGEGEN_DEPLOYMENT}"
+    },
+    "SORA_AOAI_RESOURCE": {
+      "value": "${SORA_AOAI_RESOURCE}"
+    },
+    "SORA_DEPLOYMENT": {
+      "value": "${SORA_DEPLOYMENT}"
+    }
   }
 }
