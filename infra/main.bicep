@@ -70,7 +70,6 @@ param principalId string = ''
 param cosmosAccountName string = 'visionary-lab-cosmos'
 param cosmosDatabaseName string = 'VisionaryLabDB'
 param cosmosContainerName string = 'visionarylab'
-param deployCosmosDb bool = true
 
 // Azure Storage Account
 module storageAccountMod './modules/storageAccount.bicep' = {
@@ -112,14 +111,14 @@ module containerRegistryMod './modules/containerRegistry.bicep' = {
 // Add this module after your storage modules
 // Azure Cosmos DB Account for Visionary Lab
 // This module creates a Cosmos DB account with SQL API for storing Visionary Lab data
-module cosmosDbMod './modules/cosmosDb.bicep' = if (deployCosmosDb) {
+module cosmosDbMod './modules/cosmosDb.bicep' = {
   name: 'cosmosDbMod'
   params: {
     location: location
     cosmosAccountName: cosmosAccountName
     databaseName: cosmosDatabaseName
     containerName: cosmosContainerName
-    deployNew: deployCosmosDb
+    deployNew: true
   }
 }
 
@@ -201,16 +200,17 @@ module containerAppBackend './modules/containerApp.bicep' = {
     SORA_AOAI_RESOURCE: SORA_AOAI_RESOURCE
     SORA_DEPLOYMENT: SORA_DEPLOYMENT
     SORA_AOAI_API_KEY: SORA_AOAI_API_KEY
-    COSMOS_ENDPOINT: deployCosmosDb ? cosmosDbMod.outputs.cosmosAccountEndpoint : ''
-    COSMOS_DATABASE_NAME: deployCosmosDb ? cosmosDbMod.outputs.databaseName : ''
-    COSMOS_CONTAINER_NAME: deployCosmosDb ? cosmosDbMod.outputs.containerName : ''
-    COSMOS_DB_KEY: deployCosmosDb ? cosmosDbMod.outputs.primaryKey : ''
+    COSMOS_ENDPOINT: cosmosDbMod.outputs.cosmosAccountEndpoint
+    COSMOS_DATABASE_NAME: cosmosDbMod.outputs.databaseName
+    COSMOS_CONTAINER_NAME: cosmosDbMod.outputs.containerName
+    COSMOS_DB_KEY: cosmosDbMod.outputs.primaryKey
     azdServiceName: 'backend'
   }
   dependsOn: [
     storageAccountMod
     storageContainerMod
     containerRegistryMod
+    cosmosDbMod
   ]
 }
 
@@ -262,7 +262,7 @@ output AZURE_STORAGE_ACCOUNT_NAME string = storageAccountName
 output AZURE_BLOB_SERVICE_URL string = storageAccountMod.outputs.storageAccountPrimaryEndpoint
 
 // Cosmos DB outputs
-output COSMOS_DB_ENDPOINT string = deployCosmosDb ? cosmosDbMod.outputs.cosmosAccountEndpoint : ''
-output COSMOS_DB_DATABASE_NAME string = deployCosmosDb ? cosmosDbMod.outputs.databaseName : ''
-output COSMOS_DB_CONTAINER_NAME string = deployCosmosDb ? cosmosDbMod.outputs.containerName : ''
-output COSMOS_DB_PRIMARY_KEY string = deployCosmosDb ? cosmosDbMod.outputs.primaryKey : ''
+output COSMOS_DB_ENDPOINT string = cosmosDbMod.outputs.cosmosAccountEndpoint
+output COSMOS_DB_DATABASE_NAME string = cosmosDbMod.outputs.databaseName
+output COSMOS_DB_CONTAINER_NAME string = cosmosDbMod.outputs.containerName
+output COSMOS_DB_PRIMARY_KEY string = cosmosDbMod.outputs.primaryKey

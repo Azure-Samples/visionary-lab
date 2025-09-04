@@ -17,16 +17,8 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
   }
   properties: {
     databaseAccountOfferType: 'Standard'
-    enableAutomaticFailover: false
-    enableMultipleWriteLocations: false
-    isVirtualNetworkFilterEnabled: false
-    virtualNetworkRules: []
-    publicNetworkAccess: 'Enabled'
     enableFreeTier: true
-    enableAnalyticalStorage: false
-    minimalTlsVersion: 'Tls12'
-    disableKeyBasedMetadataWriteAccess: false
-    disableLocalAuth: false
+    publicNetworkAccess: 'Enabled'
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
     }
@@ -37,21 +29,11 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
         isZoneRedundant: false
       }
     ]
-    cors: []
     capabilities: [
       {
         name: 'EnableServerless'
       }
     ]
-    ipRules: []
-    backupPolicy: {
-      type: 'Periodic'
-      periodicModeProperties: {
-        backupIntervalInMinutes: 240
-        backupRetentionIntervalInHours: 8
-        backupStorageRedundancy: 'Local'
-      }
-    }
     capacity: {
       totalThroughputLimit: 1000
     }
