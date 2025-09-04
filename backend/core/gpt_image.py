@@ -188,6 +188,7 @@ class GPTImageClient:
             n = kwargs.get("n", 1)
             size = kwargs.get("size", "auto")
             quality = kwargs.get("quality", "auto")
+            input_fidelity = kwargs.get("input_fidelity", "low")
 
             # Azure OpenAI requires REST API for image edits
             if self.provider == "azure":
@@ -235,15 +236,19 @@ class GPTImageClient:
                 if quality != "auto":
                     data["quality"] = quality
 
+                # Add input_fidelity if not default
+                if input_fidelity != "low":
+                    data["input_fidelity"] = input_fidelity
+
                 # Add any other supported parameters (excluding image/mask which are in files)
                 for key, value in kwargs.items():
-                    if key not in ["prompt", "image", "mask", "n", "size", "quality", "model"] and value is not None:
+                    if key not in ["prompt", "image", "mask", "n", "size", "quality", "input_fidelity", "model"] and value is not None:
                         data[key] = value
 
                 logger.info(
                     f"Editing image with Azure REST API, deployment: {self.deployment_name}, "
                     f"{'multiple' if isinstance(image, list) else 'single'} image(s), "
-                    f"quality: {quality}, size: {size}"
+                    f"quality: {quality}, size: {size}, input_fidelity: {input_fidelity}"
                 )
 
                 # Send the request
@@ -265,7 +270,8 @@ class GPTImageClient:
                 logger.info(
                     f"Editing image with OpenAI SDK, model {model}, "
                     f"{len(kwargs.get('image', [])) if isinstance(kwargs.get('image', []), list) else '1'} "
-                    f"reference image(s), quality: {kwargs.get('quality', 'auto')}, size: {size}"
+                    f"reference image(s), quality: {kwargs.get('quality', 'auto')}, size: {size}, "
+                    f"input_fidelity: {input_fidelity}"
                 )
 
                 # Call the OpenAI API to edit the image

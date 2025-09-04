@@ -17,23 +17,10 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
   }
   properties: {
     databaseAccountOfferType: 'Standard'
-    enableAutomaticFailover: false
-    enableMultipleWriteLocations: false
-    isVirtualNetworkFilterEnabled: false
-    virtualNetworkRules: []
-    publicNetworkAccess: 'Enabled'
     enableFreeTier: false
-    enableAnalyticalStorage: false
-    analyticalStorageConfiguration: {
-      schemaType: 'WellDefined'
-    }
-    minimalTlsVersion: 'Tls12'
-    disableKeyBasedMetadataWriteAccess: true
-    disableLocalAuth: false // Set to true if you want to enforce managed identity only
+    publicNetworkAccess: 'Enabled'
     consistencyPolicy: {
-      defaultConsistencyLevel: 'BoundedStaleness'
-      maxIntervalInSeconds: 5
-      maxStalenessPrefix: 100
+      defaultConsistencyLevel: 'Session'
     }
     locations: [
       {
@@ -42,24 +29,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
         isZoneRedundant: false
       }
     ]
-    cors: []
-    capabilities: [
-      {
-        name: 'EnableServerless'
-      }
-    ]
-    ipRules: []
-    backupPolicy: {
-      type: 'Periodic'
-      periodicModeProperties: {
-        backupIntervalInMinutes: 240
-        backupRetentionIntervalInHours: 8
-        backupStorageRedundancy: 'Geo'
-      }
-    }
-    capacity: {
-      totalThroughputLimit: 4000
-    }
+    capabilities: []
   }
 }
 
@@ -102,13 +72,9 @@ resource visionarylabContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabas
           }
         ]
       }
-      // Add computed properties if needed
-      // computedProperties: [
-      //   {
-      //     name: 'computed_property_name'
-      //     query: 'query_to_compute_property'
-      //   }
-      // ]
+    }
+    options: {
+      throughput: 600
     }
   }
 }
@@ -167,5 +133,4 @@ output containerName string = visionarylabContainer.name
 output systemAssignedIdentityPrincipalId string = cosmosAccount.identity.principalId
 output dataReaderRoleId string = dataReaderRole.id
 output dataContributorRoleId string = dataContributorRole.id
-@secure()
 output primaryKey string = cosmosAccount.listKeys().primaryMasterKey

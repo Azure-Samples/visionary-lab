@@ -35,10 +35,12 @@ class CosmosDBService:
             try:
                 credential = DefaultAzureCredential(logging_enable=True)
                 self.logger.info("Using Managed Identity authentication")
-                self.client = CosmosClient(url=self.endpoint, credential=credential)
+                self.client = CosmosClient(
+                    url=self.endpoint, credential=credential)
 
             except CredentialUnavailableError as e:
-                self.logger.error(f"Managed Identity credential unavailable: {str(e)}")
+                self.logger.error(
+                    f"Managed Identity credential unavailable: {str(e)}")
                 raise DatabaseError(
                     "Failed to authenticate with Azure: Managed Identity credential unavailable."
                 )
@@ -46,7 +48,8 @@ class CosmosDBService:
                 self.logger.error(
                     f"Unexpected error during Managed Identity authentication: {str(e)}"
                 )
-                raise DatabaseError(f"Managed Identity authentication error: {str(e)}")
+                raise DatabaseError(
+                    f"Managed Identity authentication error: {str(e)}")
         else:
             # Use key-based authentication
             if not self.key:
@@ -59,12 +62,14 @@ class CosmosDBService:
 
             try:
                 self.logger.info("Using key-based authentication")
-                self.client = CosmosClient(url=self.endpoint, credential=self.key)
+                self.client = CosmosClient(
+                    url=self.endpoint, credential=self.key)
             except Exception as e:
                 self.logger.error(
                     f"Failed to initialize Cosmos DB client with key: {str(e)}"
                 )
-                raise DatabaseError(f"Key-based authentication error: {str(e)}")
+                raise DatabaseError(
+                    f"Key-based authentication error: {str(e)}")
         # Get or create database and container
         self.database = self._get_or_create_database()
         self.container = self._get_or_create_container()
@@ -152,7 +157,8 @@ class CosmosDBService:
 
             # Create the document
             created_item = self.container.create_item(body=asset_data)
-            logger.info(f"Created metadata record for asset: {asset_data['id']}")
+            logger.info(
+                f"Created metadata record for asset: {asset_data['id']}")
 
             return created_item
 
@@ -174,7 +180,8 @@ class CosmosDBService:
             Asset metadata dictionary or None if not found
         """
         try:
-            item = self.container.read_item(item=asset_id, partition_key=media_type)
+            item = self.container.read_item(
+                item=asset_id, partition_key=media_type)
             return item
         except exceptions.CosmosResourceNotFoundError:
             logger.warning(f"Asset metadata not found: {asset_id}")
@@ -235,7 +242,8 @@ class CosmosDBService:
             logger.info(f"Deleted metadata for asset: {asset_id}")
             return True
         except exceptions.CosmosResourceNotFoundError:
-            logger.warning(f"Asset metadata not found for deletion: {asset_id}")
+            logger.warning(
+                f"Asset metadata not found for deletion: {asset_id}")
             return False
         except exceptions.CosmosHttpResponseError as e:
             logger.error(f"Failed to delete asset metadata: {e}")
@@ -274,11 +282,17 @@ class CosmosDBService:
                 where_conditions.append(f"c.media_type = '{media_type}'")
 
             if folder_path:
-                where_conditions.append(f"c.folder_path = '{folder_path}'")
+                # Normalize folder path to match storage format (with trailing slash)
+                normalized_folder = folder_path.strip()
+                if normalized_folder and not normalized_folder.endswith("/"):
+                    normalized_folder = f"{normalized_folder}/"
+                where_conditions.append(
+                    f"c.folder_path = '{normalized_folder}'")
 
             if tags:
                 # Check if any of the provided tags exist in the asset's tags array
-                tag_conditions = [f"ARRAY_CONTAINS(c.tags, '{tag}')" for tag in tags]
+                tag_conditions = [
+                    f"ARRAY_CONTAINS(c.tags, '{tag}')" for tag in tags]
                 where_conditions.append(f"({' OR '.join(tag_conditions)})")
 
             where_clause = " AND ".join(where_conditions)
@@ -365,7 +379,8 @@ class CosmosDBService:
                 )
             )
 
-            logger.info(f"Search for '{search_term}' returned {len(items)} results")
+            logger.info(
+                f"Search for '{search_term}' returned {len(items)} results")
             return items
 
         except exceptions.CosmosHttpResponseError as e:
@@ -469,7 +484,8 @@ class CosmosDBService:
                 created_item = self.create_asset_metadata(asset_data)
                 created_items.append(created_item)
             except Exception as e:
-                logger.error(f"Failed to create metadata for asset in batch: {e}")
+                logger.error(
+                    f"Failed to create metadata for asset in batch: {e}")
                 # Continue with other items
                 continue
 
@@ -507,12 +523,12 @@ class CosmosDBService:
             items = list(self.container.query_items(query=query))
 
             logger.info(f"Query returned {len(items)} unique folder paths")
-            
+
             # Extract and normalize folder paths
             folder_set = set()
             for item in items:
                 folder_path = item.get("folder_path", "")
-                
+
                 # Normalize folder path:
                 # - Empty string becomes "/" (root)
                 # - Remove trailing slash from non-root folders
@@ -520,12 +536,12 @@ class CosmosDBService:
                     folder_path = "/"
                 elif folder_path.endswith("/") and folder_path != "/":
                     folder_path = folder_path.rstrip("/")
-                
+
                 folder_set.add(folder_path)
-            
+
             # Convert to sorted list
             sorted_folders = sorted(list(folder_set))
-            
+
             logger.info(f"Returning {len(sorted_folders)} unique folders")
             logger.debug(f"Folders: {sorted_folders}")
 

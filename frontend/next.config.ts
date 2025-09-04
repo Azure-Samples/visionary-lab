@@ -6,14 +6,6 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
 });
 
-// Get environment variables with defaults
-const rawProtocol = process.env.NEXT_PUBLIC_API_PROTOCOL || 'http';
-const API_PROTOCOL = (rawProtocol === 'https' ? 'https' : 'http') as 'http' | 'https';
-const API_HOSTNAME = process.env.NEXT_PUBLIC_API_HOSTNAME || 'localhost';
-// Ensure port is 5 characters or less (NextJS requirement)
-const API_PORT = process.env.NEXT_PUBLIC_API_PORT && process.env.NEXT_PUBLIC_API_PORT.length <= 5 
-  ? process.env.NEXT_PUBLIC_API_PORT 
-  : '';
 // const STORAGE_ACCOUNT_NAME = process.env.NEXT_PUBLIC_STORAGE_ACCOUNT_NAME;
 
 const nextConfig: NextConfig = {

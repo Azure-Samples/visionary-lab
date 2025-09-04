@@ -93,6 +93,17 @@ class ImageEditRequest(ImageGenerationRequest):
                                                     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
                                                 ])
 
+    # gpt-image-1 specific edit parameters:
+    input_fidelity: Optional[str] = Field("low",
+                                          description="Input fidelity setting for image editing: 'low' (default, faster), 'high' (better reproduction of input image features, additional cost). Only available for image editing operations.",
+                                          examples=["low", "high"])
+
+    @validator('input_fidelity')
+    def validate_input_fidelity(cls, v):
+        if v is not None and v not in ["low", "high"]:
+            raise ValueError("input_fidelity must be either 'low' or 'high'")
+        return v
+
 
 class InputTokensDetails(BaseModel):
     """Details about input tokens for image generation"""

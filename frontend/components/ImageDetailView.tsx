@@ -516,6 +516,8 @@ export function ImageDetailView({
                     ref={imageRef}
                     src={image.src}
                     alt={image.title || image.name}
+                    width={image.originalItem?.metadata?.width ? parseInt(image.originalItem.metadata.width) : image.width || 1024}
+                    height={image.originalItem?.metadata?.height ? parseInt(image.originalItem.metadata.height) : image.height || 1024}
                     className={`max-h-full max-w-full object-contain rounded-lg ${image.originalItem?.metadata?.has_transparency === "true" ? 'z-10' : ''}`}
                     onLoad={() => setIsLoading(false)}
                     onError={() => {

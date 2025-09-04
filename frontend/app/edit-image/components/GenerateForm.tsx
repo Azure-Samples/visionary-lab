@@ -31,6 +31,7 @@ export default function GenerateForm({
   const [quality, setQuality] = useState('auto');
   const [size] = useState('auto');
   const [outputFormat, setOutputFormat] = useState('png');
+  const [inputFidelity, setInputFidelity] = useState('low');
   const [showPromptIdeas, setShowPromptIdeas] = useState(false);
 
   // Create the debug mask URL on component mount
@@ -230,6 +231,7 @@ export default function GenerateForm({
           formData.append('quality', quality);
           formData.append('size', size);
           formData.append('output_format', outputFormat);
+          formData.append('input_fidelity', inputFidelity);
           
           // Submit the form data
           await onSubmit(formData);
@@ -319,7 +321,7 @@ export default function GenerateForm({
         </div>
         
         <div className="flex items-center gap-3 mt-4">
-          <div className="grid grid-cols-2 gap-3 flex-1">
+          <div className="grid grid-cols-3 gap-3 flex-1">
             <div>
               <Label className="text-sm font-medium mb-1.5 block">
                 Image Quality
@@ -355,6 +357,24 @@ export default function GenerateForm({
                   <SelectItem value="png">PNG</SelectItem>
                   <SelectItem value="webp">WebP</SelectItem>
                   <SelectItem value="jpeg">JPEG</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label className="text-sm font-medium mb-1.5 block">
+                Input Fidelity
+              </Label>
+              <Select 
+                value={inputFidelity} 
+                onValueChange={setInputFidelity}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select fidelity" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
                 </SelectContent>
               </Select>
             </div>
