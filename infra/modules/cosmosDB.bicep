@@ -17,7 +17,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
   }
   properties: {
     databaseAccountOfferType: 'Standard'
-    enableFreeTier: true
+    enableFreeTier: false
     publicNetworkAccess: 'Enabled'
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
@@ -29,14 +29,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
         isZoneRedundant: false
       }
     ]
-    capabilities: [
-      {
-        name: 'EnableServerless'
-      }
-    ]
-    capacity: {
-      totalThroughputLimit: 1000
-    }
+    capabilities: []
   }
 }
 
@@ -79,13 +72,9 @@ resource visionarylabContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabas
           }
         ]
       }
-      // Add computed properties if needed
-      // computedProperties: [
-      //   {
-      //     name: 'computed_property_name'
-      //     query: 'query_to_compute_property'
-      //   }
-      // ]
+    }
+    options: {
+      throughput: 600
     }
   }
 }
