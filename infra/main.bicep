@@ -66,7 +66,7 @@ param API_PORT string = ''
 param environmentName string = ''
 param principalId string = ''
 
-// Add these parameters to your existing parameters section in main.bicep
+// Parameters for Cosmos DB
 param cosmosAccountName string = 'visionary-lab-cosmos'
 param cosmosDatabaseName string = 'VisionaryLabDB'
 param cosmosContainerName string = 'visionarylab'
@@ -82,24 +82,6 @@ module storageAccountMod './modules/storageAccount.bicep' = {
   }
 }
 
-// Add these parameters to your existing parameters section in main.bicep
-param cosmosAccountName string = 'visionary-lab-cosmos'
-param cosmosDatabaseName string = 'VisionaryLabDB'
-param cosmosContainerName string = 'visionarylab'
-
-// Add this module after your storage modules
-// Azure Cosmos DB Account for Visionary Lab
-// This module creates a Cosmos DB account with SQL API for storing Visionary Lab data
-module cosmosDbMod './modules/cosmosDb.bicep' = {
-  name: 'cosmosDbMod'
-  params: {
-    location: location
-    cosmosAccountName: cosmosAccountName
-    databaseName: cosmosDatabaseName
-    containerName: cosmosContainerName
-    deployNew: true // set false to reuse an existing Cosmos DB account
-  }
-}
 
 // Azure Storage Account Container
 // This module creates a container in the storage account for storing images
@@ -278,3 +260,9 @@ output BACKEND_URI string = 'https://${containerAppBackend.outputs.containerAppF
 output FRONTEND_URI string = 'https://${containerAppFrontend.outputs.containerAppFqdn}'
 output AZURE_STORAGE_ACCOUNT_NAME string = storageAccountName
 output AZURE_BLOB_SERVICE_URL string = storageAccountMod.outputs.storageAccountPrimaryEndpoint
+
+// Cosmos DB outputs
+output COSMOS_DB_ENDPOINT string = cosmosDbMod.outputs.cosmosAccountEndpoint
+output COSMOS_DB_DATABASE_NAME string = cosmosDbMod.outputs.databaseName
+output COSMOS_DB_CONTAINER_NAME string = cosmosDbMod.outputs.containerName
+output COSMOS_DB_PRIMARY_KEY string = cosmosDbMod.outputs.primaryKey

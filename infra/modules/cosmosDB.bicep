@@ -167,5 +167,4 @@ output containerName string = visionarylabContainer.name
 output systemAssignedIdentityPrincipalId string = cosmosAccount.identity.principalId
 output dataReaderRoleId string = dataReaderRole.id
 output dataContributorRoleId string = dataContributorRole.id
-@secure()
 output primaryKey string = cosmosAccount.listKeys().primaryMasterKey
