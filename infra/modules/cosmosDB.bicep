@@ -22,18 +22,13 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
     isVirtualNetworkFilterEnabled: false
     virtualNetworkRules: []
     publicNetworkAccess: 'Enabled'
-    enableFreeTier: false
+    enableFreeTier: true
     enableAnalyticalStorage: false
-    analyticalStorageConfiguration: {
-      schemaType: 'WellDefined'
-    }
     minimalTlsVersion: 'Tls12'
-    disableKeyBasedMetadataWriteAccess: true
-    disableLocalAuth: false // Set to true if you want to enforce managed identity only
+    disableKeyBasedMetadataWriteAccess: false
+    disableLocalAuth: false
     consistencyPolicy: {
-      defaultConsistencyLevel: 'BoundedStaleness'
-      maxIntervalInSeconds: 5
-      maxStalenessPrefix: 100
+      defaultConsistencyLevel: 'Session'
     }
     locations: [
       {
@@ -54,11 +49,11 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
       periodicModeProperties: {
         backupIntervalInMinutes: 240
         backupRetentionIntervalInHours: 8
-        backupStorageRedundancy: 'Geo'
+        backupStorageRedundancy: 'Local'
       }
     }
     capacity: {
-      totalThroughputLimit: 4000
+      totalThroughputLimit: 1000
     }
   }
 }
