@@ -11,31 +11,6 @@
 - Provide guardrails for content showing brands products (brand protection)
 - Manage your content in an organized asset library
 
-## 🚀 Quick Deploy to Azure
-
-Deploy the entire application to Azure with one command using Azure Developer CLI:
-
-**Prerequisites**: [Azure Developer CLI (azd)](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/install-azd) installed
-
-```bash
-# Clone and deploy
-git clone <repository-url>
-cd visionary-lab
-
-# Authenticate and deploy everything in one command
-azd auth login
-azd up
-```
-
-During `azd up`, you'll be prompted to configure your Azure OpenAI resources:
-- Image Generation OpenAI resource and API key
-- LLM OpenAI resource and API key  
-- Sora OpenAI resource and API key
-
-✨ That's it! Your Visionary Lab will be running on Azure Container Apps.
-
-📖 For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md)
-
 <img src="ui-sample.png" alt="description" width="800"/>
 
 > You can also get started with our notebooks to explore the models and APIs:
@@ -164,3 +139,31 @@ Once everything is set up:
    ```
 
    The frontend will be available at http://localhost:3000.
+
+## 🚀 Deploy to Azure
+
+For production deployment, use Azure Developer CLI to deploy the entire application to Azure with one command:
+
+**Prerequisites**: [Azure Developer CLI (azd)](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/install-azd) installed
+
+```bash
+# Clone and deploy
+git clone <repository-url>
+cd visionary-lab
+
+# Authenticate and deploy everything in one command
+azd auth login
+azd up
+```
+
+During `azd up`, you'll be prompted to configure your Azure OpenAI resources:
+- **LLM Configuration**: Resource name, deployment name (e.g., "gpt-4.1"), and API key
+- **Image Generation Configuration**: Resource name, deployment name (e.g., "gpt-image-1"), and API key
+- **Sora Configuration**: Resource name, deployment name (e.g., "sora"), and API key
+
+✨ That's it! Your Visionary Lab will be running on Azure Container Apps with:
+- Azure Container Registry for Docker images
+- Azure Storage for generated content
+- Automatic scaling and monitoring
+
+📖 For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md)
