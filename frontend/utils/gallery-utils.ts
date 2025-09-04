@@ -36,9 +36,20 @@ async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMe
   const src = await sasTokenService.getBlobUrl(item.name, item.media_type === MediaType.VIDEO);
   console.log(`Using direct blob URL for ${item.name}`);
   
-  // Extract analysis metadata if available
+  // Extract analysis metadata from nested structure
   let analysis: VideoMetadata['analysis'] = undefined;
-  if (item.metadata) {
+  if (item.metadata?.analysis) {
+    // Use standardized nested analysis structure
+    const analysisData = item.metadata.analysis;
+    analysis = {
+      summary: analysisData.summary as string,
+      products: analysisData.products as string,
+      feedback: analysisData.feedback as string,
+      tags: Array.isArray(analysisData.tags) ? analysisData.tags : [],
+      analyzed: item.metadata.has_analysis === true || item.metadata.has_analysis === 'true',
+    };
+  } else if (item.metadata) {
+    // Fallback for legacy flat structure
     const hasAnalysis = item.metadata.summary || item.metadata.products || item.metadata.feedback;
     if (hasAnalysis) {
       analysis = {
@@ -48,11 +59,10 @@ async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMe
         analyzed: item.metadata.analyzed === 'true' || item.metadata.analyzed === true,
       };
       
-      // Extract tags - they should now come as a proper array from the API
+      // Extract tags with fallback handling
       if (Array.isArray(item.metadata.tags)) {
         analysis.tags = item.metadata.tags;
       } else if (typeof item.metadata.tags === 'string' && item.metadata.tags.trim()) {
-        // Fallback for comma-separated string format (shouldn't happen with new API)
         analysis.tags = item.metadata.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
       }
     }
@@ -133,20 +143,48 @@ async function mapGalleryItemToImageMetadata(item: GalleryItem): Promise<ImageMe
     // Extract title from prompt (preferred) or name
     const title = item.metadata?.prompt || item.name.split('.')[0].replace(/_/g, ' ');
     
-    // Extract description from metadata
-    const description = item.metadata?.description || '';
+    // Extract description from metadata (prefer nested analysis summary, fallback to flat structure)
+    const description = item.metadata?.analysis?.summary || item.metadata?.summary || item.metadata?.description || '';
     
     // Use direct SAS token URL (false for images, true for videos)
     const src = await sasTokenService.getBlobUrl(item.name, false);
     console.log(`Using direct blob URL for ${item.name}`);
     
-    // Extract tags - they should now come as a proper array from the API
+    // Extract tags from nested structure first, then fallback to flat structure
     let tags: string[] = [];
-    if (Array.isArray(item.metadata?.tags)) {
+    if (item.metadata?.analysis?.tags && Array.isArray(item.metadata.analysis.tags)) {
+      tags = item.metadata.analysis.tags;
+    } else if (Array.isArray(item.metadata?.tags)) {
       tags = item.metadata.tags;
     } else if (typeof item.metadata?.tags === 'string' && item.metadata.tags.trim()) {
-      // Fallback for comma-separated string format (shouldn't happen with new API)
+      // Fallback for comma-separated string format
       tags = item.metadata.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+    }
+    
+    // Extract analysis results from nested structure first, then fallback
+    let analysis: ImageMetadata['analysis'] = undefined;
+    if (item.metadata?.analysis) {
+      // Use standardized nested analysis structure
+      const analysisData = item.metadata.analysis;
+      analysis = {
+        summary: analysisData.summary as string,
+        products: analysisData.products as string,
+        feedback: analysisData.feedback as string,
+        tags: Array.isArray(analysisData.tags) ? analysisData.tags : tags,
+        analyzed: item.metadata.has_analysis === true || item.metadata.has_analysis === 'true',
+      };
+    } else {
+      // Fallback for legacy flat structure
+      const hasAnalysis = item.metadata?.summary || item.metadata?.products || item.metadata?.feedback;
+      if (hasAnalysis) {
+        analysis = {
+          summary: item.metadata.summary as string,
+          products: item.metadata.products as string,
+          feedback: item.metadata.feedback as string,
+          analyzed: true,
+          tags: tags
+        };
+      }
     }
     
     return {
@@ -155,11 +193,12 @@ async function mapGalleryItemToImageMetadata(item: GalleryItem): Promise<ImageMe
       src,
       title: title.charAt(0).toUpperCase() + title.slice(1),
       description: description,
-      width: item.metadata?.width ? parseInt(String(item.metadata.width)) : undefined,
-      height: item.metadata?.height ? parseInt(String(item.metadata.height)) : undefined,
+      width: typeof item.metadata?.width === 'number' ? item.metadata.width : (item.metadata?.width ? parseInt(String(item.metadata.width)) : undefined),
+      height: typeof item.metadata?.height === 'number' ? item.metadata.height : (item.metadata?.height ? parseInt(String(item.metadata.height)) : undefined),
       tags: tags,
       size: "medium" as const,
       originalItem: item,
+      analysis: analysis,
     };
   } catch (error) {
     console.error(`Error mapping gallery item ${item.id}:`, error);
@@ -181,6 +220,13 @@ export interface ImageMetadata {
   width?: number;
   height?: number;
   size: "small" | "medium" | "large";
+  analysis?: {
+    summary?: string;
+    products?: string;
+    feedback?: string;
+    tags?: string[];
+    analyzed?: boolean;
+  };
 }
 
 /**

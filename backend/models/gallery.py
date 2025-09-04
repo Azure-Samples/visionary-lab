@@ -27,7 +27,7 @@ class GalleryItem(BaseModel):
         None, description="Creation timestamp of the asset")
     last_modified: Optional[str] = Field(
         None, description="Last modified timestamp of the asset")
-    metadata: Optional[Dict[str, str]] = Field(
+    metadata: Optional[Dict[str, Any]] = Field(
         None, description="Metadata associated with the asset")
     folder_path: Optional[str] = Field(
         "", description="Folder path where the asset is stored")
@@ -61,7 +61,7 @@ class AssetUploadResponse(BaseResponse):
     size: int = Field(..., description="Size of the asset in bytes")
     content_type: str = Field(..., description="Content type of the asset")
     original_filename: str = Field(..., description="Original filename")
-    metadata: Optional[Dict[str, str]] = Field(
+    metadata: Optional[Dict[str, Any]] = Field(
         None, description="Metadata associated with the asset")
     folder_path: Optional[str] = Field(
         "", description="Folder path where the asset is stored")
@@ -84,7 +84,7 @@ class AssetMetadataResponse(BaseResponse):
     """Response model for asset metadata operations"""
     blob_name: str = Field(..., description="Blob name in storage")
     container: str = Field(..., description="Storage container name")
-    metadata: Dict[str, str] = Field(...,
+    metadata: Dict[str, Any] = Field(...,
                                      description="Metadata associated with the asset")
 
 

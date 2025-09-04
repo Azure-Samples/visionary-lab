@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     MODEL_PROVIDER: str = "azure"  # Can be 'azure' or 'openai'
 
     # Azure OpenAI for Sora Video Generation
-    SORA_AOAI_RESOURCE: str  # The Azure OpenAI resource name for Sora
-    SORA_DEPLOYMENT: str  # The Sora deployment name
-    SORA_AOAI_API_KEY: str  # The Azure OpenAI API key for Sora
+    SORA_AOAI_RESOURCE: Optional[str] = None  # The Azure OpenAI resource name for Sora
+    SORA_DEPLOYMENT: Optional[str] = None  # The Sora deployment name
+    SORA_AOAI_API_KEY: Optional[str] = None  # The Azure OpenAI API key for Sora
 
     # Azure OpenAI for LLM
     # The Azure OpenAI resource name for LLM

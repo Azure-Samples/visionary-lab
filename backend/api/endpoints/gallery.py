@@ -114,27 +114,32 @@ async def get_gallery_images(
                         # Core generation metadata from Cosmos DB (keep proper types)
                         "prompt": metadata.get("prompt"),
                         "model": metadata.get("model"),
-                        "summary": metadata.get("summary"),
                         "description": metadata.get("description"),
-                        "products": metadata.get("products"),
-                        "tags": metadata.get("tags", []),  # Keep as array
                         "quality": metadata.get("quality"),
                         "background": metadata.get("background"),
                         "output_format": metadata.get("output_format"),
                         "has_transparency": metadata.get("has_transparency"),
                         "generation_id": metadata.get("generation_id"),
 
-                        # Technical metadata from custom_metadata or direct fields
+                        # Technical metadata (ensure integers)
                         "width": custom_meta.get("width") or metadata.get("width"),
                         "height": custom_meta.get("height") or metadata.get("height"),
-                        "createdAt": metadata.get("created_at"),
+                        "created_at": metadata.get("created_at"),
+                        "createdAt": metadata.get("created_at"),  # Backward compatibility
 
-                        # Analysis metadata
-                        "feedback": metadata.get("feedback"),
+                        # Nested analysis structure (standardized)
+                        "analysis": metadata.get("analysis"),
+                        "has_analysis": metadata.get("has_analysis", False),
+                        
+                        # Legacy flat analysis fields for backward compatibility
+                        "summary": metadata.get("analysis", {}).get("summary") if metadata.get("analysis") else metadata.get("summary"),
+                        "products": metadata.get("analysis", {}).get("products") if metadata.get("analysis") else metadata.get("products"),
+                        "feedback": metadata.get("analysis", {}).get("feedback") if metadata.get("analysis") else metadata.get("feedback"),
+                        "tags": metadata.get("analysis", {}).get("tags", []) if metadata.get("analysis") else metadata.get("tags", []),
 
                         # Additional custom fields (but don't let them overwrite structured fields)
                         **{k: v for k, v in custom_meta.items()
-                           if k not in ["width", "height", "tags", "prompt", "description", "summary", "products"]}
+                           if k not in ["width", "height", "tags", "prompt", "description", "summary", "products", "feedback", "analysis"]}
                     },
                     folder_path=metadata.get("folder_path", ""),
                 )
@@ -209,10 +214,7 @@ async def get_gallery_videos(
                         # Core generation metadata from Cosmos DB (keep proper types)
                         "prompt": metadata.get("prompt"),
                         "model": metadata.get("model"),
-                        "summary": metadata.get("summary"),
                         "description": metadata.get("description"),
-                        "products": metadata.get("products"),
-                        "tags": metadata.get("tags", []),  # Keep as array
                         "quality": metadata.get("quality"),
                         "background": metadata.get("background"),
                         "output_format": metadata.get("output_format"),
@@ -223,17 +225,25 @@ async def get_gallery_videos(
                         "resolution": metadata.get("resolution"),
                         "fps": metadata.get("fps"),  # Keep as number
 
-                        # Technical metadata from custom_metadata or direct fields
+                        # Technical metadata (ensure integers)
                         "width": custom_meta.get("width") or metadata.get("width"),
                         "height": custom_meta.get("height") or metadata.get("height"),
-                        "createdAt": metadata.get("created_at"),
+                        "created_at": metadata.get("created_at"),
+                        "createdAt": metadata.get("created_at"),  # Backward compatibility
 
-                        # Analysis metadata
-                        "feedback": metadata.get("feedback"),
+                        # Nested analysis structure (standardized)
+                        "analysis": metadata.get("analysis"),
+                        "has_analysis": metadata.get("has_analysis", False),
+                        
+                        # Legacy flat analysis fields for backward compatibility
+                        "summary": metadata.get("analysis", {}).get("summary") if metadata.get("analysis") else metadata.get("summary"),
+                        "products": metadata.get("analysis", {}).get("products") if metadata.get("analysis") else metadata.get("products"),
+                        "feedback": metadata.get("analysis", {}).get("feedback") if metadata.get("analysis") else metadata.get("feedback"),
+                        "tags": metadata.get("analysis", {}).get("tags", []) if metadata.get("analysis") else metadata.get("tags", []),
 
                         # Additional custom fields (but don't let them overwrite structured fields)
                         **{k: v for k, v in custom_meta.items()
-                           if k not in ["width", "height", "tags", "prompt", "description", "summary", "products", "duration", "fps", "resolution"]}
+                           if k not in ["width", "height", "tags", "prompt", "description", "summary", "products", "feedback", "analysis", "duration", "fps", "resolution"]}
                     },
                     folder_path=metadata.get("folder_path", ""),
                 )

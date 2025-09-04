@@ -361,15 +361,20 @@ def create_video_generation_with_analysis(
                                 final_filename
                             )
 
-                            # Prepare metadata for blob storage
+                            # Prepare metadata for blob storage with nested analysis structure
+                            analysis_data = {
+                                "summary": analysis_result.summary,
+                                "products": analysis_result.products,
+                                "tags": analysis_result.tags,
+                                "feedback": analysis_result.feedback,
+                                "analyzed_at": datetime.now().isoformat(),
+                            }
+                            
                             upload_metadata = {
                                 "generation_id": generation_id,
                                 "prompt": req.prompt,
-                                "summary": analysis_result.summary,
-                                "products": analysis_result.products,
-                                "tags": ",".join(analysis_result.tags),
-                                "feedback": analysis_result.feedback,
-                                "analyzed": "true",
+                                "analysis": analysis_data,
+                                "has_analysis": True,
                                 "upload_date": datetime.now().isoformat(),
                             }
 
@@ -427,10 +432,14 @@ def create_video_generation_with_analysis(
                                         "prompt": req.prompt,
                                         "model": "sora",
                                         "generation_id": generation_id,
-                                        "summary": analysis_result.summary,
-                                        "products": analysis_result.products,
-                                        "tags": analysis_result.tags,
-                                        "feedback": analysis_result.feedback,
+                                        "analysis": {
+                                            "summary": analysis_result.summary,
+                                            "products": analysis_result.products,
+                                            "tags": analysis_result.tags,
+                                            "feedback": analysis_result.feedback,
+                                            "analyzed_at": datetime.now().isoformat(),
+                                        },
+                                        "has_analysis": True,
                                         "duration": req.n_seconds,
                                         "resolution": f"{req.width}x{req.height}",
                                         "custom_metadata": {

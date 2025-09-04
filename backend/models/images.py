@@ -161,6 +161,9 @@ class ImageSaveRequest(BaseModel):
     folder_path: Optional[str] = Field(
         None, description="Folder path to save the images to (e.g., 'my-folder' or 'folder/subfolder')"
     )
+    analyze: bool = Field(
+        False, description="Whether to analyze images after saving and store analysis results"
+    )
 
 
 class ImageSaveResponse(BaseResponse):
@@ -174,6 +177,12 @@ class ImageSaveResponse(BaseResponse):
     )
     prompt: Optional[str] = Field(
         None, description="Original prompt used for generation"
+    )
+    analysis_results: Optional[List[Dict[str, Any]]] = Field(
+        None, description="Analysis results for each image (if analyze=True)"
+    )
+    analyzed: bool = Field(
+        False, description="Whether images were analyzed"
     )
 
 

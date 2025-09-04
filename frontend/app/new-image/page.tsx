@@ -109,7 +109,8 @@ function NewImagePageContent() {
         },
         width: image.width,
         height: image.height,
-        size: image.size
+        size: image.size,
+        analysis: image.analysis
       }));
       
       if (resetImages) {

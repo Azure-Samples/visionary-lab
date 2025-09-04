@@ -8,7 +8,6 @@ import {
   generateImages, 
   saveGeneratedImages, 
   analyzeImageFromBase64, 
-  updateAssetMetadata, 
   MediaType, 
   fetchFolders, 
   editImage,
@@ -273,7 +272,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         await handleSaveImages(
           response, 
           response.brandProtection?.originalPrompt || originalPrompt, // Use original prompt (not protected) for saving metadata
-          newSettings.brandProtectionModel === "GPT-4o", // Simplified shouldAnalyze flag
+          true, // Enable analysis for testing
           newSettings.folder === "root" ? "" : newSettings.folder,
           newSettings.outputFormat,
           newSettings.background,
@@ -335,7 +334,10 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         }
       }
       
-      // Call the save images API
+      // Determine if we should analyze images (for now, let's make it configurable)
+      const shouldAnalyze = _shouldAnalyze; // Use the parameter passed to the function
+      
+      // Call the save images API with analysis if needed
       const saveResponse = await saveGeneratedImages(
         enhancedResponse, // Use enhanced response with metadata
         generationResponse?.brandProtection?.originalPrompt || prompt, // Use original prompt (not protected) for saving metadata
@@ -344,66 +346,24 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         outputFormat, // Output format
         "gpt-image-1", // Model - This is always gpt-image-1 in our current implementation
         background, // Background setting
-        imageSize // Pass imageSize here
+        imageSize, // Pass imageSize here
+        shouldAnalyze // Analyze images in the backend if we have pre-analysis results
       );
       
-      // Update the loading toast to success
-      toast.success(`${saveResponse.total_saved} images saved`, {
+      // Update the loading toast to success with analysis info
+      const analysisInfo = saveResponse.analyzed && saveResponse.analysis_results 
+        ? ` and analyzed ${saveResponse.analysis_results.filter(r => r.success).length} images`
+        : '';
+      
+      toast.success(`${saveResponse.total_saved} images saved${analysisInfo}`, {
         id: savingToast,
         description: folder 
           ? `Successfully saved to folder: ${folder}` 
           : "Successfully saved to root folder"
       });
       
-      // If we have pre-computed analysis results passed directly, apply them
-      if (preAnalysisResults && preAnalysisResults.length > 0 && 
-          saveResponse.saved_images && saveResponse.saved_images.length > 0) {
-        
-        setIsAnalyzing(true);
-        
-        // For each saved image, find its corresponding analysis result and apply
-        for (let i = 0; i < saveResponse.saved_images.length; i++) {
-          const savedImage = saveResponse.saved_images[i];
-          // Find corresponding analysis result based on index
-          const analysisResult = preAnalysisResults.find(
-            (r: ImageAnalysis) => r.index === i
-          );
-          
-          if (analysisResult && analysisResult.analysis) {
-            try {
-              // Prepare metadata with analysis results
-              const enhancedMetadata = {
-                ...savedImage.metadata,
-                description: analysisResult.analysis.description,
-                products: analysisResult.analysis.products,
-                tags: JSON.stringify(analysisResult.analysis.tags),
-                feedback: analysisResult.analysis.feedback
-              };
-              
-              // Add brand protection info to metadata if available
-              if (hasBrandProtection && generationResponse.brandProtection) {
-                try {
-                  enhancedMetadata.brand_protection_mode = generationResponse.brandProtection.mode;
-                  enhancedMetadata.protected_brands = generationResponse.brandProtection.brands.join(', ');
-                  enhancedMetadata.protected_prompt = generationResponse.brandProtection.protectedPrompt;
-                } catch (error) {
-                  console.error("Error adding brand protection to image metadata:", error);
-                }
-              }
-              
-              // Update the blob metadata
-              await updateAssetMetadata(savedImage.blob_name, MediaType.IMAGE, enhancedMetadata);
-            } catch (error) {
-              console.error(`Failed to update metadata for image ${savedImage.blob_name}:`, error);
-              // Log error but don't track failure count
-            }
-          }
-        }
-        
-        // AI analysis is applied silently - no additional toast needed
-        
-        setIsAnalyzing(false);
-      }
+      // Analysis is now handled in the backend - no more roundtrips needed!
+      // The analysis results are already stored in Cosmos DB
       
       // Call the callback to refresh the gallery
       if (onImagesSaved) {

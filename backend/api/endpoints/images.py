@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from typing import Dict, List, Optional
+from datetime import datetime
 import re
 import logging
 import base64
@@ -525,7 +526,8 @@ async def save_generated_images(
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
     """
-    Save generated images to blob storage and create metadata records in Cosmos DB
+    Save generated images to blob storage and create metadata records in Cosmos DB.
+    Optionally analyze images and store analysis results in the same transaction.
     """
     try:
         # Check if we have a valid generation response
@@ -579,9 +581,9 @@ async def save_generated_images(
                     img_format = img.format or "PNG"
                     has_transparency = img.mode == "RGBA" and "A" in img.getbands()
 
-                    # Add width and height to metadata
-                    metadata["width"] = str(img.width)
-                    metadata["height"] = str(img.height)
+                    # Add width and height to metadata as integers
+                    metadata["width"] = img.width
+                    metadata["height"] = img.height
 
                     if has_transparency:
                         metadata["has_transparency"] = "true"
@@ -632,9 +634,9 @@ async def save_generated_images(
                 with Image.open(img_file) as img:
                     has_transparency = img.mode == "RGBA" and "A" in img.getbands()
 
-                    # Add width and height to metadata
-                    metadata["width"] = str(img.width)
-                    metadata["height"] = str(img.height)
+                    # Add width and height to metadata as integers
+                    metadata["width"] = img.width
+                    metadata["height"] = img.height
 
                     if has_transparency:
                         metadata["has_transparency"] = "true"
@@ -692,6 +694,12 @@ async def save_generated_images(
                             ".")[0].split("/")[-1]
 
                         # Prepare enhanced metadata for Cosmos DB
+                        # Ensure dimensions are stored as integers
+                        width_val = result.get("width") or img_metadata.get("width")
+                        height_val = result.get("height") or img_metadata.get("height")
+                        width = int(width_val) if width_val else None
+                        height = int(height_val) if height_val else None
+                        
                         cosmos_metadata = {
                             "id": asset_id,
                             "media_type": "image",
@@ -707,15 +715,11 @@ async def save_generated_images(
                             "quality": getattr(request, "quality", None),
                             "background": getattr(request, "background", None),
                             "output_format": getattr(request, "output_format", None),
-                            "has_transparency": has_transparency
-                            if "has_transparency" in locals()
-                            else None,
-                            # Add dimensions from upload result or metadata
-                            "width": result.get("width") or img_metadata.get("width"),
-                            "height": result.get("height") or img_metadata.get("height"),
+                            "has_transparency": has_transparency if "has_transparency" in locals() else None,
+                            "width": width,
+                            "height": height,
                             # Store remaining metadata as custom_metadata
-                            "custom_metadata": {k: v for k, v in img_metadata.items()
-                                                if k not in ["width", "height"]},
+                            "custom_metadata": {k: v for k, v in img_metadata.items() if k not in ["width", "height"]},
                         }
 
                         # Remove None values
@@ -734,12 +738,127 @@ async def save_generated_images(
                 saved_images.append(result)
                 await file.close()
 
+        # Perform analysis if requested
+        analysis_results = []
+        analyzed = False
+
+        if request.analyze and saved_images and cosmos_service:
+            try:
+                logger.info(
+                    f"Starting analysis for {len(saved_images)} saved images")
+                analyzed = True
+
+                from backend.core.analyze import ImageAnalyzer
+                image_analyzer = ImageAnalyzer(
+                    llm_client, settings.LLM_DEPLOYMENT)
+
+                for idx, saved_image in enumerate(saved_images):
+                    try:
+                        # Get the image URL and prepare for analysis
+                        image_url = saved_image["url"]
+                        blob_name = saved_image["blob_name"]
+
+                        # Add SAS token if needed for image download
+                        if "?" not in image_url:
+                            image_url += f"?{image_sas_token}"
+
+                        # Download the image content
+                        logger.info(
+                            f"Downloading image for analysis: {blob_name}")
+                        import requests
+                        response = requests.get(image_url, timeout=30)
+                        if response.status_code != 200:
+                            raise Exception(
+                                f"Failed to download image: HTTP {response.status_code}")
+
+                        # Convert to base64 for analysis
+                        image_content = response.content
+                        image_base64 = base64.b64encode(
+                            image_content).decode("utf-8")
+
+                        # Analyze the image
+                        logger.info(
+                            f"Analyzing image {idx + 1}/{len(saved_images)}: {blob_name}")
+                        analysis = image_analyzer.image_chat(
+                            image_base64, analyze_image_system_message)
+
+                        if analysis:
+                            logger.info(f"Analysis result: {analysis}")
+
+                            # Extract asset ID from blob name
+                            asset_id = saved_image["blob_name"].split(".")[
+                                0].split("/")[-1]
+
+                            # Prepare analysis results for Cosmos DB update as nested structure
+                            # Standardize field naming: use "summary" consistently
+                            analysis_data = {
+                                "summary": analysis.get("description", "No summary provided"),
+                                "products": analysis.get("products", "None identified"),
+                                "tags": analysis.get("tags", []),
+                                "feedback": analysis.get("feedback", "No feedback provided"),
+                                "analyzed_at": datetime.utcnow().isoformat()
+                            }
+                            
+                            analysis_update = {
+                                "analysis": analysis_data,
+                                "has_analysis": True
+                            }
+
+                            logger.info(
+                                f"Analysis update for {asset_id}: {analysis_update}")
+
+                            # Update Cosmos DB with analysis results
+                            cosmos_service.update_asset_metadata(
+                                asset_id, "image", analysis_update)
+
+                            # Add to response
+                            analysis_results.append({
+                                "blob_name": saved_image["blob_name"],
+                                "asset_id": asset_id,
+                                "analysis": analysis,
+                                "success": True
+                            })
+
+                            logger.info(
+                                f"Successfully analyzed and updated metadata for: {saved_image['blob_name']}")
+                        else:
+                            logger.warning(
+                                f"No analysis results returned for {blob_name}")
+                            analysis_results.append({
+                                "blob_name": saved_image["blob_name"],
+                                "error": "No analysis results returned from AI model",
+                                "success": False
+                            })
+
+                    except Exception as analysis_error:
+                        logger.error(
+                            f"Failed to analyze image {saved_image['blob_name']}: {str(analysis_error)}")
+                        analysis_results.append({
+                            "blob_name": saved_image["blob_name"],
+                            "error": str(analysis_error),
+                            "success": False
+                        })
+
+            except Exception as e:
+                logger.error(f"Error during analysis phase: {str(e)}")
+                # Don't fail the entire operation if analysis fails
+                analyzed = False
+
+        # Prepare response message
+        base_message = f"Successfully saved {len(saved_images)} images to blob storage and metadata"
+        if analyzed and analysis_results:
+            successful_analyses = sum(
+                1 for r in analysis_results if r.get("success"))
+            base_message += f", analyzed {successful_analyses}/{len(analysis_results)} images"
+
         return ImageSaveResponse(
             success=True,
-            message=f"Successfully saved {len(saved_images)} images to blob storage and metadata",
+            message=base_message,
             saved_images=saved_images,
             total_saved=len(saved_images),
             prompt=request.prompt,
+            analysis_results=analysis_results if analyzed else None,
+            analyzed=analyzed,
         )
 
     except Exception as e:

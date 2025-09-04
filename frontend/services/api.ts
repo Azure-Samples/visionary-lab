@@ -116,7 +116,15 @@ export interface GalleryUploadResponse {
  * Interface for video/image metadata
  */
 export interface AssetMetadata {
-  [key: string]: string | number | boolean | string[] | undefined;
+  [key: string]: string | number | boolean | string[] | object | undefined;
+  analysis?: {
+    summary?: string;
+    products?: string;
+    tags?: string[];
+    feedback?: string;
+    analyzed_at?: string;
+  };
+  has_analysis?: boolean;
 }
 
 /**
@@ -142,6 +150,21 @@ export interface ImageSaveResponse {
     url: string;
     original_index: number;
   }>;
+  total_saved: number;
+  prompt?: string;
+  analysis_results?: Array<{
+    blob_name: string;
+    asset_id?: string;
+    analysis?: {
+      description?: string;
+      products?: string;
+      tags?: string[];
+      feedback?: string;
+    };
+    success: boolean;
+    error?: string;
+  }>;
+  analyzed: boolean;
 }
 
 /**
@@ -1022,7 +1045,7 @@ export async function generateImages(
 }
 
 /**
- * Save generated images to blob storage
+ * Save generated images to blob storage with optional analysis
  */
 export async function saveGeneratedImages(
   generationResponse: ImageGenerationResponse,
@@ -1032,7 +1055,8 @@ export async function saveGeneratedImages(
   outputFormat: string = "png",
   model: string = "gpt-image-1",
   background: string = "auto",
-  size: string = "1024x1024"
+  size: string = "1024x1024",
+  analyze: boolean = false
 ): Promise<ImageSaveResponse> {
   const url = `${API_BASE_URL}/images/save`;
   
@@ -1049,7 +1073,8 @@ export async function saveGeneratedImages(
     output_format: outputFormat,
     model,
     background,
-    size
+    size,
+    analyze
   };
   
   try {
@@ -1177,14 +1202,16 @@ export async function updateAssetMetadata(
   mediaType: MediaType,
   metadata: AssetMetadata
 ): Promise<MetadataUpdateResponse> {
+  // Extract asset ID from blob name (remove extension and folder path)
+  const assetId = blobName.split('.')[0].split('/').pop();
+  
   const params = new URLSearchParams();
-  params.append('blob_name', blobName);
   params.append('media_type', mediaType);
   
-  const url = `${API_BASE_URL}/gallery/metadata?${params.toString()}`;
+  const url = `${API_BASE_URL}/metadata/${assetId}?${params.toString()}`;
   
   if (DEBUG) {
-    console.log(`Updating metadata for asset: ${blobName}`);
+    console.log(`Updating metadata for asset: ${assetId} (blob: ${blobName})`);
     console.log(`PUT ${url}`);
     console.log('Metadata:', metadata);
   }
@@ -1195,7 +1222,7 @@ export async function updateAssetMetadata(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ metadata }),
+      body: JSON.stringify(metadata),  // Send metadata directly, not wrapped
     });
     
     if (DEBUG) {
@@ -1691,14 +1718,16 @@ export async function analyzeAndUpdateVideoMetadata(videoName: string): Promise<
       console.log("Video analysis complete, updating metadata...");
     }
     
-    // Step 2: Prepare metadata update with analysis results
+    // Step 2: Prepare metadata update with analysis results using nested structure
     const metadata: AssetMetadata = {
-      analysis_summary: analysis.summary,
-      analysis_products: analysis.products,
-      analysis_feedback: analysis.feedback,
-      analysis_tags: analysis.tags.join(","),
-      has_analysis: "true",
-      analyzed_at: new Date().toISOString()
+      analysis: {
+        summary: analysis.summary,
+        products: analysis.products,
+        tags: analysis.tags,
+        feedback: analysis.feedback,
+        analyzed_at: new Date().toISOString()
+      },
+      has_analysis: true
     };
     
     // Step 3: Update the video's metadata
