@@ -148,7 +148,7 @@ For production deployment, use Azure Developer CLI to deploy the entire applicat
 
 ```bash
 # Clone and deploy
-git clone <repository-url>
+git clone https://github.com/Azure-Samples/visionary-lab
 cd visionary-lab
 
 # Authenticate and deploy everything in one command
