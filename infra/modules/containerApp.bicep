@@ -172,7 +172,7 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
               value: COSMOS_ENDPOINT
             }
             {
-              name: 'AZURE_COMOS_DB_ID' // Note: keeping the typo as in your example
+              name: 'AZURE_COSMOS_DB_ID'
               value: COSMOS_DATABASE_NAME
             }
             {
