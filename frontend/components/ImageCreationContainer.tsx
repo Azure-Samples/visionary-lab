@@ -32,6 +32,7 @@ interface ImageGenerationSettings {
   background: string;
   outputFormat: string;
   quality: string;
+  inputFidelity: string;
   sourceImages?: File[];
   brandsList?: string[];
 }
@@ -181,7 +182,8 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           generationPrompt, // Use protected prompt for generation
           newSettings.variations, // Number of variations from dropdown
           newSettings.imageSize, // Use selected size
-          newSettings.quality // Quality parameter
+          newSettings.quality, // Quality parameter
+          newSettings.inputFidelity // Input fidelity parameter
         );
         
         // Update the loading toast to success

@@ -469,10 +469,7 @@ export function VideoOverlay({
                               onValueChange={setAspectRatio}
                               disabled={isGenerating}
                             >
-                              <SelectTrigger className={cn(
-                                "w-[120px] h-8",
-                                getControlBgColor()
-                              )}>
+                              <SelectTrigger className="w-[120px] h-8">
                                 <SelectValue placeholder="16:9" />
                               </SelectTrigger>
                               <SelectContent>
@@ -509,10 +506,7 @@ export function VideoOverlay({
                               onValueChange={setResolution}
                               disabled={isGenerating}
                             >
-                              <SelectTrigger className={cn(
-                                "w-[140px] h-8",
-                                getControlBgColor()
-                              )}>
+                              <SelectTrigger className="w-[140px] h-8">
                                 <SelectValue placeholder="480p" />
                               </SelectTrigger>
                               <SelectContent>
@@ -549,10 +543,7 @@ export function VideoOverlay({
                               onValueChange={setDuration}
                               disabled={isGenerating}
                             >
-                              <SelectTrigger className={cn(
-                                "w-[120px] h-8",
-                                getControlBgColor()
-                              )}>
+                              <SelectTrigger className="w-[120px] h-8">
                                 <div className="flex items-center">
                                   <Timer className="h-4 w-4 mr-2" />
                                   <SelectValue placeholder="5s" />
@@ -578,10 +569,7 @@ export function VideoOverlay({
                               onValueChange={setVariants}
                               disabled={isGenerating}
                             >
-                              <SelectTrigger className={cn(
-                                "w-[150px] h-8",
-                                getControlBgColor()
-                              )}>
+                              <SelectTrigger className="w-[150px] h-8">
                                 <div className="flex items-center">
                                   <Copy className="h-4 w-4 mr-2" />
                                   <SelectValue placeholder="2" />
@@ -616,10 +604,7 @@ export function VideoOverlay({
                                   }
                                 }}
                               >
-                                <SelectTrigger className={cn(
-                                  "w-[150px] h-8",
-                                  getControlBgColor()
-                                )}>
+                                <SelectTrigger className="w-[150px] h-8">
                                   <div className="flex items-center">
                                     <FolderTree className="h-4 w-4 mr-2 text-primary" />
                                     <SelectValue placeholder="Root folder" />

@@ -70,14 +70,17 @@ export const OptimizedImage = forwardRef<HTMLImageElement, OptimizedImageProps>(
     
     // If it's an external image or has SAS tokens, use unoptimized
     if (isExternal || hasSasToken) {
+      const safeWidth = !fill ? (width || 1024) : undefined;
+      const safeHeight = !fill ? (height || 1024) : undefined;
+      
       return (
         <Image
           ref={ref}
           src={imageSrc}
           alt={alt}
           fill={fill}
-          width={!fill ? width : undefined}
-          height={!fill ? height : undefined}
+          width={safeWidth}
+          height={safeHeight}
           sizes={finalSizes}
           className={className}
           onLoad={handleLoad}
@@ -90,14 +93,17 @@ export const OptimizedImage = forwardRef<HTMLImageElement, OptimizedImageProps>(
     }
     
     // For internal images without SAS tokens, use optimized version
+    const safeWidth = !fill ? (width || 1024) : undefined;
+    const safeHeight = !fill ? (height || 1024) : undefined;
+    
     return (
       <Image
         ref={ref}
         src={imageSrc}
         alt={alt}
         fill={fill}
-        width={!fill ? width : undefined}
-        height={!fill ? height : undefined}
+        width={safeWidth}
+        height={safeHeight}
         sizes={finalSizes}
         className={className}
         onLoad={handleLoad}

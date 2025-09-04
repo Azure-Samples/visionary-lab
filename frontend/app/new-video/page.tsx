@@ -167,7 +167,7 @@ function NewVideoPageContent() {
       setIsLoadingMore(false);
       setIsRefreshing(false);
     }
-  }, [limit, offset, folderParam, videos.length]);
+  }, [limit, offset, folderParam, videos, loading]);
 
   // Register for upload completion notifications
   useEffect(() => {

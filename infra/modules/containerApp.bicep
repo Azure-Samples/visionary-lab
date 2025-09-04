@@ -3,6 +3,7 @@ param containerAppName string
 param containerAppEnvId string
 param DOCKER_IMAGE string
 param deployNew bool = true
+param azdServiceName string = ''
 
 // Env Variables
 param MODEL_PROVIDER string = 'azure'
@@ -38,9 +39,19 @@ param COSMOS_CONTAINER_NAME string = ''
 @secure()
 param COSMOS_DB_KEY string = ''
 
-resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if (deployNew) {
+// Azure Container Registry parameters
+param AZURE_CONTAINER_REGISTRY_ENDPOINT string = ''
+@secure()
+param AZURE_CONTAINER_REGISTRY_USERNAME string = ''
+@secure()
+param AZURE_CONTAINER_REGISTRY_PASSWORD string = ''
+
+resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
   name: containerAppName
   location: location
+  tags: azdServiceName != '' ? {
+    'azd-service-name': azdServiceName
+  } : {}
   properties: {
     managedEnvironmentId: containerAppEnvId
     configuration: {
@@ -48,6 +59,19 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if (deployNew) 
         external: true
         targetPort: targetPort
       }
+      registries: AZURE_CONTAINER_REGISTRY_ENDPOINT != '' ? [
+        {
+          server: AZURE_CONTAINER_REGISTRY_ENDPOINT
+          username: AZURE_CONTAINER_REGISTRY_USERNAME
+          passwordSecretRef: 'acr-password'
+        }
+      ] : []
+      secrets: AZURE_CONTAINER_REGISTRY_ENDPOINT != '' ? [
+        {
+          name: 'acr-password'
+          value: AZURE_CONTAINER_REGISTRY_PASSWORD
+        }
+      ] : []
     }
     template: {
       containers: [
@@ -158,6 +182,10 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if (deployNew) 
             {
               name: 'AZURE_COSMOS_DB_KEY'
               value: COSMOS_DB_KEY
+            }
+            {
+              name: 'AZURE_CONTAINER_REGISTRY_ENDPOINT'
+              value: AZURE_CONTAINER_REGISTRY_ENDPOINT
             }
           ]
         }

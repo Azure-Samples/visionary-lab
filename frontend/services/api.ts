@@ -1389,19 +1389,34 @@ export async function moveAsset(
 
 /**
  * Edit an image using the OpenAI API
+ * 
+ * @param sourceImages - File or array of files to edit
+ * @param prompt - Text prompt describing the desired edits
+ * @param n - Number of variations to generate (default: 1)
+ * @param size - Output image size (default: "auto")
+ * @param quality - Image quality setting (default: "auto")
+ * @param inputFidelity - Input fidelity for better reproduction of input features:
+ *   - 'low' (default): Standard fidelity, faster processing
+ *   - 'high': Better reproduction of input image features, additional cost (~$0.04-$0.06 per image)
  */
 export async function editImage(
   sourceImages: File | File[],
   prompt: string, 
   n: number = 1,
   size: string = "auto",
-  quality: string = "auto"
+  quality: string = "auto",
+  inputFidelity: string = "low"
 ): Promise<ImageEditResponse> {
+  // Validate input_fidelity parameter
+  if (inputFidelity && !["low", "high"].includes(inputFidelity)) {
+    throw new Error("input_fidelity must be either 'low' or 'high'");
+  }
+
   const url = `${API_BASE_URL}/images/edit/upload`;
   
   if (DEBUG) {
     const imageCount = Array.isArray(sourceImages) ? sourceImages.length : 1;
-    console.log(`Editing ${imageCount} image(s) with prompt: ${prompt}`);
+    console.log(`Editing ${imageCount} image(s) with prompt: ${prompt}, input_fidelity: ${inputFidelity}`);
     console.log(`POST ${url}`);
   }
   
@@ -1422,6 +1437,7 @@ export async function editImage(
   formData.append('size', size);
   formData.append('model', 'gpt-image-1');
   formData.append('quality', quality);
+  formData.append('input_fidelity', inputFidelity);
   
   try {
     const response = await fetch(url, {

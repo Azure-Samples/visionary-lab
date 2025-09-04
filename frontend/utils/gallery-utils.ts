@@ -1,5 +1,4 @@
 import { fetchGalleryVideos, GalleryItem, MediaType, fetchGalleryImages } from "@/services/api";
-import { API_BASE_URL } from "@/services/api";
 import { sasTokenService } from "@/services/sas-token";
 
 export interface VideoMetadata {
@@ -148,8 +147,8 @@ async function mapGalleryItemToImageMetadata(item: GalleryItem): Promise<ImageMe
       src,
       title: title.charAt(0).toUpperCase() + title.slice(1),
       description: description,
-      width: undefined,
-      height: undefined,
+      width: item.metadata?.width ? parseInt(item.metadata.width) : undefined,
+      height: item.metadata?.height ? parseInt(item.metadata.height) : undefined,
       tags: [],
       size: "medium" as const,
       originalItem: item,

@@ -1,5 +1,6 @@
 import os
 import uuid
+import logging
 from typing import Dict, BinaryIO, Optional, Union, List, Tuple
 from fastapi import UploadFile
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -7,6 +8,8 @@ from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from datetime import datetime
 
 from backend.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AzureBlobStorageService:
@@ -37,6 +40,68 @@ class AzureBlobStorageService:
         # Ensure containers exist
         self._ensure_container_exists(self.image_container)
         self._ensure_container_exists(self.video_container)
+
+        # Configure CORS for direct access from frontend
+        self._configure_cors()
+
+    def _configure_cors(self) -> None:
+        """
+        Configure CORS settings on the Azure Storage account to allow direct access
+        from frontend domains
+        """
+        try:
+            from azure.storage.blob import CorsRule
+
+            # First, clear any existing CORS rules to avoid conflicts
+            try:
+                print("Clearing existing CORS rules...")
+                self.blob_service_client.set_service_properties(cors=[])
+                print("Existing CORS rules cleared successfully")
+            except Exception as clear_error:
+                print(
+                    f"Warning: Could not clear existing CORS rules: {clear_error}")
+
+            # Define CORS rules with individual origins (not comma-separated)
+            cors_rules = [
+                CorsRule(
+                    allowed_origins=[
+                        "http://localhost:3000",  # Local development
+                        "https://localhost:3000",  # Local development with HTTPS
+                        "http://127.0.0.1:3000",  # Alternative local development
+                        "https://127.0.0.1:3000",  # Alternative local development with HTTPS
+                        "*"  # Allow all origins for now - should be restricted in production
+                    ],
+                    allowed_methods=[
+                        "GET",
+                        "HEAD",
+                        "OPTIONS"
+                    ],
+                    allowed_headers=[
+                        "*"
+                    ],
+                    exposed_headers=[
+                        "*"
+                    ],
+                    max_age_in_seconds=3600
+                )
+            ]
+
+            print(
+                f"Setting CORS rules with {len(cors_rules[0].allowed_origins)} origins...")
+            print(f"Origins: {cors_rules[0].allowed_origins}")
+
+            # Set CORS rules
+            self.blob_service_client.set_service_properties(cors=cors_rules)
+
+            print("Successfully configured CORS for Azure Blob Storage")
+
+        except Exception as e:
+            print(
+                f"Warning: Could not configure CORS for Azure Blob Storage: {e}")
+            # Print more details for debugging
+            import traceback
+            print(f"Full error traceback: {traceback.format_exc()}")
+            # Don't fail if CORS configuration fails, as it might be due to permissions
 
     def list_blobs(self, container_name: str, prefix: Optional[str] = None,
                    limit: int = 100, marker: Optional[str] = None,
@@ -317,6 +382,21 @@ class AzureBlobStorageService:
 
             # Upload the file
             file_content = await file.read()
+
+            # For images, add width and height to metadata if not already present
+            if asset_type == "image" and "width" not in upload_metadata:
+                try:
+                    from PIL import Image
+                    import io
+
+                    # Get image dimensions using PIL
+                    with Image.open(io.BytesIO(file_content)) as img:
+                        upload_metadata["width"] = str(img.width)
+                        upload_metadata["height"] = str(img.height)
+                except Exception as e:
+                    # If we can't get dimensions, log but continue
+                    logger.warning(f"Could not get image dimensions: {str(e)}")
+
             blob_client.upload_blob(
                 data=file_content,
                 content_settings=content_settings,

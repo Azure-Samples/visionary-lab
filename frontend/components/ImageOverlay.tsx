@@ -38,6 +38,7 @@ interface ImageOverlayProps {
     background: string;
     outputFormat: string;
     quality: string;
+    inputFidelity: string;
     sourceImages?: File[];
     brandsList?: string[];
   }) => void;
@@ -73,7 +74,9 @@ export function ImageOverlay({
   const [background, setBackground] = useState("auto");
   const [outputFormat, setOutputFormat] = useState("png");
   const [quality, setQuality] = useState("auto");
+  const [inputFidelity, setInputFidelity] = useState("low");
   const [sourceImages, setSourceImages] = useState<File[]>([]);
+  const [isClient, setIsClient] = useState(false);
   
   // Reference to the textarea element
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -88,6 +91,7 @@ export function ImageOverlay({
   // Move theme detection to useEffect to prevent hydration mismatch
   useEffect(() => {
     // Only run on client-side
+    setIsClient(true);
     setIsDarkTheme(
       resolvedTheme === 'dark' || 
       theme === 'dark' || 
@@ -127,6 +131,8 @@ export function ImageOverlay({
       setOutputFormat("png");
     }
   }, [background, outputFormat]);
+
+
 
   // Get overlay background color based on theme
   const getOverlayBgColor = () => {
@@ -182,6 +188,7 @@ export function ImageOverlay({
       background,
       outputFormat,
       quality,
+      inputFidelity,
       sourceImages,
       brandsList: imageSettings.settings.brandsList
     });
@@ -365,24 +372,38 @@ export function ImageOverlay({
   return (
     <div className="sticky bottom-0 left-0 right-0 flex items-end justify-center p-6 z-20 pointer-events-none">
       <div className={cn(
-        "w-full max-w-4xl transition-all duration-200 ease-in-out pointer-events-auto",
+        "w-full transition-all duration-300 ease-in-out pointer-events-auto",
         expanded ? "mb-6" : "mb-2"
-      )}>
+      )}
+      style={{
+        maxWidth: isClient && sourceImages.length > 0 ? '58rem' : '56rem' // 4xl = 56rem, so adding just 2rem
+      }}>
         <div className={cn(
           "rounded-xl p-4 shadow-lg border",
           getOverlayBgColor()
         )}>
           <div className="flex flex-col space-y-4">
             {/* Image thumbnails row */}
-            {sourceImages.length > 0 && (
+            {isClient && sourceImages.length > 0 && (
               <div className="flex flex-wrap gap-2 items-center">
                 {sourceImages.map((img, index) => (
                   <div key={index} className="relative">
                     <img 
                       src={URL.createObjectURL(img)} 
                       alt={`Image ${index + 1}`} 
-                      className="w-12 h-12 object-cover rounded-md border border-gray-500/30"
+                      className={cn(
+                        "w-12 h-12 object-cover rounded-md border transition-all duration-200",
+                        index === 0 && sourceImages.length > 1 
+                          ? "border-sky-300 ring-2 ring-sky-300/50 shadow-lg shadow-sky-300/25 animate-pulse" 
+                          : "border-gray-500/30"
+                      )}
                     />
+                    {/* Primary image indicator */}
+                    {index === 0 && sourceImages.length > 1 && (
+                      <div className="absolute -top-1 -right-1 bg-sky-400 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                        1
+                      </div>
+                    )}
                     <Button 
                       onClick={() => handleRemoveImage(index)}
                       className={cn(
@@ -585,10 +606,7 @@ export function ImageOverlay({
                             onValueChange={setImageSize}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[145px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[145px] h-8">
                               <div className="flex items-center">
                                 <Maximize className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="1024x1024" />
@@ -617,10 +635,7 @@ export function ImageOverlay({
                             onValueChange={setBackground}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[140px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[140px] h-8">
                               <div className="flex items-center">
                                 <Layers className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="Background" />
@@ -648,10 +663,7 @@ export function ImageOverlay({
                             onValueChange={setOutputFormat}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[100px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[100px] h-8">
                               <div className="flex items-center">
                                 <FileType className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="Format" />
@@ -681,10 +693,7 @@ export function ImageOverlay({
                             onValueChange={setQuality}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[120px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[120px] h-8">
                               <div className="flex items-center">
                                 <BarChart4 className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="Quality" />
@@ -704,6 +713,35 @@ export function ImageOverlay({
                       </TooltipContent>
                     </Tooltip>
 
+                    {/* Input Fidelity Dropdown - Only show when editing images */}
+                    {isClient && sourceImages.length > 0 && (
+                      <Tooltip delayDuration={300}>
+                        <TooltipTrigger asChild>
+                          <div className="relative animate-in fade-in-0 slide-in-from-left-2 duration-300">
+                            <Select
+                              value={inputFidelity}
+                              onValueChange={setInputFidelity}
+                              disabled={isGenerating}
+                            >
+                              <SelectTrigger className="w-[100px] h-8">
+                                <div className="flex items-center">
+                                  <Layers className="h-4 w-4 mr-2" />
+                                  <SelectValue placeholder="Fidelity" />
+                                </div>
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="low">Low</SelectItem>
+                                <SelectItem value="high">High</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="font-medium">
+                          <p>Input fidelity for image editing - High provides better reproduction of the highlighted image with blue frame</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+
                     <Tooltip delayDuration={300}>
                       <TooltipTrigger asChild>
                         <div className="relative">
@@ -712,10 +750,7 @@ export function ImageOverlay({
                             onValueChange={setVariations}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[80px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[80px] h-8">
                               <div className="flex items-center">
                                 <Images className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="1" />
@@ -756,13 +791,10 @@ export function ImageOverlay({
                               }
                             }}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[150px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[130px] h-8">
                               <div className="flex items-center">
                                 <FolderTree className="h-4 w-4 mr-2 text-primary" />
-                                <SelectValue placeholder="Root folder" />
+                                <SelectValue placeholder="Root" />
                               </div>
                             </SelectTrigger>
                             <SelectContent>
@@ -825,7 +857,7 @@ export function ImageOverlay({
                                 </div>
                               )}
                               
-                              <SelectItem value="root">Root folder</SelectItem>
+                              <SelectItem value="root">Root</SelectItem>
                               {folders.map((folderPath) => (
                                 <SelectItem key={folderPath} value={folderPath}>
                                   {folderPath}
