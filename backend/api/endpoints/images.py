@@ -700,6 +700,7 @@ async def save_generated_images(
                         width = int(width_val) if width_val else None
                         height = int(height_val) if height_val else None
                         
+                        # Build cosmos metadata, excluding None/null values
                         cosmos_metadata = {
                             "id": asset_id,
                             "media_type": "image",
@@ -712,15 +713,33 @@ async def save_generated_images(
                             "folder_path": result["folder_path"],
                             "prompt": request.prompt,
                             "model": request.model,
-                            "quality": getattr(request, "quality", None),
-                            "background": getattr(request, "background", None),
-                            "output_format": getattr(request, "output_format", None),
-                            "has_transparency": has_transparency if "has_transparency" in locals() else None,
-                            "width": width,
-                            "height": height,
-                            # Store remaining metadata as custom_metadata
-                            "custom_metadata": {k: v for k, v in img_metadata.items() if k not in ["width", "height"]},
                         }
+                        
+                        # Only add optional fields if they have meaningful values
+                        quality = getattr(request, "quality", None)
+                        if quality and quality != "auto":
+                            cosmos_metadata["quality"] = quality
+                            
+                        background = getattr(request, "background", None)  
+                        if background and background != "auto":
+                            cosmos_metadata["background"] = background
+                            
+                        output_format = getattr(request, "output_format", None)
+                        if output_format:
+                            cosmos_metadata["output_format"] = output_format
+                            
+                        if "has_transparency" in locals() and has_transparency is not None:
+                            cosmos_metadata["has_transparency"] = has_transparency
+                            
+                        if width is not None:
+                            cosmos_metadata["width"] = width
+                        if height is not None:
+                            cosmos_metadata["height"] = height
+                            
+                        # Store remaining metadata as custom_metadata (excluding None values)
+                        custom_meta = {k: v for k, v in img_metadata.items() if k not in ["width", "height"] and v is not None}
+                        if custom_meta:
+                            cosmos_metadata["custom_metadata"] = custom_meta
 
                         # Remove None values
                         cosmos_metadata = {

@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 import io
 import re
 import os
+import uuid
 import logging
 from datetime import datetime, timedelta, timezone
 from azure.storage.blob import generate_container_sas, ContainerSasPermissions
@@ -111,35 +112,33 @@ async def get_gallery_images(
                     creation_time=metadata["created_at"],
                     last_modified=metadata["updated_at"],
                     metadata={
-                        # Core generation metadata from Cosmos DB (keep proper types)
-                        "prompt": metadata.get("prompt"),
-                        "model": metadata.get("model"),
-                        "description": metadata.get("description"),
-                        "quality": metadata.get("quality"),
-                        "background": metadata.get("background"),
-                        "output_format": metadata.get("output_format"),
-                        "has_transparency": metadata.get("has_transparency"),
-                        "generation_id": metadata.get("generation_id"),
+                        # Core generation metadata from CosmosDB (only include meaningful values)
+                        **{k: v for k, v in {
+                            "prompt": metadata.get("prompt"),
+                            "model": metadata.get("model"),
+                            "description": metadata.get("description"),
+                            "quality": metadata.get("quality"),
+                            "background": metadata.get("background"),
+                            "output_format": metadata.get("output_format"),
+                            "has_transparency": metadata.get("has_transparency"),
+                            "generation_id": metadata.get("generation_id"),
+                        }.items() if v is not None and v != "" and v != "auto"},
 
-                        # Technical metadata (ensure integers)
-                        "width": custom_meta.get("width") or metadata.get("width"),
-                        "height": custom_meta.get("height") or metadata.get("height"),
-                        "created_at": metadata.get("created_at"),
-                        "createdAt": metadata.get("created_at"),  # Backward compatibility
+                        # Technical metadata (ensure integers, only include if valid)
+                        **{k: v for k, v in {
+                            "width": custom_meta.get("width") or metadata.get("width"),
+                            "height": custom_meta.get("height") or metadata.get("height"),
+                            "created_at": metadata.get("created_at"),
+                        }.items() if v is not None},
 
-                        # Nested analysis structure (standardized)
-                        "analysis": metadata.get("analysis"),
+                        # Analysis structure (nested only - no legacy support)
+                        **({"analysis": metadata.get("analysis")} if metadata.get("analysis") else {}),
                         "has_analysis": metadata.get("has_analysis", False),
-                        
-                        # Legacy flat analysis fields for backward compatibility
-                        "summary": metadata.get("analysis", {}).get("summary") if metadata.get("analysis") else metadata.get("summary"),
-                        "products": metadata.get("analysis", {}).get("products") if metadata.get("analysis") else metadata.get("products"),
-                        "feedback": metadata.get("analysis", {}).get("feedback") if metadata.get("analysis") else metadata.get("feedback"),
-                        "tags": metadata.get("analysis", {}).get("tags", []) if metadata.get("analysis") else metadata.get("tags", []),
 
-                        # Additional custom fields (but don't let them overwrite structured fields)
+                        # Additional custom fields (exclude None values and reserved keys)
                         **{k: v for k, v in custom_meta.items()
-                           if k not in ["width", "height", "tags", "prompt", "description", "summary", "products", "feedback", "analysis"]}
+                           if k not in ["width", "height", "prompt", "description", "analysis"]
+                           and v is not None and v != ""}
                     },
                     folder_path=metadata.get("folder_path", ""),
                 )
@@ -211,39 +210,39 @@ async def get_gallery_videos(
                     creation_time=metadata["created_at"],
                     last_modified=metadata["updated_at"],
                     metadata={
-                        # Core generation metadata from Cosmos DB (keep proper types)
-                        "prompt": metadata.get("prompt"),
-                        "model": metadata.get("model"),
-                        "description": metadata.get("description"),
-                        "quality": metadata.get("quality"),
-                        "background": metadata.get("background"),
-                        "output_format": metadata.get("output_format"),
-                        "generation_id": metadata.get("generation_id"),
+                        # Core generation metadata from CosmosDB (only include meaningful values)
+                        **{k: v for k, v in {
+                            "prompt": metadata.get("prompt"),
+                            "model": metadata.get("model"),
+                            "description": metadata.get("description"),
+                            "quality": metadata.get("quality"),
+                            "background": metadata.get("background"),
+                            "output_format": metadata.get("output_format"),
+                            "generation_id": metadata.get("generation_id"),
+                        }.items() if v is not None and v != "" and v != "auto"},
 
-                        # Video-specific metadata (keep proper types)
-                        "duration": metadata.get("duration"),  # Keep as number
-                        "resolution": metadata.get("resolution"),
-                        "fps": metadata.get("fps"),  # Keep as number
+                        # Video-specific metadata (only include if not None)
+                        **{k: v for k, v in {
+                            "duration": metadata.get("duration"),
+                            "resolution": metadata.get("resolution"),
+                            "fps": metadata.get("fps"),
+                        }.items() if v is not None},
 
-                        # Technical metadata (ensure integers)
-                        "width": custom_meta.get("width") or metadata.get("width"),
-                        "height": custom_meta.get("height") or metadata.get("height"),
-                        "created_at": metadata.get("created_at"),
-                        "createdAt": metadata.get("created_at"),  # Backward compatibility
+                        # Technical metadata (ensure integers, only include if valid)
+                        **{k: v for k, v in {
+                            "width": custom_meta.get("width") or metadata.get("width"),
+                            "height": custom_meta.get("height") or metadata.get("height"),
+                            "created_at": metadata.get("created_at"),
+                        }.items() if v is not None},
 
-                        # Nested analysis structure (standardized)
-                        "analysis": metadata.get("analysis"),
+                        # Analysis structure (nested only - no legacy support)
+                        **({"analysis": metadata.get("analysis")} if metadata.get("analysis") else {}),
                         "has_analysis": metadata.get("has_analysis", False),
-                        
-                        # Legacy flat analysis fields for backward compatibility
-                        "summary": metadata.get("analysis", {}).get("summary") if metadata.get("analysis") else metadata.get("summary"),
-                        "products": metadata.get("analysis", {}).get("products") if metadata.get("analysis") else metadata.get("products"),
-                        "feedback": metadata.get("analysis", {}).get("feedback") if metadata.get("analysis") else metadata.get("feedback"),
-                        "tags": metadata.get("analysis", {}).get("tags", []) if metadata.get("analysis") else metadata.get("tags", []),
 
-                        # Additional custom fields (but don't let them overwrite structured fields)
+                        # Additional custom fields (exclude None values and reserved keys)
                         **{k: v for k, v in custom_meta.items()
-                           if k not in ["width", "height", "tags", "prompt", "description", "summary", "products", "feedback", "analysis", "duration", "fps", "resolution"]}
+                           if k not in ["width", "height", "prompt", "description", "analysis", "duration", "fps", "resolution"]
+                           and v is not None and v != ""}
                     },
                     folder_path=metadata.get("folder_path", ""),
                 )
@@ -276,54 +275,40 @@ async def get_gallery_items(
         50, description="Maximum number of items to return", ge=1, le=100
     ),
     offset: int = Query(0, description="Offset for pagination"),
-    continuation_token: Optional[str] = Query(
-        None, description="Continuation token from previous response"
-    ),
-    prefix: Optional[str] = Query(
-        None, description="Optional prefix filter for filenames"
-    ),
     folder_path: Optional[str] = Query(
         None, description="Optional folder path to filter assets"
-    ),
-    use_metadata: bool = Query(
-        True, description="Use Cosmos DB metadata for faster queries if available"
-    ),
-    azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
     """
-    Get all gallery items (images and videos) with pagination
-    Uses Cosmos DB for faster metadata queries if available, falls back to blob storage
+    Get all gallery items (images and videos) from CosmosDB metadata
     """
     try:
-        # If Cosmos DB is available and requested, use it for faster queries
-        if cosmos_service and use_metadata and not continuation_token:
-            return await _get_gallery_items_from_cosmos(
-                limit=limit,
-                offset=offset,
-                folder_path=folder_path,
-                cosmos_service=cosmos_service,
+        # Check if Cosmos DB service is available
+        if not cosmos_service:
+            logger.error("Cosmos DB service is not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Cosmos DB service is not available. Please check your configuration.",
             )
 
-        # Fall back to original blob storage implementation
-        return await _get_gallery_items_from_storage(
+        return await _get_gallery_items_from_cosmos(
             limit=limit,
             offset=offset,
-            continuation_token=continuation_token,
-            prefix=prefix,
             folder_path=folder_path,
-            azure_storage_service=azure_storage_service,
+            cosmos_service=cosmos_service,
         )
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error retrieving gallery items from CosmosDB: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 async def _get_gallery_items_from_cosmos(
     limit: int, offset: int, folder_path: Optional[str], cosmos_service: CosmosDBService
 ) -> GalleryResponse:
-    """Get gallery items using Cosmos DB metadata"""
+    """Get gallery items from CosmosDB metadata with standardized analysis structure"""
     try:
         result = cosmos_service.query_assets(
             folder_path=folder_path,
@@ -338,7 +323,7 @@ async def _get_gallery_items_from_cosmos(
             # Extract technical metadata from custom_metadata if available
             custom_meta = metadata.get("custom_metadata", {})
 
-            # Convert Cosmos DB metadata to GalleryItem with standardized format
+            # Convert CosmosDB metadata to GalleryItem (CosmosDB is single source of truth)
             gallery_items.append(
                 GalleryItem(
                     id=metadata["id"],
@@ -351,35 +336,40 @@ async def _get_gallery_items_from_cosmos(
                     creation_time=metadata["created_at"],
                     last_modified=metadata["updated_at"],
                     metadata={
-                        # Core generation metadata from Cosmos DB (keep proper types)
-                        "prompt": metadata.get("prompt"),
-                        "model": metadata.get("model"),
-                        "summary": metadata.get("summary"),
-                        "description": metadata.get("description"),
-                        "products": metadata.get("products"),
-                        "tags": metadata.get("tags", []),  # Keep as array
-                        "quality": metadata.get("quality"),
-                        "background": metadata.get("background"),
-                        "output_format": metadata.get("output_format"),
-                        "has_transparency": metadata.get("has_transparency"),
-                        "generation_id": metadata.get("generation_id"),
+                        # Core generation metadata from CosmosDB (only meaningful values)
+                        **{k: v for k, v in {
+                            "prompt": metadata.get("prompt"),
+                            "model": metadata.get("model"),
+                            "description": metadata.get("description"),
+                            "quality": metadata.get("quality"),
+                            "background": metadata.get("background"),
+                            "output_format": metadata.get("output_format"),
+                            "has_transparency": metadata.get("has_transparency"),
+                            "generation_id": metadata.get("generation_id"),
+                        }.items() if v is not None and v != "" and v != "auto"},
 
-                        # Technical metadata from custom_metadata or direct fields
-                        "width": custom_meta.get("width") or metadata.get("width"),
-                        "height": custom_meta.get("height") or metadata.get("height"),
-                        "createdAt": metadata.get("created_at"),
-
-                        # Analysis metadata
-                        "feedback": metadata.get("feedback"),
+                        # Technical metadata (ensure proper types)
+                        **{k: v for k, v in {
+                            "width": custom_meta.get("width") or metadata.get("width"),
+                            "height": custom_meta.get("height") or metadata.get("height"),
+                            "created_at": metadata.get("created_at"),
+                        }.items() if v is not None},
 
                         # Video-specific metadata
-                        "duration": metadata.get("duration"),
-                        "fps": metadata.get("fps"),
-                        "resolution": metadata.get("resolution"),
+                        **{k: v for k, v in {
+                            "duration": metadata.get("duration"),
+                            "fps": metadata.get("fps"),
+                            "resolution": metadata.get("resolution"),
+                        }.items() if v is not None},
 
-                        # Additional custom fields (but don't let them overwrite structured fields)
+                        # Analysis structure (nested only)
+                        **({"analysis": metadata.get("analysis")} if metadata.get("analysis") else {}),
+                        "has_analysis": metadata.get("has_analysis", False),
+
+                        # Additional custom fields (exclude reserved keys and None values)
                         **{k: v for k, v in custom_meta.items()
-                           if k not in ["width", "height", "tags", "prompt", "description", "summary", "products"]}
+                           if k not in ["width", "height", "prompt", "description", "analysis", "duration", "fps", "resolution"]
+                           and v is not None and v != ""}
                     },
                     folder_path=metadata.get("folder_path", ""),
                 )
@@ -401,120 +391,7 @@ async def _get_gallery_items_from_cosmos(
         )
 
 
-async def _get_gallery_items_from_storage(
-    limit: int,
-    offset: int,
-    continuation_token: Optional[str],
-    prefix: Optional[str],
-    folder_path: Optional[str],
-    azure_storage_service: AzureBlobStorageService,
-) -> GalleryResponse:
-    """Get gallery items using Azure Blob Storage (original implementation)"""
-    # Normalize folder path and update prefix if folder_path is provided
-    if folder_path is not None:
-        normalized_folder = azure_storage_service.normalize_folder_path(
-            folder_path)
-        prefix = normalized_folder
-
-    # Get images
-    image_container = settings.AZURE_BLOB_IMAGE_CONTAINER
-    image_results = azure_storage_service.list_blobs(
-        container_name=image_container,
-        prefix=prefix,
-        limit=limit,
-        marker=continuation_token,
-        delimiter="/" if folder_path is not None else None,
-    )
-
-    # Get videos
-    video_container = settings.AZURE_BLOB_VIDEO_CONTAINER
-    video_results = azure_storage_service.list_blobs(
-        container_name=video_container,
-        prefix=prefix,
-        limit=limit,
-        marker=continuation_token,
-        delimiter="/" if folder_path is not None else None,
-    )
-
-    # Combine results
-    gallery_items = []
-
-    # Process image results
-    for blob in image_results["blobs"]:
-        if blob["name"].endswith(".folder"):
-            continue
-
-        gallery_items.append(
-            GalleryItem(
-                id=blob["name"].split(".")[0].split("/")[-1],
-                name=blob["name"],
-                media_type=MediaType.IMAGE,
-                url=blob["url"],
-                container=image_container,
-                size=blob["size"],
-                content_type=blob["content_type"],
-                creation_time=blob["creation_time"],
-                last_modified=blob["last_modified"],
-                metadata=blob["metadata"],
-                folder_path=blob.get("folder_path", ""),
-            )
-        )
-
-    # Process video results
-    for blob in video_results["blobs"]:
-        if blob["name"].endswith(".folder"):
-            continue
-
-        gallery_items.append(
-            GalleryItem(
-                id=blob["name"].split(".")[0].split("/")[-1],
-                name=blob["name"],
-                media_type=MediaType.VIDEO,
-                url=blob["url"],
-                container=video_container,
-                size=blob["size"],
-                content_type=blob["content_type"],
-                creation_time=blob["creation_time"],
-                last_modified=blob["last_modified"],
-                metadata=blob["metadata"],
-                folder_path=blob.get("folder_path", ""),
-            )
-        )
-
-    # Sort by creation_time (newest first)
-    gallery_items.sort(
-        key=lambda x: x.creation_time if x.creation_time else "", reverse=True
-    )
-
-    # Apply offset and limit
-    paginated_items = gallery_items[offset: offset + limit]
-
-    # Get continuation token from either result
-    continuation = None
-    if image_results["continuation_token"] or video_results["continuation_token"]:
-        continuation = (
-            image_results["continuation_token"]
-            if image_results["continuation_token"]
-            else video_results["continuation_token"]
-        )
-
-    # Combine folder prefixes from both containers
-    folders = set()
-    if "prefixes" in image_results:
-        folders.update(image_results["prefixes"])
-    if "prefixes" in video_results:
-        folders.update(video_results["prefixes"])
-
-    return GalleryResponse(
-        success=True,
-        message="Gallery items retrieved successfully from storage",
-        total=len(gallery_items),
-        limit=limit,
-        offset=offset,
-        items=paginated_items,
-        continuation_token=continuation,
-        folders=sorted(list(folders)) if folders else None,
-    )
+# Removed legacy blob storage implementation - now using CosmosDB only
 
 
 @router.post("/upload", response_model=AssetUploadResponse)
@@ -927,8 +804,8 @@ async def metadata_service_status(
     else:
         status["metadata_service"] = {
             "status": "unavailable",
-            "type": "blob_storage_only",
-            "performance_mode": "blob_storage_fallback",
+            "type": "cosmos_db_required",
+            "performance_mode": "service_unavailable",
         }
 
         status["capabilities"] = {
@@ -969,14 +846,12 @@ async def list_folders(
         media_type_str = media_type.value if media_type else None
         result = cosmos_service.get_all_folders(media_type=media_type_str)
 
+        # Filter out root folder from the results and build hierarchy for UI
+        filtered_folders = [folder for folder in result['folders'] if folder != '/' and folder.strip()]
+        
         # Build folder hierarchy for UI
-        # result['folders'] now contains simple strings
         folder_hierarchy = {}
-        for folder_path in result['folders']:
-            # Skip root folder for hierarchy building
-            if folder_path == '/':
-                continue
-
+        for folder_path in filtered_folders:
             # For single-level folders, add directly to hierarchy
             # Since we don't have metadata anymore, just mark as present
             if '/' not in folder_path:
@@ -985,9 +860,9 @@ async def list_folders(
         return {
             "success": True,
             "message": "Folders retrieved successfully from Cosmos DB",
-            "folders": result['folders'],  # Simple string array
+            "folders": filtered_folders,  # Filtered string array (no root)
             "folder_hierarchy": folder_hierarchy,
-            "total_folders": result['total_folders'],
+            "total_folders": len(filtered_folders),
             "source": "cosmos_db"
         }
     except HTTPException:
@@ -1001,13 +876,13 @@ async def list_folders(
 async def create_folder(
     folder_path: str = Body(..., embed=True),
     media_type: Optional[MediaType] = Body(None, embed=True),
+    cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
     """
-    Create a logical folder (no database operation needed)
-
-    Since folders are virtual and only exist through the folder_path attribute in assets,
-    this endpoint just validates the folder name and returns success.
-    The folder will "exist" when the first asset is added with this folder_path.
+    Create a folder placeholder in CosmosDB for immediate navbar visibility.
+    
+    This creates a special folder metadata record so the folder appears immediately
+    in the navigation, even before any assets are added to it.
     """
     try:
         # Validate folder name
@@ -1031,15 +906,52 @@ async def create_folder(
                 detail="Folder path can only contain alphanumeric characters, hyphens, underscores, and spaces",
             )
 
-        # Return success - folder is virtual and will exist when assets are added
+        # Normalize folder path for storage
+        normalized_folder = folder_path.strip()
+        if normalized_folder and not normalized_folder.endswith("/"):
+            normalized_folder = f"{normalized_folder}/"
+
+        # Create folder placeholder in CosmosDB for immediate visibility
+        if cosmos_service:
+            try:
+                # Check if folder placeholder already exists
+                existing_placeholder = cosmos_service.container.query_items(
+                    query="SELECT * FROM c WHERE c.doc_type = 'folder_placeholder' AND c.folder_path = @folder_path",
+                    parameters=[{"name": "@folder_path", "value": normalized_folder}],
+                    enable_cross_partition_query=True
+                )
+                
+                if not list(existing_placeholder):
+                    # Create folder placeholder record
+                    folder_placeholder = {
+                        "id": f"folder_{uuid.uuid4().hex[:12]}",
+                        "doc_type": "folder_placeholder",
+                        "media_type": "folder_placeholder",  # Use as partition key
+                        "folder_path": normalized_folder,
+                        "folder_name": folder_path,  # Human readable name
+                        "target_media_type": media_type.value if media_type else "mixed",
+                        "created_at": datetime.utcnow().isoformat(),
+                        "is_placeholder": True,
+                        "asset_count": 0
+                    }
+                    
+                    cosmos_service.create_asset_metadata(folder_placeholder)
+                    logger.info(f"Created folder placeholder for: {folder_path}")
+                else:
+                    logger.info(f"Folder placeholder already exists for: {folder_path}")
+                    
+            except Exception as e:
+                logger.warning(f"Failed to create folder placeholder in CosmosDB: {e}")
+                # Continue anyway - folder will still work when assets are added
+
+        # Return success
         return {
             "success": True,
-            "message": f"Folder '{folder_path}' is ready to use. It will appear in the list when assets are added.",
+            "message": f"Folder '{folder_path}' created and is immediately available.",
             "folder_path": folder_path,
             "media_type": media_type.value if media_type else "any",
             "created": True,
-            "virtual": True,
-            "note": "Folders are virtual and exist only through asset metadata"
+            "immediate_visibility": True
         }
     except HTTPException:
         raise

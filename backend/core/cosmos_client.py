@@ -496,7 +496,7 @@ class CosmosDBService:
 
     def get_all_folders(self, media_type: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get all unique folder paths from assets in Cosmos DB
+        Get all unique folder paths from assets and folder placeholders in Cosmos DB
 
         Args:
             media_type: Optional filter by media type
@@ -505,44 +505,98 @@ class CosmosDBService:
             Dictionary with folder names only (simplified for frontend)
         """
         try:
-            # Use DISTINCT to get unique folder paths
+            # Get folders from actual assets
             if media_type:
-                query = f"""
+                asset_query = f"""
                 SELECT DISTINCT c.folder_path
                 FROM c 
-                WHERE c.media_type = '{media_type}'
+                WHERE c.doc_type = 'asset_metadata' AND c.media_type = '{media_type}'
                 """
             else:
-                query = """
+                asset_query = """
                 SELECT DISTINCT c.folder_path
                 FROM c
+                WHERE c.doc_type = 'asset_metadata'
                 """
 
-            logger.info(f"Executing folder query: {query.strip()}")
+            # Get folders from placeholders
+            if media_type:
+                placeholder_query = f"""
+                SELECT c.folder_path, c.id
+                FROM c 
+                WHERE c.doc_type = 'folder_placeholder' AND c.media_type = 'folder_placeholder' AND (c.target_media_type = '{media_type}' OR c.target_media_type = 'mixed')
+                """
+            else:
+                placeholder_query = """
+                SELECT c.folder_path, c.id
+                FROM c
+                WHERE c.doc_type = 'folder_placeholder' AND c.media_type = 'folder_placeholder'
+                """
 
-            items = list(self.container.query_items(query=query))
+            logger.info(f"Executing asset folder query: {asset_query.strip()}")
+            asset_items = list(self.container.query_items(query=asset_query, enable_cross_partition_query=True))
+            
+            logger.info(f"Executing placeholder folder query: {placeholder_query.strip()}")
+            placeholder_items = list(self.container.query_items(query=placeholder_query, enable_cross_partition_query=True))
 
-            logger.info(f"Query returned {len(items)} unique folder paths")
+            logger.info(f"Asset query returned {len(asset_items)} folder paths")
+            logger.info(f"Placeholder query returned {len(placeholder_items)} folder paths")
 
-            # Extract and normalize folder paths
+            # Extract and normalize folder paths from both sources
             folder_set = set()
-            for item in items:
+            
+            # Add folders from assets (skip root folder)
+            for item in asset_items:
                 folder_path = item.get("folder_path", "")
-
-                # Normalize folder path:
-                # - Empty string becomes "/" (root)
-                # - Remove trailing slash from non-root folders
-                if folder_path == "" or folder_path is None:
-                    folder_path = "/"
-                elif folder_path.endswith("/") and folder_path != "/":
+                # Skip empty/null folder paths (these represent root/all assets)
+                if not folder_path or folder_path.strip() == "":
+                    continue
+                
+                # Normalize folder path by removing trailing slash
+                if folder_path.endswith("/") and folder_path != "/":
                     folder_path = folder_path.rstrip("/")
-
-                folder_set.add(folder_path)
+                
+                # Only add non-root folders
+                if folder_path and folder_path != "/":
+                    folder_set.add(folder_path)
+            
+            # Add folders from placeholders (and check for cleanup) - skip root folder
+            placeholder_folders_with_assets = set()
+            for item in placeholder_items:
+                folder_path = item.get("folder_path", "")
+                if folder_path and folder_path.strip():
+                    # Normalize the folder path
+                    if folder_path.endswith("/") and folder_path != "/":
+                        normalized_path = folder_path.rstrip("/")
+                    else:
+                        normalized_path = folder_path
+                    
+                    # Skip root folder placeholders (shouldn't exist anyway)
+                    if normalized_path == "/" or not normalized_path:
+                        continue
+                    
+                    # Check if this placeholder folder now has actual assets
+                    asset_folder_paths = [f.rstrip("/") for f in [item.get("folder_path", "") for item in asset_items] if f and f.strip()]
+                    if normalized_path not in asset_folder_paths:
+                        # Still a placeholder - add to folders
+                        folder_set.add(normalized_path)
+                    else:
+                        # Placeholder has assets now - mark for cleanup
+                        placeholder_folders_with_assets.add(item.get("id"))
+            
+            # Background cleanup of obsolete placeholders
+            if placeholder_folders_with_assets:
+                try:
+                    for placeholder_id in placeholder_folders_with_assets:
+                        self.container.delete_item(item=placeholder_id, partition_key="folder_placeholder")
+                    logger.info(f"Cleaned up {len(placeholder_folders_with_assets)} obsolete folder placeholders")
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup folder placeholders: {cleanup_error}")
 
             # Convert to sorted list
             sorted_folders = sorted(list(folder_set))
 
-            logger.info(f"Returning {len(sorted_folders)} unique folders")
+            logger.info(f"Returning {len(sorted_folders)} unique folders (including placeholders)")
             logger.debug(f"Folders: {sorted_folders}")
 
             return {

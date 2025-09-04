@@ -680,12 +680,7 @@ export function ImageDetailView({
                     </div>
                   )}
                   
-                  {imageStats?.fileSize && (
-                    <div className="p-2 rounded-md border border-border/30 bg-muted/20">
-                      <dt className="text-xs text-muted-foreground mb-1">File Size</dt>
-                      <dd className="font-medium">{imageStats.fileSize}</dd>
-                    </div>
-                  )}
+                  {/* File Size removed - not needed in UI */}
                   
                   {image.originalItem?.metadata?.has_transparency === "true" && (
                     <div className="p-2 rounded-md border border-border/30 bg-muted/20">
@@ -710,7 +705,13 @@ export function ImageDetailView({
               
               {/* Additional metadata */}
               {image.originalItem?.metadata && Object.entries(image.originalItem.metadata).filter(
-                ([key]) => !['prompt', 'description', 'has_transparency', 'width', 'height', 'createdAt', 'created_at', 'tags', 'analysis', 'has_analysis', 'summary', 'products', 'feedback'].includes(key)
+                ([key, value]) => {
+                  // Exclude core metadata fields that are displayed elsewhere
+                  const excludedKeys = ['prompt', 'description', 'has_transparency', 'width', 'height', 'createdAt', 'created_at', 'tags', 'analysis', 'has_analysis', 'summary', 'products', 'feedback'];
+                  // Also exclude null, undefined, empty string values, and common null-ish values
+                  const hasValidValue = value !== null && value !== undefined && value !== '' && value !== 'null' && value !== 'undefined';
+                  return !excludedKeys.includes(key) && hasValidValue;
+                }
               ).length > 0 && (
                 <div className="bg-card p-4 rounded-lg shadow-sm">
                   <h3 className="text-sm font-medium mb-3 flex items-center border-b pb-2">
@@ -719,7 +720,13 @@ export function ImageDetailView({
                   </h3>
                   <div className="space-y-2">
                     {Object.entries(image.originalItem.metadata)
-                      .filter(([key]) => !['prompt', 'description', 'has_transparency', 'width', 'height', 'createdAt', 'created_at', 'tags', 'analysis', 'has_analysis', 'summary', 'products', 'feedback'].includes(key))
+                      .filter(([key, value]) => {
+                        // Exclude core metadata fields that are displayed elsewhere
+                        const excludedKeys = ['prompt', 'description', 'has_transparency', 'width', 'height', 'createdAt', 'created_at', 'tags', 'analysis', 'has_analysis', 'summary', 'products', 'feedback'];
+                        // Also exclude null, undefined, empty string values, and common null-ish values
+                        const hasValidValue = value !== null && value !== undefined && value !== '' && value !== 'null' && value !== 'undefined';
+                        return !excludedKeys.includes(key) && hasValidValue;
+                      })
                       .map(([key, value]) => (
                         <div key={key} className="p-2 rounded-md border border-border/30 bg-muted/20">
                           <dt className="text-xs text-muted-foreground mb-1">{key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ')}</dt>
