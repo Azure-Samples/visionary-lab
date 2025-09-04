@@ -67,7 +67,8 @@ async def get_asset_metadata(
     try:
         metadata = cosmos_service.get_asset_metadata(asset_id, media_type)
         if not metadata:
-            raise HTTPException(status_code=404, detail="Asset metadata not found")
+            raise HTTPException(
+                status_code=404, detail="Asset metadata not found")
 
         return AssetMetadataResponse(
             success=True,
@@ -94,7 +95,8 @@ async def update_asset_metadata(
         updates = request.dict(exclude_unset=True, exclude_none=True)
 
         if not updates:
-            raise HTTPException(status_code=400, detail="No valid updates provided")
+            raise HTTPException(
+                status_code=400, detail="No valid updates provided")
 
         updated_metadata = cosmos_service.update_asset_metadata(
             asset_id, media_type, updates
@@ -123,7 +125,8 @@ async def delete_asset_metadata(
         success = cosmos_service.delete_asset_metadata(asset_id, media_type)
 
         if not success:
-            raise HTTPException(status_code=404, detail="Asset metadata not found")
+            raise HTTPException(
+                status_code=404, detail="Asset metadata not found")
 
         return {
             "success": True,
@@ -139,10 +142,14 @@ async def delete_asset_metadata(
 
 @router.get("/", response_model=AssetMetadataListResponse)
 async def list_asset_metadata(
-    media_type: Optional[str] = Query(None, description="Filter by media type"),
-    folder_path: Optional[str] = Query(None, description="Filter by folder path"),
-    tags: Optional[str] = Query(None, description="Comma-separated tags to filter by"),
-    limit: int = Query(50, description="Maximum number of results", ge=1, le=100),
+    media_type: Optional[str] = Query(
+        None, description="Filter by media type"),
+    folder_path: Optional[str] = Query(
+        None, description="Filter by folder path"),
+    tags: Optional[str] = Query(
+        None, description="Comma-separated tags to filter by"),
+    limit: int = Query(
+        50, description="Maximum number of results", ge=1, le=100),
     offset: int = Query(0, description="Number of results to skip", ge=0),
     order_by: str = Query("created_at", description="Field to order by"),
     order_desc: bool = Query(True, description="Order in descending order"),
@@ -233,7 +240,8 @@ async def search_asset_metadata(
 
 @router.get("/stats/folders", response_model=FolderStatsResponse)
 async def get_folder_statistics(
-    media_type: Optional[str] = Query(None, description="Filter by media type"),
+    media_type: Optional[str] = Query(
+        None, description="Filter by media type"),
     cosmos_service: CosmosDBService = Depends(get_cosmos_service),
 ):
     """Get folder usage statistics"""
@@ -253,13 +261,16 @@ async def get_folder_statistics(
 
 @router.get("/recent", response_model=RecentAssetsResponse)
 async def get_recent_assets(
-    media_type: Optional[str] = Query(None, description="Filter by media type"),
-    limit: int = Query(20, description="Maximum number of results", ge=1, le=100),
+    media_type: Optional[str] = Query(
+        None, description="Filter by media type"),
+    limit: int = Query(
+        20, description="Maximum number of results", ge=1, le=100),
     cosmos_service: CosmosDBService = Depends(get_cosmos_service),
 ):
     """Get recently created assets"""
     try:
-        items = cosmos_service.get_recent_assets(media_type=media_type, limit=limit)
+        items = cosmos_service.get_recent_assets(
+            media_type=media_type, limit=limit)
 
         # Convert items to AssetMetadata objects
         metadata_items = [AssetMetadata(**item) for item in items]
@@ -342,7 +353,7 @@ async def _sync_metadata_background(
                             # Skip if already exists and not forcing update
                             continue
 
-                        # Create metadata object
+                        # Create basic metadata object (no metadata extracted from blob storage)
                         metadata_dict = {
                             "id": asset_id,
                             "media_type": media_type,
@@ -353,30 +364,11 @@ async def _sync_metadata_background(
                             "size": blob["size"],
                             "content_type": blob.get("content_type"),
                             "folder_path": blob.get("folder_path", ""),
-                            "custom_metadata": blob.get("metadata", {}),
                         }
 
-                        # Extract some metadata from blob metadata if available
-                        blob_metadata = blob.get("metadata", {})
-                        if blob_metadata:
-                            if "prompt" in blob_metadata:
-                                metadata_dict["prompt"] = blob_metadata["prompt"]
-                            if "model" in blob_metadata:
-                                metadata_dict["model"] = blob_metadata["model"]
-                            if "generation_id" in blob_metadata:
-                                metadata_dict["generation_id"] = blob_metadata[
-                                    "generation_id"
-                                ]
-                            if "summary" in blob_metadata:
-                                metadata_dict["summary"] = blob_metadata["summary"]
-                            if "tags" in blob_metadata:
-                                # Parse comma-separated tags
-                                tags_str = blob_metadata["tags"]
-                                metadata_dict["tags"] = [
-                                    tag.strip()
-                                    for tag in tags_str.split(",")
-                                    if tag.strip()
-                                ]
+                        # Note: Since we no longer store metadata in blob storage,
+                        # sync only creates basic records with file information.
+                        # Rich metadata (prompts, tags, etc.) should be added via API calls.
 
                         if existing_metadata:
                             # Update existing metadata
@@ -407,7 +399,8 @@ async def _sync_metadata_background(
                 if not continuation_token:
                     break
 
-            details.append(f"Completed sync for {container}: {processed} processed")
+            details.append(
+                f"Completed sync for {container}: {processed} processed")
 
     except Exception as e:
         logger.error(f"Error in metadata sync background task: {e}")
@@ -424,7 +417,8 @@ async def sync_metadata(
     background_tasks: BackgroundTasks,
     request: MetadataSyncRequest,
     cosmos_service: CosmosDBService = Depends(get_cosmos_service),
-    azure_service: AzureBlobStorageService = Depends(lambda: AzureBlobStorageService()),
+    azure_service: AzureBlobStorageService = Depends(
+        lambda: AzureBlobStorageService()),
 ):
     """Sync blob storage metadata with Cosmos DB"""
     try:

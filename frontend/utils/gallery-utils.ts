@@ -26,11 +26,11 @@ export interface VideoMetadata {
  * Convert GalleryItem to VideoMetadata
  */
 async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMetadata> {
-  // Extract title from metadata or name
-  const title = item.metadata?.title || item.name.split('.')[0].replace(/_/g, ' ');
+  // Extract title from prompt (preferred) or name
+  const title = item.metadata?.prompt || item.name.split('.')[0].replace(/_/g, ' ');
   
-  // Extract prompt from metadata - prioritize prompt over description
-  const description = item.metadata?.prompt || item.metadata?.description || '';
+  // Extract description from metadata
+  const description = item.metadata?.description || '';
   
   // Get direct URL with SAS token
   const src = await sasTokenService.getBlobUrl(item.name, item.media_type === MediaType.VIDEO);
@@ -39,7 +39,7 @@ async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMe
   // Extract analysis metadata if available
   let analysis: VideoMetadata['analysis'] = undefined;
   if (item.metadata) {
-    const hasAnalysis = item.metadata.summary || item.metadata.products || item.metadata.tags || item.metadata.feedback;
+    const hasAnalysis = item.metadata.summary || item.metadata.products || item.metadata.feedback;
     if (hasAnalysis) {
       analysis = {
         summary: item.metadata.summary as string,
@@ -48,13 +48,12 @@ async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMe
         analyzed: item.metadata.analyzed === 'true' || item.metadata.analyzed === true,
       };
       
-      // Parse tags from metadata - they might be stored as comma-separated string
-      if (item.metadata.tags) {
-        if (typeof item.metadata.tags === 'string') {
-          analysis.tags = item.metadata.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
-        } else if (Array.isArray(item.metadata.tags)) {
-          analysis.tags = item.metadata.tags;
-        }
+      // Extract tags - they should now come as a proper array from the API
+      if (Array.isArray(item.metadata.tags)) {
+        analysis.tags = item.metadata.tags;
+      } else if (typeof item.metadata.tags === 'string' && item.metadata.tags.trim()) {
+        // Fallback for comma-separated string format (shouldn't happen with new API)
+        analysis.tags = item.metadata.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
       }
     }
   }
@@ -131,8 +130,8 @@ export async function fetchVideos(
  */
 async function mapGalleryItemToImageMetadata(item: GalleryItem): Promise<ImageMetadata> {
   try {
-    // Extract title from metadata or name
-    const title = item.metadata?.title || item.name.split('.')[0].replace(/_/g, ' ');
+    // Extract title from prompt (preferred) or name
+    const title = item.metadata?.prompt || item.name.split('.')[0].replace(/_/g, ' ');
     
     // Extract description from metadata
     const description = item.metadata?.description || '';
@@ -141,15 +140,24 @@ async function mapGalleryItemToImageMetadata(item: GalleryItem): Promise<ImageMe
     const src = await sasTokenService.getBlobUrl(item.name, false);
     console.log(`Using direct blob URL for ${item.name}`);
     
+    // Extract tags - they should now come as a proper array from the API
+    let tags: string[] = [];
+    if (Array.isArray(item.metadata?.tags)) {
+      tags = item.metadata.tags;
+    } else if (typeof item.metadata?.tags === 'string' && item.metadata.tags.trim()) {
+      // Fallback for comma-separated string format (shouldn't happen with new API)
+      tags = item.metadata.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+    }
+    
     return {
       id: item.id,
       name: item.name,
       src,
       title: title.charAt(0).toUpperCase() + title.slice(1),
       description: description,
-      width: item.metadata?.width ? parseInt(item.metadata.width) : undefined,
-      height: item.metadata?.height ? parseInt(item.metadata.height) : undefined,
-      tags: [],
+      width: item.metadata?.width ? parseInt(String(item.metadata.width)) : undefined,
+      height: item.metadata?.height ? parseInt(String(item.metadata.height)) : undefined,
+      tags: tags,
       size: "medium" as const,
       originalItem: item,
     };

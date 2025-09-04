@@ -114,57 +114,17 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
       setAspectRatio(image.width / image.height);
     }
 
-    // Parse tags from metadata if they exist
+    // Set tags from image metadata - should now come as clean array from API
     const processTags = () => {
-      // First check if image already has tags array
       if (image.tags && image.tags.length > 0) {
         setParsedTags(image.tags);
-        return;
-      }
-
-      // Otherwise check metadata
-      if (image.originalItem?.metadata?.tags) {
-        try {
-          const metadataTags = image.originalItem.metadata.tags;
-          if (typeof metadataTags === 'string') {
-            if (metadataTags.startsWith('[') && metadataTags.endsWith(']')) {
-              // Clean malformed JSON first
-              let cleanedTags = metadataTags;
-              
-              // Fix common malformed patterns
-              cleanedTags = cleanedTags.replace(/"_[^"]*_"/g, (match) => {
-                // Remove underscores at start and end within quotes
-                return match.replace(/^"_|_"$/g, match.startsWith('"_') ? '"' : '"');
-              });
-              
-              // Fix standalone quoted underscores or malformed tokens
-              cleanedTags = cleanedTags.replace(/"_+"/g, '""');
-              cleanedTags = cleanedTags.replace(/,\s*,/g, ',');
-              cleanedTags = cleanedTags.replace(/\[\s*,/g, '[');
-              cleanedTags = cleanedTags.replace(/,\s*\]/g, ']');
-              
-              // Parse JSON array format
-              const tags = JSON.parse(cleanedTags);
-              // Filter out empty strings and clean remaining tags
-              setParsedTags(
-                tags
-                  .filter((tag: string) => tag && tag.trim() !== '')
-                  .map((tag: string) => tag.replace(/^_|_$/g, ''))
-              );
-            } else {
-              // Parse comma-separated format
-              setParsedTags(metadataTags.split(',').map(tag => tag.trim().replace(/^_|_$/g, '')));
-            }
-          }
-        } catch (e) {
-          console.warn("Failed to parse tags from metadata:", e);
-          setParsedTags([]);
-        }
+      } else {
+        setParsedTags([]);
       }
     };
 
     processTags();
-  }, [image.width, image.height, index, image.tags, image.originalItem?.metadata?.tags]);
+  }, [image.width, image.height, index, image.tags]);
 
   // Handle image load
   const handleImageLoad = () => {

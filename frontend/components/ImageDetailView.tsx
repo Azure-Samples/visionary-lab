@@ -582,91 +582,23 @@ export function ImageDetailView({
               )}
               
               {/* Tags */}
-              {(() => {
-                // Check for tags in either image.tags or metadata
-                let tags = image.tags || [];
-                
-                // If metadata contains tags in string format, try to parse those
-                if (image.originalItem?.metadata?.tags && (!tags.length || tags.length === 0)) {
-                  try {
-                    const metadataTags = image.originalItem.metadata.tags;
-                    if (typeof metadataTags === 'string') {
-                      if (metadataTags.startsWith('[') && metadataTags.endsWith(']')) {
-                        // Clean the string before parsing by removing quotes around underscores
-                        const cleanedTags = metadataTags.replace(/"_([^"]*?)_"/g, '"$1"');
-                        const parsedTags = JSON.parse(cleanedTags);
-                        // Clean tags by removing underscores at start and end
-                        tags = parsedTags.map((tag: string) => tag.replace(/^_+|_+$/g, ''));
-                      } else {
-                        // Try to parse comma-separated values
-                        tags = metadataTags.split(',').map(tag => tag.trim().replace(/^_+|_+$/g, '').replace(/^"|"$/g, ''));
-                      }
-                    }
-                  } catch (e) {
-                    console.warn("Failed to parse tags from metadata:", e, "Tags string:", image.originalItem.metadata.tags);
-                    // Fallback: try to extract meaningful content
-                    if (typeof image.originalItem.metadata.tags === 'string') {
-                      // Simple fallback parsing for comma-separated or space-separated values
-                      tags = image.originalItem.metadata.tags
-                        .replace(/[\[\]"]/g, '') // Remove brackets and quotes
-                        .split(/[,\s]+/) // Split on commas or spaces
-                        .map(tag => tag.trim().replace(/^_+|_+$/g, '')) // Clean underscores
-                        .filter(tag => tag.length > 0); // Remove empty strings
-                    }
-                  }
-                }
-                
-                // If there are tags to display, show them
-                if (tags && tags.length > 0) {
-                  // Parse tags properly if they are in a string format
-                  let parsedTags = tags;
-                  
-                  // If the first item looks like a JSON string, try to parse it
-                  if (tags.length === 1 && typeof tags[0] === 'string') {
-                    try {
-                      if (tags[0].startsWith('[') && tags[0].endsWith(']')) {
-                        // Clean the string before parsing by removing quotes around underscores
-                        const cleanedTags = tags[0].replace(/"_([^"]*?)_"/g, '"$1"');
-                        const parsed = JSON.parse(cleanedTags);
-                        // Clean tags by removing underscores at start and end
-                        parsedTags = parsed.map((tag: string) => tag.replace(/^_+|_+$/g, ''));
-                      }
-                    } catch (e) {
-                      console.warn("Failed to parse tags:", e, "Tags string:", tags[0]);
-                      // Fallback: try to extract meaningful content
-                      if (typeof tags[0] === 'string') {
-                        parsedTags = tags[0]
-                          .replace(/[\[\]"]/g, '') // Remove brackets and quotes
-                          .split(/[,\s]+/) // Split on commas or spaces
-                          .map(tag => tag.trim().replace(/^_+|_+$/g, '')) // Clean underscores
-                          .filter(tag => tag.length > 0); // Remove empty strings
-                      }
-                    }
-                  }
-                  
-                  return (
-                    <div className="bg-card p-4 rounded-lg shadow-sm">
-                      <h3 className="text-sm font-medium mb-3 flex items-center border-b pb-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                        </svg>
-                        Tags
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {Array.isArray(parsedTags) ? 
-                          parsedTags.map((tag, index) => (
-                            <Badge key={index} variant="secondary" className="flex items-center gap-1 px-2 py-1 rounded-md">
-                              {String(tag).replace(/"/g, '').replace(/^_|_$/g, '')}
-                            </Badge>
-                          )) : null
-                        }
-                      </div>
-                    </div>
-                  );
-                }
-                
-                return null;
-              })()}
+              {image.tags && image.tags.length > 0 && (
+                <div className="bg-card p-4 rounded-lg shadow-sm">
+                  <h3 className="text-sm font-medium mb-3 flex items-center border-b pb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                    </svg>
+                    Tags
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {image.tags.map((tag, index) => (
+                      <Badge key={index} variant="secondary" className="flex items-center gap-1 px-2 py-1 rounded-md">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               {/* Metadata */}
               <div className="bg-card p-4 rounded-lg shadow-sm">

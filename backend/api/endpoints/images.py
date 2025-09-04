@@ -361,7 +361,8 @@ async def edit_image_upload(
                 # Store the file path for the API call
                 image_file_objs.append(temp_path)
 
-                logger.info(f"Saved image {idx + 1} to {temp_path} with format {ext}")
+                logger.info(
+                    f"Saved image {idx + 1} to {temp_path} with format {ext}")
 
             # Process mask if provided
             mask_file_obj = None
@@ -394,7 +395,8 @@ async def edit_image_upload(
                     f.write(mask_contents)
 
                 mask_file_obj = mask_path
-                logger.info(f"Saved mask to {mask_path} with format {mask_ext}")
+                logger.info(
+                    f"Saved mask to {mask_path} with format {mask_ext}")
 
             # Prepare parameters for the OpenAI API call
             logger.info(
@@ -501,10 +503,12 @@ async def edit_image_upload(
                     if os.path.exists(path):
                         os.remove(path)
                 except Exception as e:
-                    logger.warning(f"Failed to remove temp file {path}: {str(e)}")
+                    logger.warning(
+                        f"Failed to remove temp file {path}: {str(e)}")
 
     except Exception as e:
-        logger.error(f"Error in /edit/upload endpoint: {str(e)}", exc_info=True)
+        logger.error(
+            f"Error in /edit/upload endpoint: {str(e)}", exc_info=True)
         # Provide more explicit errors for debugging
         error_detail = str(e)
         if isinstance(e, HTTPException):
@@ -534,7 +538,8 @@ async def save_generated_images(
             )
 
         # Extract image data from the generation response
-        images_data = request.generation_response.imgen_model_response.get("data", [])
+        images_data = request.generation_response.imgen_model_response.get("data", [
+        ])
         if not images_data:
             raise HTTPException(
                 status_code=400, detail="No images found in the generation response"
@@ -619,7 +624,8 @@ async def save_generated_images(
                     continue
 
                 img_file = io.BytesIO(response.content)
-                content_type = response.headers.get("Content-Type", "image/png")
+                content_type = response.headers.get(
+                    "Content-Type", "image/png")
                 ext = content_type.split("/")[-1]
 
                 # Check if image has transparency using PIL and get dimensions
@@ -657,7 +663,8 @@ async def save_generated_images(
                     filename = f"generated_image_{idx + 1}{quality_suffix}.{ext}"
                     filename = normalize_filename(filename)
             else:
-                logger.warning(f"Unsupported image data format for image {idx + 1}")
+                logger.warning(
+                    f"Unsupported image data format for image {idx + 1}")
                 continue
 
             if img_file and filename:
@@ -669,11 +676,11 @@ async def save_generated_images(
                 # Create FastAPI UploadFile object
                 file = UploadFile(filename=filename, file=img_file)
 
-                # Upload to Azure Blob Storage
+                # Upload to Azure Blob Storage (no metadata stored in blob)
                 result = await azure_storage_service.upload_asset(
                     file,
                     MediaType.IMAGE.value,
-                    metadata=img_metadata,
+                    metadata=None,  # No longer store metadata in blob storage
                     folder_path=request.folder_path,
                 )
 
@@ -681,7 +688,8 @@ async def save_generated_images(
                 if cosmos_service:
                     try:
                         # Extract asset ID from blob name
-                        asset_id = result["blob_name"].split(".")[0].split("/")[-1]
+                        asset_id = result["blob_name"].split(
+                            ".")[0].split("/")[-1]
 
                         # Prepare enhanced metadata for Cosmos DB
                         cosmos_metadata = {
@@ -702,7 +710,12 @@ async def save_generated_images(
                             "has_transparency": has_transparency
                             if "has_transparency" in locals()
                             else None,
-                            "custom_metadata": img_metadata,
+                            # Add dimensions from upload result or metadata
+                            "width": result.get("width") or img_metadata.get("width"),
+                            "height": result.get("height") or img_metadata.get("height"),
+                            # Store remaining metadata as custom_metadata
+                            "custom_metadata": {k: v for k, v in img_metadata.items()
+                                                if k not in ["width", "height"]},
                         }
 
                         # Remove None values
@@ -711,7 +724,8 @@ async def save_generated_images(
                         }
 
                         cosmos_service.create_asset_metadata(cosmos_metadata)
-                        logger.info(f"Created Cosmos DB metadata for image: {asset_id}")
+                        logger.info(
+                            f"Created Cosmos DB metadata for image: {asset_id}")
                     except Exception as cosmos_error:
                         logger.warning(
                             f"Failed to create Cosmos DB metadata for image: {cosmos_error}"
@@ -831,7 +845,8 @@ def analyze_image(req: ImageAnalyzeRequest):
 
                 if has_transparency:
                     # Create a white background
-                    background = Image.new("RGBA", img.size, (255, 255, 255, 255))
+                    background = Image.new(
+                        "RGBA", img.size, (255, 255, 255, 255))
                     # Paste the image on the background
                     background.paste(img, (0, 0), img)
                     # Convert to RGB (remove alpha channel)
@@ -859,7 +874,8 @@ def analyze_image(req: ImageAnalyzeRequest):
                     # Resize the image
                     if has_transparency:
                         # We already have the background image from above
-                        resized_img = background.resize((new_width, new_height))
+                        resized_img = background.resize(
+                            (new_width, new_height))
                     else:
                         resized_img = img.resize((new_width, new_height))
 
@@ -882,7 +898,8 @@ def analyze_image(req: ImageAnalyzeRequest):
 
         # analyze the image using the LLM
         image_analyzer = ImageAnalyzer(llm_client, settings.LLM_DEPLOYMENT)
-        insights = image_analyzer.image_chat(image_base64, analyze_image_system_message)
+        insights = image_analyzer.image_chat(
+            image_base64, analyze_image_system_message)
 
         description = insights.get("description")
         products = insights.get("products")
@@ -895,7 +912,8 @@ def analyze_image(req: ImageAnalyzeRequest):
 
     except Exception as e:
         logger.error(f"Error analyzing image: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error analyzing image: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error analyzing image: {str(e)}")
 
 
 @router.post("/prompt/enhance", response_model=ImagePromptEnhancementResponse)
@@ -924,7 +942,8 @@ def enhance_image_prompt(req: ImagePromptEnhancementRequest):
             model=settings.LLM_DEPLOYMENT,
             response_format={"type": "json_object"},
         )
-        enhanced_prompt = json.loads(response.choices[0].message.content).get("prompt")
+        enhanced_prompt = json.loads(
+            response.choices[0].message.content).get("prompt")
         return ImagePromptEnhancementResponse(enhanced_prompt=enhanced_prompt)
 
     except Exception as e:
@@ -970,7 +989,8 @@ def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
             model=settings.LLM_DEPLOYMENT,
             response_format={"type": "json_object"},
         )
-        enhanced_prompt = json.loads(response.choices[0].message.content).get("prompt")
+        enhanced_prompt = json.loads(
+            response.choices[0].message.content).get("prompt")
         return ImagePromptEnhancementResponse(enhanced_prompt=enhanced_prompt)
 
     except Exception as e:
@@ -1001,7 +1021,8 @@ def generate_image_filename(req: ImageFilenameGenerateRequest):
 
         # Validate prompt
         if not req.prompt or not req.prompt.strip():
-            raise HTTPException(status_code=400, detail="Prompt must not be empty.")
+            raise HTTPException(
+                status_code=400, detail="Prompt must not be empty.")
 
         # Call the LLM to enhance the prompt
         messages = [
@@ -1027,7 +1048,8 @@ def generate_image_filename(req: ImageFilenameGenerateRequest):
 
         # add a sort unique identifier to the filename
         uid = uuid.uuid4()
-        short_uid = base64.urlsafe_b64encode(uid.bytes).rstrip(b"=").decode("ascii")
+        short_uid = base64.urlsafe_b64encode(
+            uid.bytes).rstrip(b"=").decode("ascii")
         filename += f"_{short_uid}"
 
         if req.extension:

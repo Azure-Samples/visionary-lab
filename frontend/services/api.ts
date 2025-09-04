@@ -1261,11 +1261,16 @@ export async function fetchFolders(
     
     // Backend now returns simple string array
     // But keep compatibility check in case of old format
+    interface LegacyFolder {
+      folder_path?: string;
+      id?: string;
+    }
+    
     const folderPaths = data.folders ? 
       (Array.isArray(data.folders) && data.folders.length > 0 && typeof data.folders[0] === 'string' 
-        ? data.folders 
-        : data.folders.map((folder: any) => 
-            typeof folder === 'string' ? folder : folder.folder_path || folder.id
+        ? data.folders as string[]
+        : data.folders.map((folder: string | LegacyFolder) => 
+            typeof folder === 'string' ? folder : folder.folder_path || folder.id || ''
           )
       ) : [];
     

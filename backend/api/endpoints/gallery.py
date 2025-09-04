@@ -64,7 +64,8 @@ async def get_gallery_images(
     folder_path: Optional[str] = Query(
         None, description="Optional folder path to filter assets"
     ),
-    tags: Optional[str] = Query(None, description="Comma-separated tags to filter by"),
+    tags: Optional[str] = Query(
+        None, description="Comma-separated tags to filter by"),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
     """Get gallery images from Cosmos DB metadata ONLY"""
@@ -95,6 +96,9 @@ async def get_gallery_images(
 
         gallery_items = []
         for metadata in result["items"]:
+            # Extract technical metadata from custom_metadata if available
+            custom_meta = metadata.get("custom_metadata", {})
+
             gallery_items.append(
                 GalleryItem(
                     id=metadata["id"],
@@ -107,21 +111,30 @@ async def get_gallery_images(
                     creation_time=metadata["created_at"],
                     last_modified=metadata["updated_at"],
                     metadata={
-                        # Rich metadata from Cosmos DB
-                        "prompt": metadata.get("prompt", ""),
-                        "model": metadata.get("model", ""),
-                        "summary": metadata.get("summary", ""),
-                        "description": metadata.get("description", ""),
-                        "products": metadata.get("products", ""),
-                        "tags": ",".join(metadata.get("tags", [])),
-                        "quality": metadata.get("quality", ""),
-                        "background": metadata.get("background", ""),
-                        "output_format": metadata.get("output_format", ""),
-                        "has_transparency": str(
-                            metadata.get("has_transparency", False)
-                        ),
-                        "generation_id": metadata.get("generation_id", ""),
-                        **metadata.get("custom_metadata", {}),
+                        # Core generation metadata from Cosmos DB (keep proper types)
+                        "prompt": metadata.get("prompt"),
+                        "model": metadata.get("model"),
+                        "summary": metadata.get("summary"),
+                        "description": metadata.get("description"),
+                        "products": metadata.get("products"),
+                        "tags": metadata.get("tags", []),  # Keep as array
+                        "quality": metadata.get("quality"),
+                        "background": metadata.get("background"),
+                        "output_format": metadata.get("output_format"),
+                        "has_transparency": metadata.get("has_transparency"),
+                        "generation_id": metadata.get("generation_id"),
+
+                        # Technical metadata from custom_metadata or direct fields
+                        "width": custom_meta.get("width") or metadata.get("width"),
+                        "height": custom_meta.get("height") or metadata.get("height"),
+                        "createdAt": metadata.get("created_at"),
+
+                        # Analysis metadata
+                        "feedback": metadata.get("feedback"),
+
+                        # Additional custom fields (but don't let them overwrite structured fields)
+                        **{k: v for k, v in custom_meta.items()
+                           if k not in ["width", "height", "tags", "prompt", "description", "summary", "products"]}
                     },
                     folder_path=metadata.get("folder_path", ""),
                 )
@@ -154,7 +167,8 @@ async def get_gallery_videos(
     folder_path: Optional[str] = Query(
         None, description="Optional folder path to filter assets"
     ),
-    tags: Optional[str] = Query(None, description="Comma-separated tags to filter by"),
+    tags: Optional[str] = Query(
+        None, description="Comma-separated tags to filter by"),
     cosmos_service: CosmosDBService = Depends(get_cosmos_service),
 ):
     """Get gallery videos from Cosmos DB metadata ONLY"""
@@ -177,6 +191,9 @@ async def get_gallery_videos(
 
         gallery_items = []
         for metadata in result["items"]:
+            # Extract technical metadata from custom_metadata if available
+            custom_meta = metadata.get("custom_metadata", {})
+
             gallery_items.append(
                 GalleryItem(
                     id=metadata["id"],
@@ -189,18 +206,34 @@ async def get_gallery_videos(
                     creation_time=metadata["created_at"],
                     last_modified=metadata["updated_at"],
                     metadata={
-                        # Rich metadata from Cosmos DB
-                        "prompt": metadata.get("prompt", ""),
-                        "model": metadata.get("model", ""),
-                        "summary": metadata.get("summary", ""),
-                        "description": metadata.get("description", ""),
-                        "products": metadata.get("products", ""),
-                        "tags": ",".join(metadata.get("tags", [])),
-                        "generation_id": metadata.get("generation_id", ""),
-                        "duration": str(metadata.get("duration", "")),
-                        "resolution": metadata.get("resolution", ""),
-                        "fps": str(metadata.get("fps", "")),
-                        **metadata.get("custom_metadata", {}),
+                        # Core generation metadata from Cosmos DB (keep proper types)
+                        "prompt": metadata.get("prompt"),
+                        "model": metadata.get("model"),
+                        "summary": metadata.get("summary"),
+                        "description": metadata.get("description"),
+                        "products": metadata.get("products"),
+                        "tags": metadata.get("tags", []),  # Keep as array
+                        "quality": metadata.get("quality"),
+                        "background": metadata.get("background"),
+                        "output_format": metadata.get("output_format"),
+                        "generation_id": metadata.get("generation_id"),
+
+                        # Video-specific metadata (keep proper types)
+                        "duration": metadata.get("duration"),  # Keep as number
+                        "resolution": metadata.get("resolution"),
+                        "fps": metadata.get("fps"),  # Keep as number
+
+                        # Technical metadata from custom_metadata or direct fields
+                        "width": custom_meta.get("width") or metadata.get("width"),
+                        "height": custom_meta.get("height") or metadata.get("height"),
+                        "createdAt": metadata.get("created_at"),
+
+                        # Analysis metadata
+                        "feedback": metadata.get("feedback"),
+
+                        # Additional custom fields (but don't let them overwrite structured fields)
+                        **{k: v for k, v in custom_meta.items()
+                           if k not in ["width", "height", "tags", "prompt", "description", "summary", "products", "duration", "fps", "resolution"]}
                     },
                     folder_path=metadata.get("folder_path", ""),
                 )
@@ -292,7 +325,10 @@ async def _get_gallery_items_from_cosmos(
 
         gallery_items = []
         for metadata in result["items"]:
-            # Convert Cosmos DB metadata to GalleryItem
+            # Extract technical metadata from custom_metadata if available
+            custom_meta = metadata.get("custom_metadata", {})
+
+            # Convert Cosmos DB metadata to GalleryItem with standardized format
             gallery_items.append(
                 GalleryItem(
                     id=metadata["id"],
@@ -304,7 +340,37 @@ async def _get_gallery_items_from_cosmos(
                     content_type=metadata.get("content_type"),
                     creation_time=metadata["created_at"],
                     last_modified=metadata["updated_at"],
-                    metadata=metadata.get("custom_metadata", {}),
+                    metadata={
+                        # Core generation metadata from Cosmos DB (keep proper types)
+                        "prompt": metadata.get("prompt"),
+                        "model": metadata.get("model"),
+                        "summary": metadata.get("summary"),
+                        "description": metadata.get("description"),
+                        "products": metadata.get("products"),
+                        "tags": metadata.get("tags", []),  # Keep as array
+                        "quality": metadata.get("quality"),
+                        "background": metadata.get("background"),
+                        "output_format": metadata.get("output_format"),
+                        "has_transparency": metadata.get("has_transparency"),
+                        "generation_id": metadata.get("generation_id"),
+
+                        # Technical metadata from custom_metadata or direct fields
+                        "width": custom_meta.get("width") or metadata.get("width"),
+                        "height": custom_meta.get("height") or metadata.get("height"),
+                        "createdAt": metadata.get("created_at"),
+
+                        # Analysis metadata
+                        "feedback": metadata.get("feedback"),
+
+                        # Video-specific metadata
+                        "duration": metadata.get("duration"),
+                        "fps": metadata.get("fps"),
+                        "resolution": metadata.get("resolution"),
+
+                        # Additional custom fields (but don't let them overwrite structured fields)
+                        **{k: v for k, v in custom_meta.items()
+                           if k not in ["width", "height", "tags", "prompt", "description", "summary", "products"]}
+                    },
                     folder_path=metadata.get("folder_path", ""),
                 )
             )
@@ -336,7 +402,8 @@ async def _get_gallery_items_from_storage(
     """Get gallery items using Azure Blob Storage (original implementation)"""
     # Normalize folder path and update prefix if folder_path is provided
     if folder_path is not None:
-        normalized_folder = azure_storage_service.normalize_folder_path(folder_path)
+        normalized_folder = azure_storage_service.normalize_folder_path(
+            folder_path)
         prefix = normalized_folder
 
     # Get images
@@ -410,7 +477,7 @@ async def _get_gallery_items_from_storage(
     )
 
     # Apply offset and limit
-    paginated_items = gallery_items[offset : offset + limit]
+    paginated_items = gallery_items[offset: offset + limit]
 
     # Get continuation token from either result
     continuation = None
@@ -458,7 +525,8 @@ async def upload_asset(
     try:
         # Validate file type
         if media_type == MediaType.IMAGE:
-            valid_types = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"]
+            valid_types = [".jpg", ".jpeg", ".png",
+                           ".gif", ".webp", ".svg", ".bmp"]
         else:  # VIDEO
             valid_types = [".mp4", ".mov", ".avi", ".wmv", ".webm", ".mkv"]
 
@@ -489,25 +557,37 @@ async def upload_asset(
                     status_code=400, detail="Invalid JSON format for metadata"
                 )
 
-        # Upload to Azure Blob Storage
+        # Upload to Azure Blob Storage (no metadata stored in blob)
         result = await azure_storage_service.upload_asset(
-            file, media_type.value, metadata=metadata_dict, folder_path=folder_path
+            file, media_type.value, metadata=None, folder_path=folder_path
         )
 
         # Create metadata record in Cosmos DB if available
         if cosmos_service:
             try:
-                cosmos_metadata = AssetMetadataCreateRequest(
-                    media_type=media_type.value,
-                    blob_name=result["blob_name"],
-                    container=result["container"],
-                    url=result["url"],
-                    filename=result["original_filename"],
-                    size=result["size"],
-                    content_type=result["content_type"],
-                    folder_path=result["folder_path"],
-                    custom_metadata=metadata_dict,
-                )
+                # Prepare metadata for Cosmos DB
+                cosmos_data = {
+                    "media_type": media_type.value,
+                    "blob_name": result["blob_name"],
+                    "container": result["container"],
+                    "url": result["url"],
+                    "filename": result["original_filename"],
+                    "size": result["size"],
+                    "content_type": result["content_type"],
+                    "folder_path": result["folder_path"],
+                }
+
+                # Add dimensions if available from upload result
+                if "width" in result:
+                    cosmos_data["width"] = result["width"]
+                if "height" in result:
+                    cosmos_data["height"] = result["height"]
+
+                # Add custom metadata
+                if metadata_dict:
+                    cosmos_data["custom_metadata"] = metadata_dict
+
+                cosmos_metadata = AssetMetadataCreateRequest(**cosmos_data)
 
                 cosmos_service.create_asset_metadata(
                     cosmos_metadata.dict(exclude_unset=True)
@@ -517,7 +597,8 @@ async def upload_asset(
                 import logging
 
                 logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to create Cosmos DB metadata: {cosmos_error}")
+                logger.warning(
+                    f"Failed to create Cosmos DB metadata: {cosmos_error}")
 
         return AssetUploadResponse(
             success=True,
@@ -583,7 +664,8 @@ async def delete_asset(
                 import logging
 
                 logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to delete Cosmos DB metadata: {cosmos_error}")
+                logger.warning(
+                    f"Failed to delete Cosmos DB metadata: {cosmos_error}")
 
         # Delete from Azure Blob Storage
         success = azure_storage_service.delete_asset(blob_name, container_name)
@@ -631,7 +713,8 @@ async def get_asset_content(
         )
 
         if not content:
-            raise HTTPException(status_code=404, detail=f"Asset not found: {blob_name}")
+            raise HTTPException(
+                status_code=404, detail=f"Asset not found: {blob_name}")
 
         filename = blob_name.split("/")[-1] if "/" in blob_name else blob_name
 
@@ -883,7 +966,7 @@ async def list_folders(
             # Skip root folder for hierarchy building
             if folder_path == '/':
                 continue
-                
+
             # For single-level folders, add directly to hierarchy
             # Since we don't have metadata anymore, just mark as present
             if '/' not in folder_path:
@@ -920,14 +1003,16 @@ async def create_folder(
         # Validate folder name
         folder_path = folder_path.strip()
         if not folder_path:
-            raise HTTPException(status_code=400, detail="Folder path cannot be empty")
+            raise HTTPException(
+                status_code=400, detail="Folder path cannot be empty")
 
         # Remove leading/trailing slashes for consistency
         folder_path = folder_path.strip("/")
-        
+
         # Don't allow creating root folder
         if folder_path == "":
-            raise HTTPException(status_code=400, detail="Cannot create root folder")
+            raise HTTPException(
+                status_code=400, detail="Cannot create root folder")
 
         # Basic validation - allow alphanumeric, hyphens, underscores, spaces
         if not re.match(r"^[a-zA-Z0-9\-_ ]+$", folder_path):
