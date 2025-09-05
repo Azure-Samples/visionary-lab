@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     # Alternative: Managed Identity settings (for Azure-hosted deployments)
     USE_MANAGED_IDENTITY: bool = (
-        False  # Set to True when running on Azure with Managed Identity
+        True  # Default to managed identity for enhanced security
     )
 
     # Azure OpenAI API Version

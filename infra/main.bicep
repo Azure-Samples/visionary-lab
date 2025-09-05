@@ -64,7 +64,7 @@ param API_PORT string = ''
 
 // Environment name for azd
 param environmentName string = ''
-param principalId string = ''
+// param principalId string = '' // Unused parameter removed
 
 // Parameters for Cosmos DB
 param cosmosAccountName string = 'visionary-lab-cosmos'
@@ -203,13 +203,10 @@ module containerAppBackend './modules/containerApp.bicep' = {
     COSMOS_ENDPOINT: cosmosDbMod.outputs.cosmosAccountEndpoint
     COSMOS_DATABASE_NAME: cosmosDbMod.outputs.databaseName
     COSMOS_CONTAINER_NAME: cosmosDbMod.outputs.containerName
-    COSMOS_DB_KEY: cosmosDbMod.outputs.primaryKey
+    // COSMOS_DB_KEY: cosmosDbMod.outputs.primaryKey // Removed for managed identity
     azdServiceName: 'backend'
   }
   dependsOn: [
-    storageAccountMod
-    storageContainerMod
-    containerRegistryMod
     cosmosDbMod
   ]
 }
@@ -245,10 +242,19 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
     azdServiceName: 'frontend'
   }
+}
+
+// Role assignment module - deployed after both Container App and Cosmos DB exist
+module cosmosRoleAssignmentMod './modules/cosmosRoleAssignment.bicep' = {
+  name: 'cosmosRoleAssignmentMod'
+  params: {
+    cosmosAccountName: cosmosAccountName
+    containerAppPrincipalId: containerAppBackend.outputs.containerAppPrincipalId
+    dataContributorRoleId: cosmosDbMod.outputs.dataContributorRoleId
+  }
   dependsOn: [
-    storageAccountMod
-    storageContainerMod
-    containerRegistryMod
+    containerAppBackend
+    cosmosDbMod
   ]
 }
 

@@ -36,8 +36,8 @@ param API_PORT string = '80'
 param COSMOS_ENDPOINT string = ''
 param COSMOS_DATABASE_NAME string = ''
 param COSMOS_CONTAINER_NAME string = ''
-@secure()
-param COSMOS_DB_KEY string = ''
+// @secure()
+// param COSMOS_DB_KEY string = '' // Removed for managed identity
 
 // Azure Container Registry parameters
 param AZURE_CONTAINER_REGISTRY_ENDPOINT string = ''
@@ -52,6 +52,9 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
   tags: azdServiceName != '' ? {
     'azd-service-name': azdServiceName
   } : {}
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     managedEnvironmentId: containerAppEnvId
     configuration: {
@@ -180,8 +183,8 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
               value: COSMOS_CONTAINER_NAME
             }
             {
-              name: 'AZURE_COSMOS_DB_KEY'
-              value: COSMOS_DB_KEY
+              name: 'USE_MANAGED_IDENTITY'
+              value: 'true'
             }
             {
               name: 'AZURE_CONTAINER_REGISTRY_ENDPOINT'
@@ -196,3 +199,4 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
 
 output containerAppId string = containerApp.id
 output containerAppFqdn string = containerApp.properties.configuration.ingress.fqdn
+output containerAppPrincipalId string = deployNew ? containerApp.identity.principalId : ''
