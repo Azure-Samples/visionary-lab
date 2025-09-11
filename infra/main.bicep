@@ -71,6 +71,48 @@ param cosmosAccountName string = 'visionary-lab-cosmos'
 param cosmosDatabaseName string = 'VisionaryLabDB'
 param cosmosContainerName string = 'visionarylab'
 
+// Parameters for Virtual Network
+@description('Virtual network name')
+param vnetName string = 'vnet-${environmentName}'
+@description('VNet address space')
+param vnetAddressSpace string = '10.0.0.0/16'
+@description('Container Apps infrastructure subnet name')
+param subnetName string = 'infrastructure-subnet'
+@description('Container Apps subnet address prefix (minimum /23 for Container Apps)')
+param subnetAddressPrefix string = '10.0.0.0/23'
+@description('Private Endpoints subnet name')
+param privateEndpointSubnetName string = 'private-endpoints'
+@description('Private Endpoints subnet address prefix')
+param privateEndpointSubnetAddressPrefix string = '10.0.2.0/24'
+
+// Virtual Network
+// This module creates a virtual network and subnet for Container Apps integration
+module virtualNetworkMod './modules/virtualNetwork.bicep' = {
+  name: 'virtualNetworkMod'
+  params: {
+    location: location
+    vnetName: vnetName
+    vnetAddressSpace: vnetAddressSpace
+    subnetName: subnetName
+    subnetAddressPrefix: subnetAddressPrefix
+    deployNew: true // set false to reuse an existing VNet
+  }
+}
+
+// Dedicated subnet for Private Endpoints (cannot share Container Apps infra subnet)
+module privateEndpointSubnetMod './modules/privateEndpointSubnet.bicep' = {
+  name: 'privateEndpointSubnetMod'
+  params: {
+    location: location
+    vnetName: virtualNetworkMod.outputs.vnetName
+    privateEndpointSubnetName: privateEndpointSubnetName
+    privateEndpointSubnetAddressPrefix: privateEndpointSubnetAddressPrefix
+  }
+  dependsOn: [
+    virtualNetworkMod
+  ]
+}
+
 // Azure Storage Account
 module storageAccountMod './modules/storageAccount.bicep' = {
   name: 'storageAccountMod'
@@ -118,8 +160,41 @@ module cosmosDbMod './modules/cosmosDb.bicep' = {
     cosmosAccountName: cosmosAccountName
     databaseName: cosmosDatabaseName
     containerName: cosmosContainerName
+    subnetId: '' // Private Endpoint is used; VNet rules not required
     deployNew: true
   }
+  dependsOn: [
+    virtualNetworkMod
+  ]
+}
+
+// Private DNS zone for Cosmos DB Private Link
+module privateDnsZoneMod './modules/privateDnsZone.bicep' = {
+  name: 'privateDnsZoneMod'
+  params: {
+    vnetId: virtualNetworkMod.outputs.vnetId
+    privateDnsZoneName: 'privatelink.documents.azure.com'
+    vnetLinkName: 'pdns-link-${environmentName}'
+  }
+  dependsOn: [
+    virtualNetworkMod
+  ]
+}
+
+// Private Endpoint for Cosmos DB (SQL API)
+module cosmosPrivateEndpointMod './modules/cosmosPrivateEndpoint.bicep' = {
+  name: 'cosmosPrivateEndpointMod'
+  params: {
+    location: location
+    cosmosAccountId: cosmosDbMod.outputs.cosmosAccountId
+    subnetId: privateEndpointSubnetMod.outputs.privateEndpointSubnetId
+    privateDnsZoneId: privateDnsZoneMod.outputs.privateDnsZoneId
+  }
+  dependsOn: [
+    cosmosDbMod
+    privateEndpointSubnetMod
+    privateDnsZoneMod
+  ]
 }
 
 // OpenAI deployment module for LLM
@@ -167,8 +242,12 @@ module containerAppEnvMod './modules/containerAppEnv.bicep' = {
     location: location
     containerAppEnvName: containerAppEnvName
     logAnalyticsWorkspaceName: logAnalyticsWorkspaceName
+    subnetId: virtualNetworkMod.outputs.subnetId
     deployNew: true // set false to reuse an existing environment
   }
+  dependsOn: [
+    virtualNetworkMod
+  ]
 }
 
 // Container App for Backend
@@ -203,7 +282,6 @@ module containerAppBackend './modules/containerApp.bicep' = {
     COSMOS_ENDPOINT: cosmosDbMod.outputs.cosmosAccountEndpoint
     COSMOS_DATABASE_NAME: cosmosDbMod.outputs.databaseName
     COSMOS_CONTAINER_NAME: cosmosDbMod.outputs.containerName
-    // COSMOS_DB_KEY: cosmosDbMod.outputs.primaryKey // Removed for managed identity
     azdServiceName: 'backend'
   }
   dependsOn: [
@@ -271,4 +349,4 @@ output AZURE_BLOB_SERVICE_URL string = storageAccountMod.outputs.storageAccountP
 output COSMOS_DB_ENDPOINT string = cosmosDbMod.outputs.cosmosAccountEndpoint
 output COSMOS_DB_DATABASE_NAME string = cosmosDbMod.outputs.databaseName
 output COSMOS_DB_CONTAINER_NAME string = cosmosDbMod.outputs.containerName
-output COSMOS_DB_PRIMARY_KEY string = cosmosDbMod.outputs.primaryKey
+// Intentionally do not output the Cosmos DB key; using Managed Identity + RBAC

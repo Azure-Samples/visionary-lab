@@ -3,6 +3,7 @@ param cosmosAccountName string
 param databaseName string = 'VisionaryLabDB'
 param containerName string = 'visionarylab'
 param deployNew bool = true
+param subnetId string = ''
 
 // Create a unique name if not provided
 var uniqueCosmosAccountName = cosmosAccountName == '' ? 'cosmos-${uniqueString(resourceGroup().id)}' : cosmosAccountName
@@ -18,7 +19,12 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
   properties: {
     databaseAccountOfferType: 'Standard'
     enableFreeTier: false
-    publicNetworkAccess: 'Enabled'
+    // Disable public access; use Private Endpoint for all traffic
+    publicNetworkAccess: 'Disabled'
+    // Do not bypass network ACLs via trusted Azure services when PNA is disabled
+    networkAclBypass: 'None'
+    // With Private Endpoint, VNet filters are not required
+    isVirtualNetworkFilterEnabled: false
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
     }
@@ -30,6 +36,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
       }
     ]
     capabilities: []
+    virtualNetworkRules: []
   }
 }
 
@@ -133,4 +140,4 @@ output containerName string = visionarylabContainer.name
 output systemAssignedIdentityPrincipalId string = cosmosAccount.identity.principalId
 output dataReaderRoleId string = dataReaderRole.id
 output dataContributorRoleId string = dataContributorRole.id
-output primaryKey string = cosmosAccount.listKeys().primaryMasterKey
+
