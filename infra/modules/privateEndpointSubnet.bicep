@@ -4,6 +4,10 @@ param vnetName string
 param privateEndpointSubnetName string = 'private-endpoints'
 @description('Address prefix for the Private Endpoints subnet')
 param privateEndpointSubnetAddressPrefix string = '10.0.2.0/24'
+@description('Whether to create a new Private Endpoint subnet (false to reuse existing)')
+param deployNew bool = true
+@description('Optional: existing Private Endpoint subnet ID when deployNew is false')
+param existingPrivateEndpointSubnetId string = ''
 
 // Reference existing VNet (created elsewhere)
 resource vNet 'Microsoft.Network/virtualNetworks@2023-09-01' existing = {
@@ -11,7 +15,7 @@ resource vNet 'Microsoft.Network/virtualNetworks@2023-09-01' existing = {
 }
 
 // Dedicated subnet for Private Endpoints
-resource privateEndpointSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' = {
+resource privateEndpointSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' = if (deployNew) {
   parent: vNet
   name: privateEndpointSubnetName
   properties: {
@@ -22,6 +26,11 @@ resource privateEndpointSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-0
   }
 }
 
-output privateEndpointSubnetId string = privateEndpointSubnet.id
-output privateEndpointSubnetName string = privateEndpointSubnet.name
+// Existing reference when not deploying new
+resource existingPeSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' existing = if (!deployNew && length(existingPrivateEndpointSubnetId) == 0) {
+  parent: vNet
+  name: privateEndpointSubnetName
+}
 
+output privateEndpointSubnetId string = deployNew ? privateEndpointSubnet.id : (length(existingPrivateEndpointSubnetId) > 0 ? existingPrivateEndpointSubnetId : existingPeSubnet.id)
+output privateEndpointSubnetName string = deployNew ? privateEndpointSubnet.name : (length(existingPrivateEndpointSubnetId) > 0 ? last(split(existingPrivateEndpointSubnetId, '/')) : existingPeSubnet.name)

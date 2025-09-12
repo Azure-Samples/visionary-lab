@@ -80,10 +80,16 @@ param vnetAddressSpace string = '10.0.0.0/16'
 param subnetName string = 'infrastructure-subnet'
 @description('Container Apps subnet address prefix (minimum /23 for Container Apps)')
 param subnetAddressPrefix string = '10.0.0.0/23'
+@description('Optional: existing VNet ID to reuse (set deployNew=false)')
+param existingVnetId string = ''
+@description('Optional: existing Subnet ID to reuse (set deployNew=false)')
+param existingSubnetId string = ''
 @description('Private Endpoints subnet name')
 param privateEndpointSubnetName string = 'private-endpoints'
 @description('Private Endpoints subnet address prefix')
 param privateEndpointSubnetAddressPrefix string = '10.0.2.0/24'
+@description('Optional: existing Private Endpoint Subnet ID to reuse (set deployNew=false)')
+param existingPrivateEndpointSubnetId string = ''
 
 // Virtual Network
 // This module creates a virtual network and subnet for Container Apps integration
@@ -95,7 +101,10 @@ module virtualNetworkMod './modules/virtualNetwork.bicep' = {
     vnetAddressSpace: vnetAddressSpace
     subnetName: subnetName
     subnetAddressPrefix: subnetAddressPrefix
-    deployNew: true // set false to reuse an existing VNet
+    // If existing IDs provided, reuse VNet/Subnet instead of creating
+    deployNew: length(existingVnetId) > 0 || length(existingSubnetId) > 0 ? false : true
+    existingVnetId: existingVnetId
+    existingSubnetId: existingSubnetId
   }
 }
 
@@ -107,6 +116,9 @@ module privateEndpointSubnetMod './modules/privateEndpointSubnet.bicep' = {
     vnetName: virtualNetworkMod.outputs.vnetName
     privateEndpointSubnetName: privateEndpointSubnetName
     privateEndpointSubnetAddressPrefix: privateEndpointSubnetAddressPrefix
+    // If an existing PE subnet ID is provided, do not attempt to create
+    deployNew: length(existingPrivateEndpointSubnetId) > 0 ? false : true
+    existingPrivateEndpointSubnetId: existingPrivateEndpointSubnetId
   }
   dependsOn: [
     virtualNetworkMod
@@ -153,11 +165,14 @@ module containerRegistryMod './modules/containerRegistry.bicep' = {
 // Add this module after your storage modules
 // Azure Cosmos DB Account for Visionary Lab
 // This module creates a Cosmos DB account with SQL API for storing Visionary Lab data
+// Generate a short, stable prefix per environment to avoid name collisions across deployments
+var cosmosPrefix = toLower(substring(uniqueString(resourceGroup().id, environmentName), 0, 5))
+var cosmosAccountNamePrefixed = '${cosmosPrefix}-${cosmosAccountName}'
 module cosmosDbMod './modules/cosmosDb.bicep' = {
   name: 'cosmosDbMod'
   params: {
     location: location
-    cosmosAccountName: cosmosAccountName
+    cosmosAccountName: cosmosAccountNamePrefixed
     databaseName: cosmosDatabaseName
     containerName: cosmosContainerName
     subnetId: '' // Private Endpoint is used; VNet rules not required
@@ -326,7 +341,7 @@ module containerAppFrontend './modules/containerApp.bicep' = {
 module cosmosRoleAssignmentMod './modules/cosmosRoleAssignment.bicep' = {
   name: 'cosmosRoleAssignmentMod'
   params: {
-    cosmosAccountName: cosmosAccountName
+    cosmosAccountName: cosmosAccountNamePrefixed
     containerAppPrincipalId: containerAppBackend.outputs.containerAppPrincipalId
     dataContributorRoleId: cosmosDbMod.outputs.dataContributorRoleId
   }
