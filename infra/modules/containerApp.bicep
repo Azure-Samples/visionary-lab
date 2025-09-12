@@ -193,6 +193,10 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
           ]
         }
       ]
+      // Keep at least one replica running to avoid scale-to-zero
+      scale: {
+        minReplicas: 1
+      }
     }
   }
 }
