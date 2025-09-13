@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings
 from typing import List, Optional
-from pydantic import Extra
+from pydantic import Extra, Field, validator
 
 
 class Settings(BaseSettings):
@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     AZURE_BLOB_IMAGE_CONTAINER: str = "images"  # Container name for images
     AZURE_BLOB_VIDEO_CONTAINER: str = "videos"  # Container name for videos
 
+    # CORS Configuration
+    CORS_ALLOWED_ORIGINS: str = Field(
+        default="*",
+        description="Comma-separated list of allowed CORS origins, or * for all origins"
+    )
+
     # Azure Cosmos DB Settings
     AZURE_COSMOS_DB_ENDPOINT: Optional[str] = None  # Cosmos DB endpoint URL
     AZURE_COSMOS_DB_KEY: Optional[str] = None  # Cosmos DB primary key
@@ -78,6 +84,29 @@ class Settings(BaseSettings):
     GPT_IMAGE_ALLOW_TRANSPARENT: bool = True
     # Max file size in MB for image uploads
     GPT_IMAGE_MAX_FILE_SIZE_MB: int = 25
+
+    @validator('CORS_ALLOWED_ORIGINS')
+    def validate_cors_origins(cls, v):
+        """Validate CORS origins configuration to prevent Azure InvalidXmlNodeValue errors"""
+        if v == "*":
+            return v
+        
+        # Split and clean origins
+        origins = [origin.strip() for origin in v.split(",") if origin.strip()]
+        
+        # Check if wildcard is mixed with specific origins
+        if "*" in origins and len(origins) > 1:
+            raise ValueError(
+                "Cannot mix wildcard '*' with specific origins in CORS configuration. "
+                "Use either '*' alone for all origins, or specify individual origins without '*'."
+            )
+        
+        # Validate origin format (basic URL validation)
+        for origin in origins:
+            if origin != "*" and not (origin.startswith("http://") or origin.startswith("https://")):
+                raise ValueError(f"Invalid origin format: {origin}. Origins must start with http:// or https://")
+        
+        return v
 
     class Config:
         env_file = "../.env"

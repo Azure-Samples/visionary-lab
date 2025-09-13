@@ -50,7 +50,10 @@ logger = logging.getLogger(__name__)
 def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
     try:
-        if settings.AZURE_COSMOS_DB_ENDPOINT and settings.AZURE_COSMOS_DB_KEY:
+        # Check if we have either managed identity or key-based auth configured
+        if settings.AZURE_COSMOS_DB_ENDPOINT and (
+            settings.USE_MANAGED_IDENTITY or settings.AZURE_COSMOS_DB_KEY
+        ):
             return CosmosDBService()
         return None
     except Exception as e:
@@ -189,6 +192,13 @@ def create_video_generation_with_analysis(
     import requests
 
     try:
+        # Log service availability for debugging
+        logger.info(f"Cosmos DB service available: {cosmos_service is not None}")
+        logger.info(f"Cosmos DB config - Endpoint: {settings.AZURE_COSMOS_DB_ENDPOINT is not None}, "
+                   f"Use Managed Identity: {settings.USE_MANAGED_IDENTITY}, "
+                   f"Has Key: {settings.AZURE_COSMOS_DB_KEY is not None}")
+        if cosmos_service:
+            logger.info("Cosmos DB service initialized successfully for video generation")
         # Ensure required clients are available
         if sora_client is None:
             raise HTTPException(
@@ -449,16 +459,21 @@ def create_video_generation_with_analysis(
                                         },
                                     }
 
+                                    logger.info(f"Attempting to create Cosmos DB metadata for video: {asset_id}")
                                     cosmos_service.create_asset_metadata(
                                         cosmos_metadata
                                     )
                                     logger.info(
-                                        f"Created Cosmos DB metadata for video: {asset_id}"
+                                        f"Successfully created Cosmos DB metadata for video: {asset_id}"
                                     )
                                 except Exception as cosmos_error:
-                                    logger.warning(
-                                        f"Failed to create Cosmos DB metadata for video: {cosmos_error}"
+                                    logger.error(
+                                        f"Failed to create Cosmos DB metadata for video {asset_id}: {cosmos_error}"
                                     )
+                                    import traceback
+                                    logger.error(f"Cosmos DB error traceback: {traceback.format_exc()}")
+                            else:
+                                logger.warning(f"Cosmos DB service not available - skipping metadata creation for video {generation_id}")
 
                         except Exception as upload_error:
                             logger.warning(

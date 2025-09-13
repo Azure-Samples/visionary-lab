@@ -61,6 +61,13 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
       ingress: {
         external: true
         targetPort: targetPort
+        transport: 'auto'  // Automatically handles HTTP->HTTPS redirect
+        traffic: [
+          {
+            weight: 100
+            latestRevision: true
+          }
+        ]
       }
       registries: AZURE_CONTAINER_REGISTRY_ENDPOINT != '' ? [
         {
@@ -85,6 +92,18 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
             cpu: 1
             memory: '2Gi'
           }
+          probes: [
+            {
+              type: 'Readiness'
+              httpGet: {
+                path: '/'
+                port: targetPort
+                scheme: 'HTTP'
+              }
+              initialDelaySeconds: 10
+              periodSeconds: 10
+            }
+          ]
           env: [
             {
               name: 'MODEL_PROVIDER'

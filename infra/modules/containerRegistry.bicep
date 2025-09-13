@@ -2,7 +2,8 @@ param location string
 param containerRegistryName string
 param deployNew bool = true
 
-resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-01-01-preview' = if(deployNew) {
+// Use stable API version for ACR
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' = if(deployNew) {
   name: containerRegistryName
   location: location
   sku: {
@@ -14,7 +15,7 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-01-01-pr
 }
 
 // Reference existing registry when not deploying new
-resource existingRegistry 'Microsoft.ContainerRegistry/registries@2023-01-01-preview' existing = if(!deployNew) {
+resource existingRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = if(!deployNew) {
   name: containerRegistryName
 }
 
