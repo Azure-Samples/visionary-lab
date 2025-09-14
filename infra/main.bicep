@@ -71,59 +71,7 @@ param cosmosAccountName string = 'visionary-lab-cosmos'
 param cosmosDatabaseName string = 'VisionaryLabDB'
 param cosmosContainerName string = 'visionarylab'
 
-// Parameters for Virtual Network
-@description('Virtual network name')
-param vnetName string = 'vnet-${environmentName}'
-@description('VNet address space')
-param vnetAddressSpace string = '10.0.0.0/16'
-@description('Container Apps infrastructure subnet name')
-param subnetName string = 'infrastructure-subnet'
-@description('Container Apps subnet address prefix (minimum /23 for Container Apps)')
-param subnetAddressPrefix string = '10.0.0.0/23'
-@description('Optional: existing VNet ID to reuse (set deployNew=false)')
-param existingVnetId string = ''
-@description('Optional: existing Subnet ID to reuse (set deployNew=false)')
-param existingSubnetId string = ''
-@description('Private Endpoints subnet name')
-param privateEndpointSubnetName string = 'private-endpoints'
-@description('Private Endpoints subnet address prefix')
-param privateEndpointSubnetAddressPrefix string = '10.0.2.0/24'
-@description('Optional: existing Private Endpoint Subnet ID to reuse (set deployNew=false)')
-param existingPrivateEndpointSubnetId string = ''
-
-// Virtual Network
-// This module creates a virtual network and subnet for Container Apps integration
-module virtualNetworkMod './modules/virtualNetwork.bicep' = {
-  name: 'virtualNetworkMod'
-  params: {
-    location: location
-    vnetName: vnetName
-    vnetAddressSpace: vnetAddressSpace
-    subnetName: subnetName
-    subnetAddressPrefix: subnetAddressPrefix
-    // If existing IDs provided, reuse VNet/Subnet instead of creating
-    deployNew: length(existingVnetId) > 0 || length(existingSubnetId) > 0 ? false : true
-    existingVnetId: existingVnetId
-    existingSubnetId: existingSubnetId
-  }
-}
-
-// Dedicated subnet for Private Endpoints (cannot share Container Apps infra subnet)
-module privateEndpointSubnetMod './modules/privateEndpointSubnet.bicep' = {
-  name: 'privateEndpointSubnetMod'
-  params: {
-    location: location
-    vnetName: virtualNetworkMod.outputs.vnetName
-    privateEndpointSubnetName: privateEndpointSubnetName
-    privateEndpointSubnetAddressPrefix: privateEndpointSubnetAddressPrefix
-    // If an existing PE subnet ID is provided, do not attempt to create
-    deployNew: length(existingPrivateEndpointSubnetId) > 0 ? false : true
-    existingPrivateEndpointSubnetId: existingPrivateEndpointSubnetId
-  }
-  dependsOn: [
-    virtualNetworkMod
-  ]
-}
+// No Virtual Network or Private Endpoints in public-only mode
 
 // Azure Storage Account
 module storageAccountMod './modules/storageAccount.bicep' = {
@@ -177,40 +125,11 @@ module cosmosDbMod './modules/cosmosDb.bicep' = {
     containerName: cosmosContainerName
     subnetId: '' // Private Endpoint is used; VNet rules not required
     deployNew: true
+    publicNetworkAccess: 'Enabled'
   }
-  dependsOn: [
-    virtualNetworkMod
-  ]
 }
 
-// Private DNS zone for Cosmos DB Private Link
-module privateDnsZoneMod './modules/privateDnsZone.bicep' = {
-  name: 'privateDnsZoneMod'
-  params: {
-    vnetId: virtualNetworkMod.outputs.vnetId
-    privateDnsZoneName: 'privatelink.documents.azure.com'
-    vnetLinkName: 'pdns-link-${environmentName}'
-  }
-  dependsOn: [
-    virtualNetworkMod
-  ]
-}
-
-// Private Endpoint for Cosmos DB (SQL API)
-module cosmosPrivateEndpointMod './modules/cosmosPrivateEndpoint.bicep' = {
-  name: 'cosmosPrivateEndpointMod'
-  params: {
-    location: location
-    cosmosAccountId: cosmosDbMod.outputs.cosmosAccountId
-    subnetId: privateEndpointSubnetMod.outputs.privateEndpointSubnetId
-    privateDnsZoneId: privateDnsZoneMod.outputs.privateDnsZoneId
-  }
-  dependsOn: [
-    cosmosDbMod
-    privateEndpointSubnetMod
-    privateDnsZoneMod
-  ]
-}
+// No Private DNS or Private Endpoints in public-only mode
 
 // OpenAI deployment module for LLM
 // This module creates an OpenAI deployment for the LLM model
@@ -257,12 +176,9 @@ module containerAppEnvMod './modules/containerAppEnv.bicep' = {
     location: location
     containerAppEnvName: containerAppEnvName
     logAnalyticsWorkspaceName: logAnalyticsWorkspaceName
-    subnetId: virtualNetworkMod.outputs.subnetId
+    subnetId: ''
     deployNew: true // set false to reuse an existing environment
   }
-  dependsOn: [
-    virtualNetworkMod
-  ]
 }
 
 // Container App for Backend
@@ -332,7 +248,8 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     LLM_AOAI_API_KEY: LLM_AOAI_API_KEY
     API_PROTOCOL: API_PROTOCOL == '' ? 'https' : API_PROTOCOL
     API_PORT: API_PORT == '' ? '443' : API_PORT
-    API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.internal.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
+    // Use the backend external FQDN (public Internet)
+    API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
     azdServiceName: 'frontend'
   }
 }
@@ -355,8 +272,9 @@ module cosmosRoleAssignmentMod './modules/cosmosRoleAssignment.bicep' = {
 output AZURE_LOCATION string = location
 output AZURE_CONTAINER_ENVIRONMENT_NAME string = containerAppEnvMod.outputs.containerAppEnvId
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistryMod.outputs.containerRegistryLoginServer
-output BACKEND_URI string = 'https://${containerAppBackend.outputs.containerAppFqdn}' // External access for debugging
-output BACKEND_INTERNAL_URI string = 'https://${containerAppNameBackend}.internal.${containerAppEnvMod.outputs.containerAppDefaultDomain}' // Internal access
+output BACKEND_URI string = 'https://${containerAppBackend.outputs.containerAppFqdn}'
+// Internal URI not used in public-only mode; mirror external for compatibility
+output BACKEND_INTERNAL_URI string = 'https://${containerAppBackend.outputs.containerAppFqdn}'
 output FRONTEND_URI string = 'https://${containerAppFrontend.outputs.containerAppFqdn}'
 output AZURE_STORAGE_ACCOUNT_NAME string = storageAccountName
 output AZURE_BLOB_SERVICE_URL string = storageAccountMod.outputs.storageAccountPrimaryEndpoint

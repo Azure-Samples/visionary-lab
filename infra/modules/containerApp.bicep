@@ -46,7 +46,7 @@ param AZURE_CONTAINER_REGISTRY_USERNAME string = ''
 @secure()
 param AZURE_CONTAINER_REGISTRY_PASSWORD string = ''
 
-resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
+resource containerApp 'Microsoft.App/containerApps@2024-03-01' = if(deployNew) {
   name: containerAppName
   location: location
   tags: azdServiceName != '' ? {
@@ -59,9 +59,9 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
     managedEnvironmentId: containerAppEnvId
     configuration: {
       ingress: {
-        external: azdServiceName == 'frontend' ? true : false  // Frontend external, backend internal
+        external: true
         targetPort: targetPort
-        transport: 'auto'  // Automatically handles HTTP->HTTPS redirect
+        transport: 'Auto'
         traffic: [
           {
             weight: 100
