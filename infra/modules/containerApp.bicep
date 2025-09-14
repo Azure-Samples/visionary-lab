@@ -59,7 +59,7 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
     managedEnvironmentId: containerAppEnvId
     configuration: {
       ingress: {
-        external: true
+        external: azdServiceName == 'frontend' ? true : false  // Frontend external, backend internal
         targetPort: targetPort
         transport: 'auto'  // Automatically handles HTTP->HTTPS redirect
         traffic: [

@@ -332,7 +332,7 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     LLM_AOAI_API_KEY: LLM_AOAI_API_KEY
     API_PROTOCOL: API_PROTOCOL == '' ? 'https' : API_PROTOCOL
     API_PORT: API_PORT == '' ? '443' : API_PORT
-    API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
+    API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.internal.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
     azdServiceName: 'frontend'
   }
 }
@@ -355,7 +355,8 @@ module cosmosRoleAssignmentMod './modules/cosmosRoleAssignment.bicep' = {
 output AZURE_LOCATION string = location
 output AZURE_CONTAINER_ENVIRONMENT_NAME string = containerAppEnvMod.outputs.containerAppEnvId
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistryMod.outputs.containerRegistryLoginServer
-output BACKEND_URI string = 'https://${containerAppBackend.outputs.containerAppFqdn}'
+output BACKEND_URI string = 'https://${containerAppBackend.outputs.containerAppFqdn}' // External access for debugging
+output BACKEND_INTERNAL_URI string = 'https://${containerAppNameBackend}.internal.${containerAppEnvMod.outputs.containerAppDefaultDomain}' // Internal access
 output FRONTEND_URI string = 'https://${containerAppFrontend.outputs.containerAppFqdn}'
 output AZURE_STORAGE_ACCOUNT_NAME string = storageAccountName
 output AZURE_BLOB_SERVICE_URL string = storageAccountMod.outputs.storageAccountPrimaryEndpoint
