@@ -35,6 +35,7 @@ console.log(`- NEXT_PUBLIC_API_PORT: ${process.env.NEXT_PUBLIC_API_PORT || 'not 
 
 // Enable debug mode to log API requests
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
+const DEBUG = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
 
 // Types for API requests and responses
 export interface VideoGenerationRequest {
@@ -44,6 +45,11 @@ export interface VideoGenerationRequest {
   height: number;
   width: number;
   metadata?: Record<string, string>;
+  // NEW: Optional source images for image+text to video
+  sourceImages?: File[];
+  // Optional direct fields for form usage
+  folder_path?: string;
+  analyze_video?: boolean;
   // NEW: Optional source images for image+text to video
   sourceImages?: File[];
   // Optional direct fields for form usage
@@ -147,7 +153,34 @@ export interface TokenUsage {
   input_tokens_details?: InputTokensDetails;
 }
 
+export interface InputTokensDetails {
+  text_tokens?: number;
+  image_tokens?: number;
+}
+
+export interface TokenUsage {
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  input_tokens_details?: InputTokensDetails;
+}
+
 export interface ImageGenerationResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  imgen_model_response?: {
+    created?: number;
+    data?: Array<{
+      url?: string;
+      b64_json?: string;
+      revised_prompt?: string;
+      [key: string]: unknown;
+    }>;
+    [key: string]: unknown;
+  };
+  token_usage?: TokenUsage;
+  [key: string]: unknown;
   success: boolean;
   message?: string;
   error?: string;
@@ -311,8 +344,38 @@ export async function createVideoGenerationJob(request: VideoGenerationRequest):
     }
   }
 
+  // Always use multipart form data to match backend's Form/File signature
+  const formData = new FormData();
+  formData.append('prompt', request.prompt);
+  formData.append('n_variants', String(request.n_variants));
+  formData.append('n_seconds', String(request.n_seconds));
+  formData.append('height', String(request.height));
+  formData.append('width', String(request.width));
+
+  // Derive folder_path from either explicit field or metadata.folder
+  const folderPath = request.folder_path || request.metadata?.folder;
+  if (folderPath) {
+    formData.append('folder_path', folderPath);
+  }
+
+  // Derive analyze_video from explicit field or metadata.analyzeVideo
+  const analyze = typeof request.analyze_video === 'boolean'
+    ? request.analyze_video
+    : (typeof request.metadata?.analyzeVideo === 'string' ? request.metadata?.analyzeVideo === 'true' : undefined);
+  if (typeof analyze === 'boolean') {
+    formData.append('analyze_video', String(analyze));
+  }
+
+  // Append images if provided
+  if (request.sourceImages && request.sourceImages.length > 0) {
+    for (const file of request.sourceImages) {
+      formData.append('images', file, file.name);
+    }
+  }
+
   const response = await fetch(url, {
     method: 'POST',
+    body: formData,
     body: formData,
   });
 
@@ -865,6 +928,8 @@ export interface VideoGenerationWithAnalysisRequest {
   width: number;
   analyze_video: boolean;
   metadata?: Record<string, string>;
+  // NEW: Optional source images for image+text
+  sourceImages?: File[];
   // NEW: Optional source images for image+text
   sourceImages?: File[];
 }
@@ -1936,6 +2001,11 @@ export async function createVideoGenerationWithAnalysis(request: VideoGeneration
     return await createVideoGenerationWithAnalysisMultipart(request);
   }
 
+  // If images are present, prefer the multipart unified endpoint
+  if (request.sourceImages && request.sourceImages.length > 0) {
+    return await createVideoGenerationWithAnalysisMultipart(request);
+  }
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -1961,6 +2031,62 @@ export async function createVideoGenerationWithAnalysis(request: VideoGeneration
     console.log('Response data:', data);
   }
   
+  return data;
+}
+
+/**
+ * Unified multipart variant that supports optional images
+ */
+export async function createVideoGenerationWithAnalysisMultipart(request: VideoGenerationWithAnalysisRequest): Promise<VideoGenerationWithAnalysisResponse> {
+  const url = `${API_BASE_URL}/videos/generate-with-analysis/upload`;
+
+  if (DEBUG) {
+    console.log(`Creating video (multipart) with analysis: ${request.prompt}`);
+    console.log(`POST ${url}`);
+  }
+
+  const formData = new FormData();
+  formData.append('prompt', request.prompt);
+  formData.append('n_variants', String(request.n_variants));
+  formData.append('n_seconds', String(request.n_seconds));
+  formData.append('height', String(request.height));
+  formData.append('width', String(request.width));
+  formData.append('analyze_video', String(request.analyze_video));
+
+  // Provide folder via dedicated field for backend convenience
+  const folderFromMeta = request.metadata?.folder;
+  if (folderFromMeta) {
+    formData.append('folder_path', folderFromMeta);
+  }
+
+  // Include metadata JSON if present
+  if (request.metadata) {
+    formData.append('metadata', JSON.stringify(request.metadata));
+  }
+
+  if (request.sourceImages && request.sourceImages.length > 0) {
+    for (const file of request.sourceImages) {
+      formData.append('images', file, file.name);
+    }
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (DEBUG) {
+    console.log(`Response status: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to create video generation with analysis (multipart): ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
   return data;
 }
 
@@ -2072,3 +2198,4 @@ export async function analyzeAndUpdateVideoMetadata(videoName: string): Promise<
     throw error;
   }
 } 
+

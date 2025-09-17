@@ -81,6 +81,7 @@ export async function saveGeneratedImage(
     save_all?: boolean;
     folder_path?: string;
     analyze?: boolean; // NEW: request backend analysis
+    analyze?: boolean; // NEW: request backend analysis
   }
 ): Promise<ApiImageSaveResponse> {
   // Import the saveGeneratedImages function from api.ts
@@ -93,7 +94,14 @@ export async function saveGeneratedImage(
     }
 
     // Call the saveGeneratedImages function with the full generation response
+    if (!generationResponse?.imgen_model_response?.data ||
+        generationResponse.imgen_model_response.data.length === 0) {
+      throw new Error('No image data found in generation response');
+    }
+
+    // Call the saveGeneratedImages function with the full generation response
     return await saveGeneratedImages(
+      generationResponse,
       generationResponse,
       options.prompt || '',
       options.save_all || false,
@@ -101,6 +109,8 @@ export async function saveGeneratedImage(
       options.output_format || 'png',
       options.model || 'gpt-image-1',
       options.background || 'auto',
+      options.size || '1024x1024',
+      options.analyze ?? true // default to true to match older behavior
       options.size || '1024x1024',
       options.analyze ?? true // default to true to match older behavior
     );
@@ -164,3 +174,4 @@ export function getTokenUsage(response: ImageGenerationResponse) {
     output: response.token_usage.output_tokens,
   };
 } 
+
