@@ -41,6 +41,7 @@ htmlcov/
 .git
 .github
 .gitignore
+.azure
 .ipynb_checkpoints/
 *.ipynb
 

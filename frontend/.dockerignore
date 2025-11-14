@@ -8,6 +8,7 @@ node_modules
 # Exclude development files
 .git
 .github
+.azure
 *.md
 .eslintrc
 .prettierrc
