@@ -16,8 +16,8 @@ services:
     language: js
     host: containerapp
     docker:
-      path: Dockerfile
-      context: ./frontend
+      path: ./Dockerfile
+      context: .
 
 hooks:
   postprovision:
