@@ -61,7 +61,6 @@ export interface VideoQueueItem {
 export interface VideoSettings {
   resolution: string;
   duration: number; // This will be parsed from string like "5s"
-  variants: number; // This will be parsed from string like "2"
   aspectRatio: string; // Added aspectRatio
   fps?: number;
   brandsProtection?: string; // Add brand protection mode
@@ -70,6 +69,9 @@ export interface VideoSettings {
   analyzeVideo?: boolean; // Add video analysis setting
   // NEW: Optional source images for Image+Text to Video
   sourceImages?: File[];
+  // Sora 2 NEW: Cameo and Remix settings
+  selectedCameo?: string | null;
+  remixVideoId?: string | null;
 }
 
 interface VideoQueueContextType {
@@ -336,9 +338,11 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
           prompt,
           resolution: settings.resolution,
           duration: settings.duration.toString(), // Convert number to string
-          variants: settings.variants.toString(), // Convert number to string
           aspectRatio: settings.aspectRatio, // Pass aspectRatio
-          fps: settings.fps
+          fps: settings.fps,
+          // Sora 2 NEW: Pass cameo and remix settings
+          selectedCameo: settings.selectedCameo,
+          remixVideoId: settings.remixVideoId
         });
         
         // Add folder information to the job metadata

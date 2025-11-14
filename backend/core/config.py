@@ -69,8 +69,10 @@ class Settings(BaseSettings):
     )
 
     # Azure OpenAI API Version
-    # API version for Azure OpenAI services
     AOAI_API_VERSION: str = "2025-04-01-preview"
+
+    # Note: Sora 2 uses the v1 API path (/openai/v1/videos) without api-version query parameter
+    SORA_API_VERSION: str = "2025-04-01-preview"  # Deprecated - not used by Sora 2 v1 API
 
     # File storage paths
     UPLOAD_DIR: str = "./static/uploads"

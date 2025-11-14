@@ -11,7 +11,7 @@ from azure.storage.blob import generate_container_sas, ContainerSasPermissions
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize Sora client
+# Initialize Sora 2 client
 try:
     sora_client = Sora(
         resource_name=settings.SORA_AOAI_RESOURCE,
@@ -19,9 +19,10 @@ try:
         api_key=settings.SORA_AOAI_API_KEY
     )
     logger.info(
-        f"Initialized Sora client with resource: {settings.SORA_AOAI_RESOURCE}")
+        f"Initialized Sora 2 client with resource: {settings.SORA_AOAI_RESOURCE}, "
+        f"deployment: {settings.SORA_DEPLOYMENT}")
 except Exception as e:
-    logger.error(f"Failed to initialize Sora client: {str(e)}")
+    logger.error(f"Failed to initialize Sora 2 client: {str(e)}")
     sora_client = None
 
 # Initialize GPT-Image-1 client

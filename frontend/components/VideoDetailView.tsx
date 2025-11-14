@@ -216,16 +216,16 @@ export function VideoDetailView({
       setIsPlaying(false);
       setIsError(false);
       
-      // Ensure all videos are muted since they have no sound
-      setIsMuted(true);
-      
+      // Sora 2 videos include audio
+      setIsMuted(false);
+
       // If the video element already has its data loaded
       if (videoRef.current) {
         // Reset the current time to start from the beginning
         videoRef.current.currentTime = 0;
-        
-        // Always set videos to muted
-        videoRef.current.muted = true;
+
+        // Sora 2 videos include audio
+        videoRef.current.muted = false;
         
         // If video data is already loaded, update the loading state
         if (videoRef.current.readyState >= 3) {
@@ -682,7 +682,7 @@ export function VideoDetailView({
                     controls={false}
                     preload="auto"
                     playsInline
-                    muted={true}
+                    muted={false}
                     onLoadedData={() => {
                       setIsLoading(false);
                       setIsError(false);

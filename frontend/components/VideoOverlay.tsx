@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { X, ArrowUp, Settings, Eye, Loader2, Wand2, RectangleHorizontal, Square, RectangleVertical, SignalLow, SignalMedium, SignalHigh, Timer, Copy, FolderTree, Plus, RefreshCw, PlusCircle } from "lucide-react";
+import { X, ArrowUp, Settings, Eye, Loader2, Wand2, RectangleHorizontal, Square, RectangleVertical, SignalLow, SignalMedium, SignalHigh, Timer, Copy, FolderTree, Plus, RefreshCw, PlusCircle, Volume2, VolumeX, User, Video } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -30,7 +30,6 @@ interface VideoOverlayProps {
     aspectRatio: string;
     resolution: string;
     duration: string;
-    variants: string;
     modality: string;
     analyzeVideo: boolean;
     brandsProtection: string;
@@ -52,6 +51,9 @@ interface VideoOverlayProps {
     // NEW: Image-to-Video settings
     sourceImages?: File[];
     hasSourceImages?: boolean;
+    // Sora 2 NEW: Cameo and Remix settings
+    selectedCameo?: string | null;
+    remixVideoId?: string | null;
   }) => void;
   isGenerating?: boolean;
   onPromptChange?: (newPrompt: string, isEnhanced: boolean) => void;
@@ -105,9 +107,8 @@ export function VideoOverlay({
   
   // Add missing video settings states
   const [aspectRatio, setAspectRatio] = useState("16:9");
-  const [resolution, setResolution] = useState("480p");
-  const [duration, setDuration] = useState("5s");
-  const [variants, setVariants] = useState("2");
+  const [resolution, setResolution] = useState("720p");
+  const [duration, setDuration] = useState("8s");
   const [analyzeVideo, setAnalyzeVideo] = useState(true);
   const [isWizardEnhancing, setIsWizardEnhancing] = useState(false);
   const [moderationThresholds] = useState({
@@ -116,6 +117,10 @@ export function VideoOverlay({
     sexual: "medium",
     violence: "medium"
   });
+  
+  // Sora 2 NEW: Cameo and Remix settings
+  const [selectedCameo, setSelectedCameo] = useState<string | null>(null);
+  const [remixVideoId, setRemixVideoId] = useState<string | null>(null);
   
   // Settings states
   const [expanded, setExpanded] = useState(true);
@@ -148,13 +153,6 @@ export function VideoOverlay({
   useEffect(() => {
     setIsClient(true);
   }, []);
-
-  // Force variants to 1 when images are attached
-  useEffect(() => {
-    if (sourceImages.length > 0 && variants !== "1") {
-      setVariants("1");
-    }
-  }, [sourceImages.length, variants]);
 
   // Update folder when selectedFolder prop changes
   useEffect(() => {
@@ -370,15 +368,12 @@ export function VideoOverlay({
 
   const handleSubmit = () => {
     if (!prompt.trim()) return;
-    // Enforce 1 variant when source images are present
-    const computedVariants = sourceImages.length > 0 ? "1" : variants;
 
     onGenerate({
       prompt,
       aspectRatio,
       resolution,
       duration,
-      variants: computedVariants,
       modality,
       analyzeVideo,
       brandsProtection,
@@ -393,7 +388,10 @@ export function VideoOverlay({
       folder,
       // NEW: Image-to-Video settings
       sourceImages: sourceImages,
-      hasSourceImages: sourceImages.length > 0
+      hasSourceImages: sourceImages.length > 0,
+      // Sora 2 NEW: Cameo and Remix settings
+      selectedCameo,
+      remixVideoId
     });
   };
 
@@ -736,14 +734,13 @@ export function VideoOverlay({
                               <SelectTrigger className="w-[120px] h-8">
                                 <div className="flex items-center">
                                   <Timer className="h-4 w-4 mr-2" />
-                                  <SelectValue placeholder="5s" />
+                                  <SelectValue placeholder="8s" />
                                 </div>
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="5s">5s</SelectItem>
-                                <SelectItem value="10s">10s</SelectItem>
-                                <SelectItem value="15s">15s</SelectItem>
-                                <SelectItem value="20s">20s</SelectItem>
+                                <SelectItem value="4s">4s</SelectItem>
+                                <SelectItem value="8s">8s</SelectItem>
+                                <SelectItem value="12s">12s</SelectItem>
                               </SelectContent>
                             </Select>
                           </TooltipTrigger>
@@ -751,40 +748,7 @@ export function VideoOverlay({
                             <p>Duration: Length of the video</p>
                           </TooltipContent>
                         </Tooltip>
-                        
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Select
-                              value={variants}
-                              onValueChange={setVariants}
-                              disabled={isGenerating || isImageToVideo}
-                            >
-                              <SelectTrigger className="w-[150px] h-8">
-                                <div className="flex items-center">
-                                  <Copy className="h-4 w-4 mr-2" />
-                                  <SelectValue placeholder="2" />
-                                </div>
-                              </SelectTrigger>
-                              <SelectContent>
-                                {isImageToVideo ? (
-                                  <SelectItem value="1">1 variation</SelectItem>
-                                ) : (
-                                  <>
-                                    <SelectItem value="1">1 variation</SelectItem>
-                                    <SelectItem value="2">2 variations</SelectItem>
-                                    <SelectItem value="3">3 variations</SelectItem>
-                                    <SelectItem value="4">4 variations</SelectItem>
-                                    <SelectItem value="5">5 variations</SelectItem>
-                                  </>
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{isImageToVideo ? 'Variations limited to 1 when images are attached' : 'Variations: Number of different outputs to generate'}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        
+
                         {/* Folder Select Dropdown */}
                         <Tooltip delayDuration={300}>
                           <TooltipTrigger asChild>

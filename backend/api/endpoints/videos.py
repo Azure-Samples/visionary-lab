@@ -38,6 +38,10 @@ from backend.models.videos import (
     VideoGenerationWithAnalysisResponse,
     VideoPromptEnhancementRequest,
     VideoPromptEnhancementResponse,
+    AudioGenerationSettings,
+    CameoReference,
+    CameoUploadRequest,
+    RemixVideoRequest,
 )
 from backend.core.cosmos_client import CosmosDBService
 
@@ -86,18 +90,27 @@ router = APIRouter()
 @router.post("/jobs", response_model=VideoGenerationJobResponse)
 async def create_video_generation_job(
     prompt: str = Form(...),
-    n_variants: int = Form(1),
     n_seconds: int = Form(10),
-    height: int = Form(1080),
-    width: int = Form(1920),
+    height: int = Form(720),
+    width: int = Form(1280),
     folder_path: str = Form(""),
     analyze_video: bool = Form(False),
     # NEW: Optional image files
-    images: Optional[List[UploadFile]] = File(None)
+    images: Optional[List[UploadFile]] = File(None),
+    # Sora 2 NEW: Audio generation
+    audio: Optional[bool] = Form(None),
+    audio_language: Optional[str] = Form(None),
+    # Sora 2 NEW: Cameo reference
+    cameo: Optional[str] = Form(None),
+    # Sora 2 NEW: Remix video ID
+    remix_video_id: Optional[str] = Form(None)
 ):
     """
-    Enhanced to support both text-only and image+text video generation.
-    Follows exact same workflow as existing video generation.
+    Enhanced to support Sora 2 features:
+    - Text-only and image+text video generation
+    - Audio generation with synchronized speech and sound effects
+    - Cameo personalized videos
+    - Video-to-video remixing
     """
     try:
         # Ensure Sora client is available
@@ -127,36 +140,40 @@ async def create_video_generation_job(
                 processed_images.append(image_content)
                 image_filenames.append(image_file.filename or f"image_{idx+1}.jpg")
         
+        # Note: Sora 2 automatically includes audio, no parameter needed
+        # Remix should use the separate /remix endpoint
+        # Cameo not supported in current Sora 2 API
+        
         # Create job using appropriate method
         if processed_images:
-            # Use image+text method
+            # Use image+text method (Sora 2 supports single input_reference)
             job = sora_client.create_video_generation_job_with_images(
                 prompt=prompt,
                 images=processed_images,
                 image_filenames=image_filenames,
                 n_seconds=n_seconds,
                 height=height,
-                width=width,
-                n_variants=n_variants
+                width=width
             )
         else:
-            # Use existing text-only method
+            # Use text-only method
             job = sora_client.create_video_generation_job(
                 prompt=prompt,
                 n_seconds=n_seconds,
                 height=height,
-                width=width,
-                n_variants=n_variants
+                width=width
             )
         
-        # Create response with enhanced metadata
+        # Create response with enhanced metadata (Sora 2)
         response_data = {
             **job,
             # Add metadata about images
             "has_source_images": bool(processed_images),
             "image_count": len(processed_images) if processed_images else 0,
             "folder_path": folder_path,
-            "analyze_video": analyze_video
+            "analyze_video": analyze_video,
+            # Sora 2 always includes audio
+            "has_audio": True
         }
         
         return VideoGenerationJobResponse(**response_data)
@@ -242,9 +259,7 @@ def delete_failed_video_generation_jobs():
     "/generate-with-analysis/upload", response_model=VideoGenerationWithAnalysisResponse
 )
 async def create_video_generation_with_analysis_upload(
-    # Unified form-based endpoint to support optional image uploads
     prompt: str = Form(...),
-    n_variants: int = Form(1),
     n_seconds: int = Form(10),
     height: int = Form(720),
     width: int = Form(1280),
@@ -302,16 +317,14 @@ async def create_video_generation_with_analysis_upload(
                 image_filenames=image_filenames,
                 n_seconds=n_seconds,
                 height=height,
-                width=width,
-                n_variants=n_variants,
+                width=width
             )
         else:
             job = sora_client.create_video_generation_job(
                 prompt=prompt,
                 n_seconds=n_seconds,
                 height=height,
-                width=width,
-                n_variants=n_variants,
+                width=width
             )
 
         job_response = VideoGenerationJobResponse(**job)
@@ -434,7 +447,6 @@ async def create_video_generation_with_analysis_upload(
                                 "duration": n_seconds,
                                 "resolution": f"{width}x{height}",
                                 "custom_metadata": {
-                                    "n_variants": str(n_variants),
                                     "analyzed": "true",
                                     "job_id": job_response.id,
                                 },
@@ -503,8 +515,7 @@ def create_video_generation_with_analysis(
             prompt=req.prompt,
             n_seconds=req.n_seconds,
             height=req.height,
-            width=req.width,
-            n_variants=req.n_variants,
+            width=req.width
         )
 
         job_response = VideoGenerationJobResponse(**job)
@@ -738,7 +749,6 @@ def create_video_generation_with_analysis(
                                         "duration": req.n_seconds,
                                         "resolution": f"{req.width}x{req.height}",
                                         "custom_metadata": {
-                                            "n_variants": str(req.n_variants),
                                             "analyzed": "true",
                                             "job_id": job_response.id,
                                         },
@@ -1052,4 +1062,126 @@ def generate_video_filename(req: VideoFilenameGenerateRequest):
 
     except Exception as e:
         logger.error(f"Error generating filename: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Sora 2 Cameo Endpoints ---
+
+@router.post("/cameo/upload", response_model=CameoReference)
+async def upload_cameo_reference(
+    face_image: UploadFile = File(..., description="Face image for cameo"),
+    voice_audio: Optional[UploadFile] = File(None, description="Optional voice audio sample")
+):
+    """
+    Upload a cameo reference for personalized video generation (Sora 2 feature).
+    Requires face image and optionally voice audio.
+    """
+    try:
+        if sora_client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Video generation service is currently unavailable."
+            )
+        
+        # Read face image
+        face_bytes = await face_image.read()
+        
+        # Validate file size (25MB limit per file)
+        if len(face_bytes) > 25 * 1024 * 1024:
+            raise HTTPException(400, "Face image exceeds 25MB limit")
+        
+        # Read voice audio if provided
+        voice_bytes = None
+        if voice_audio:
+            voice_bytes = await voice_audio.read()
+            if len(voice_bytes) > 25 * 1024 * 1024:
+                raise HTTPException(400, "Voice audio exceeds 25MB limit")
+        
+        # Upload to Sora 2 API
+        result = sora_client.upload_cameo_reference(face_bytes, voice_bytes)
+        
+        return CameoReference(**result)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading cameo reference: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/cameo/references", response_model=List[CameoReference])
+def list_cameo_references(limit: int = Query(10, ge=1, le=100)):
+    """
+    List uploaded cameo references.
+    """
+    try:
+        if sora_client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Video generation service is currently unavailable."
+            )
+        
+        result = sora_client.get_cameo_references(limit=limit)
+        return [CameoReference(**ref) for ref in result.get("data", [])]
+        
+    except Exception as e:
+        logger.error(f"Error listing cameo references: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/cameo/references/{reference_id}")
+def delete_cameo_reference(reference_id: str):
+    """
+    Delete a cameo reference.
+    """
+    try:
+        if sora_client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Video generation service is currently unavailable."
+            )
+        
+        status_code = sora_client.delete_cameo_reference(reference_id)
+        return {"deleted": status_code == 204, "reference_id": reference_id}
+        
+    except Exception as e:
+        logger.error(f"Error deleting cameo reference: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+# --- Sora 2 Remix (Video-to-Video) Endpoints ---
+
+@router.post("/remix", response_model=VideoGenerationJobResponse)
+def create_remix_job(req: RemixVideoRequest):
+    """
+    Create a remix job to modify an existing video (video-to-video transformation).
+    This is a Sora 2 exclusive feature.
+    """
+    try:
+        if sora_client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Video generation service is currently unavailable."
+            )
+        
+        # Build modifications dict
+        modifications = {}
+        if req.style_transfer:
+            modifications["style_transfer"] = req.style_transfer
+        if req.face_swap:
+            modifications["cameo"] = req.face_swap
+        if req.audio_override:
+            modifications["audio"] = req.audio_override.dict()
+        
+        # Create remix job
+        job = sora_client.create_remix_job(
+            video_id=req.video_id,
+            prompt=req.prompt,
+            modifications=modifications if modifications else None
+        )
+        
+        return VideoGenerationJobResponse(**job)
+        
+    except Exception as e:
+        logger.error(f"Error creating remix job: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

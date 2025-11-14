@@ -1,15 +1,25 @@
 # Visionary Lab
 
-**Create high-quality visual content with GPT-Image-1 and Sora on Azure OpenAI—tailored for professional use cases.**
+**Create high-quality visual content with GPT-Image-1 and Sora 2 on Azure OpenAI—tailored for professional use cases.**
 
 ## Key Features
 
-- Create videos from a text prompt with the Sora model
+### Video Generation (Sora 2)
+- Create videos from text prompts with the **Sora 2** model
+- Generate videos from text + images (image-to-video)
+- Audio automatically included in all generated videos
+- Support for multiple resolutions: 720p and 1080p (landscape and portrait)
+- Durations: 4s, 8s, or 12s
+
+### Image Generation (GPT-Image-1)
 - Generate polished image assets from text prompts, input images, or both
 - Refine prompts using AI best practices to ensure high-impact visuals
 - Analyze outputs with AI for quality control, metadata tagging, and asset optimization
 - Provide guardrails for content showing brands products (brand protection)
-- Manage your content in an organized asset library
+
+### Asset Management
+- Manage your content in an organized asset library with folder support
+- Automatic video analysis and metadata tagging
 
 <img src="ui-sample.png" alt="description" width="800"/>
 
@@ -23,9 +33,11 @@
 Azure resources:
 
 - Azure OpenAI resource with a deployed `gpt-image-1` model
-- Azure OpenAI resource with a deployed `Sora` model
-- Azure OpenAI `gpt-4.1` model deployment (used for prompt enhancements and image analysis)
+- Azure OpenAI resource with a deployed **`Sora 2`** model (deployment name: `sora-2`)
+- Azure OpenAI `gpt-4.1` model deployment (used for prompt enhancements and image/video analysis)
 - Azure Storage Account with a Blob Container for your images and videos. You can use virtual folders to organize your content.
+
+> **Note:** Sora 2 is available in Azure AI Foundry. Enterprise customers can apply for access via the [Sora-2 access application form](https://ai.azure.com/catalog/models/sora-2).
 
 Compute environment:
 
@@ -100,13 +112,29 @@ npm install --legacy-peer-deps
 
    | Service / Model   | Variables                                                                                                                                                                                                                                                                                                                                                                      |
    | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-   | **Sora**          | - `SORA_AOAI_RESOURCE`: name of the Azure OpenAI resource used for Sora <br> - `SORA_DEPLOYMENT`: deployment name for the Sora model <br> - `SORA_AOAI_API_KEY`: API key for the Azure OpenAI Sora resource                                                                                                                                                                    |
+   | **Sora 2**        | - `SORA_AOAI_RESOURCE`: name of the Azure OpenAI resource used for Sora 2 <br> - `SORA_DEPLOYMENT`: deployment name for the Sora 2 model (typically `sora-2`) <br> - `SORA_AOAI_API_KEY`: API key for the Azure OpenAI Sora 2 resource                                                                  |
    | **GPT-Image-1**   | - `IMAGEGEN_AOAI_RESOURCE`: name of the Azure OpenAI resource used for gpt-image-1 <br> - `IMAGEGEN_DEPLOYMENT`: deployment name for the gpt-image-1 model <br> - `IMAGEGEN_AOAI_API_KEY`: API key for the gpt-image-1 resource                                                                                                                                                |
    | **GPT-4.1**       | - `LLM_AOAI_RESOURCE`: name of the Azure OpenAI resource used for GPT-4.1 <br> - `LLM_DEPLOYMENT`: deployment name for the GPT-4.1 model <br> - `LLM_AOAI_API_KEY`: API key for the GPT-4.1 resource                                                                                                                                                                           |
    | **Azure Storage** | - `AZURE_BLOB_SERVICE_URL`: URL to your Azure Blob Storage service <br> - `AZURE_STORAGE_ACCOUNT_NAME`: name of your Azure Storage Account <br> - `AZURE_STORAGE_ACCOUNT_KEY`: access key for your Azure Storage Account <br> - `AZURE_BLOB_IMAGE_CONTAINER`: name of the Blob Container for images <br> - `AZURE_BLOB_VIDEO_CONTAINER`: name of the Blob Container for videos |
    | **Azure Cosmos DB** | - `AZURE_COSMOS_DB_ENDPOINT`: URL to your Azure Cosmos DB account (e.g., `https://your-account.documents.azure.com:443/`) <br> - `AZURE_COSMOS_DB_KEY`: Primary or secondary key for your Cosmos DB account <br> - `AZURE_COSMOS_DB_ID`: Database name (default: `visionarylab`) <br> - `AZURE_COSMOS_CONTAINER_ID`: Container name for metadata (default: `metadata`) <br> - `USE_MANAGED_IDENTITY`: Set to `false` for key-based auth or `true` for managed identity (default: `true`) |
 
-> Note: For the best experience, use both Sora and GPT-Image-1. However, the app also works if you use only one of these models.
+> Note: For the best experience, use both Sora 2 and GPT-Image-1. However, the app also works if you use only one of these models.
+
+### Sora 2 Specifications
+
+**Supported Resolutions:**
+- 1280×720 (16:9 landscape)
+- 720×1280 (9:16 portrait)
+- 1792×1024 (16:9 landscape, high quality)
+- 1024×1792 (9:16 portrait, high quality)
+
+**Supported Durations:**
+- 4 seconds
+- 8 seconds
+- 12 seconds
+
+**Audio:**
+- All generated videos automatically include synchronized audio
 
 ### Setting Up Azure Cosmos DB
 

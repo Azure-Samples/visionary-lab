@@ -429,7 +429,6 @@ function NewVideoPageContent() {
     aspectRatio: string;
     resolution: string;
     duration: string;
-    variants: string;
     modality: string;
     analyzeVideo: boolean;
     brandsProtection: string;
@@ -451,14 +450,17 @@ function NewVideoPageContent() {
     // NEW: Image-to-Video
     sourceImages?: File[];
     hasSourceImages?: boolean;
+    // Sora 2 NEW: Cameo and Remix settings
+    selectedCameo?: string | null;
+    remixVideoId?: string | null;
   }) => {
     // Skip if already generating
     if (isGenerating) return;
-    
+
     setIsGenerating(true);
-    
+
     // Show immediate feedback to the user
-    const toastId = toast.loading(`Creating ${settings.variants} video${parseInt(settings.variants) > 1 ? 's' : ''}...`, {
+    const toastId = toast.loading(`Creating video...`, {
       description: `${settings.aspectRatio}, ${settings.duration} duration - this may take 1-2 minutes`
     });
     
@@ -491,7 +493,6 @@ function NewVideoPageContent() {
           const videoSettings = {
             resolution: settings.resolution,
             duration: parseInt(settings.duration.replace('s', ''), 10), // Convert "5s" to 5
-            variants: parseInt(settings.variants, 10),
             aspectRatio: settings.aspectRatio,
             fps: undefined, // Optional
             brandsProtection: settings.brandsProtection,
@@ -499,7 +500,10 @@ function NewVideoPageContent() {
             analyzeVideo: settings.analyzeVideo, // Pass the analysis setting
             folder: settings.folder, // Pass the folder setting
             // NEW: Pass source images through to the queue context
-            sourceImages: settings.sourceImages
+            sourceImages: settings.sourceImages,
+            // Sora 2 NEW: Cameo and Remix settings
+            selectedCameo: settings.selectedCameo,
+            remixVideoId: settings.remixVideoId
           };
           
           // Add to queue - this will create the job in the backend

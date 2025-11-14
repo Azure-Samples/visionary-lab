@@ -49,6 +49,11 @@ export interface VideoGenerationRequest {
   // Optional direct fields for form usage
   folder_path?: string;
   analyze_video?: boolean;
+  // Sora 2 NEW: Audio, Cameo, and Remix settings
+  audio?: boolean;
+  audio_language?: string;
+  cameo?: string;
+  remix_video_id?: string;
 }
 
 export interface VideoGenerationJob {
@@ -302,6 +307,24 @@ export async function createVideoGenerationJob(request: VideoGenerationRequest):
     : (typeof request.metadata?.analyzeVideo === 'string' ? request.metadata?.analyzeVideo === 'true' : undefined);
   if (typeof analyze === 'boolean') {
     formData.append('analyze_video', String(analyze));
+  }
+
+  // Sora 2 NEW: Add audio generation parameters
+  if (request.audio !== undefined) {
+    formData.append('audio', String(request.audio));
+  }
+  if (request.audio_language) {
+    formData.append('audio_language', request.audio_language);
+  }
+  
+  // Sora 2 NEW: Add cameo reference
+  if (request.cameo) {
+    formData.append('cameo', request.cameo);
+  }
+  
+  // Sora 2 NEW: Add remix video ID
+  if (request.remix_video_id) {
+    formData.append('remix_video_id', request.remix_video_id);
   }
 
   // Append images if provided
@@ -598,53 +621,46 @@ export function mapSettingsToApiRequest(settings: {
   prompt: string;
   resolution: string;
   duration: string; // e.g., "5s"
-  variants: string; // e.g., "2"
   aspectRatio: string; // e.g., "16:9"
   fps?: number; // Optional FPS
+  // Sora 2 NEW
+  selectedCameo?: string | null;
+  remixVideoId?: string | null;
 }): VideoGenerationRequest {
   // Parse duration (e.g., "5s" to 5)
   const n_seconds = parseInt(settings.duration, 10) || 5; // Default to 5 if parsing fails
 
-  // Parse variants (e.g., "2" to 2)
-  const n_variants = parseInt(settings.variants, 10) || 1; // Default to 1 if parsing fails
-
   let width: number;
   let height: number;
 
-  // Determine width and height based on resolution and aspect ratio
   const res = settings.resolution;
   const ar = settings.aspectRatio;
 
   if (ar === "16:9") {
-    if (res === "480p") { width = 854; height = 480; }
-    else if (res === "720p") { width = 1280; height = 720; }
-    else if (res === "1080p") { width = 1920; height = 1080; }
-    else { width = 854; height = 480; } // Default for 16:9
-  } else if (ar === "1:1") {
-    if (res === "480p") { width = 480; height = 480; }
-    else if (res === "720p") { width = 720; height = 720; }
-    else if (res === "1080p") { width = 1080; height = 1080; }
-    else { width = 480; height = 480; } // Default for 1:1
+    if (res === "1080p") { width = 1792; height = 1024; }
+    else { width = 1280; height = 720; }
   } else if (ar === "9:16") {
-    if (res === "480p") { width = 480; height = 854; }
-    else if (res === "720p") { width = 720; height = 1280; }
-    else if (res === "1080p") { width = 1080; height = 1920; }
-    else { width = 480; height = 854; } // Default for 9:16
+    if (res === "1080p") { width = 1024; height = 1792; }
+    else { width = 720; height = 1280; }
+  } else if (ar === "1:1") {
+    width = 1280; height = 720;
+    console.warn(`1:1 aspect ratio not supported by Sora 2, using 16:9 (1280x720)`);
   } else {
-    // Default case if aspectRatio is unexpected (e.g., old "4:3" somehow gets through)
-    // Fallback to a common 16:9, 480p resolution
-    width = 854; 
-    height = 480;
-    console.warn(`Unexpected aspectRatio: ${ar}, defaulting to 854x480`);
+    width = 1280;
+    height = 720;
+    console.warn(`Unexpected aspectRatio: ${ar}, defaulting to 1280x720 (Sora 2 standard)`);
   }
 
   return {
     prompt: settings.prompt,
-    n_variants,
+    n_variants: 1,
     n_seconds,
     height,
     width,
     // fps: settings.fps, // Assuming backend doesn't support fps yet or it's handled differently
+    // Sora 2 NEW: Cameo and Remix settings
+    cameo: settings.selectedCameo || undefined,
+    remix_video_id: settings.remixVideoId || undefined,
   };
 }
 

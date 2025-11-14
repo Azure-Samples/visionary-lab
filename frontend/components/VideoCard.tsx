@@ -71,8 +71,8 @@ export function VideoCard({
     
     playPauseDebounceRef.current = setTimeout(() => {
       if (videoRef.current && videoRef.current.paused) {
-        // Always ensure video is muted before play on hover to avoid autoplay restrictions
-        videoRef.current.muted = true;
+        // Sora 2 videos include audio - unmute on hover/play
+        videoRef.current.muted = false;
         
         videoRef.current.play()
           .then(() => setIsPlaying(true))
@@ -109,8 +109,8 @@ export function VideoCard({
       return;
     }
 
-    // Always set videos to muted since they have no sound
-    video.muted = true;
+    // Sora 2 videos include audio
+    video.muted = false;
 
     const handleMetadata = () => {
       const width = video.videoWidth;
@@ -546,7 +546,7 @@ export function VideoCard({
                 )}
                 playsInline
                 loop
-                muted={true}
+                muted={false}
                 onClick={(e) => {
                   // Allow video click events without triggering the parent onClick
                   e.stopPropagation();
