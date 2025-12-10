@@ -6,8 +6,9 @@ import io
 import shutil
 import random
 import base64
+import logging
 from datetime import timedelta
-from typing import List, Dict
+from typing import List, Dict, Optional
 from io import BytesIO
 
 import requests
@@ -16,88 +17,368 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def convert_sora2_response_to_job_format(sora_response: dict) -> dict:
+    """
+    Convert Sora API response to a consistent job format.
+
+    API returns: {id, status, progress, size, seconds, prompt, model, ...}
+    Converted format: {id, status, prompt, n_seconds, height, width, generations, ...}
+    """
+    # Map API status to expected format
+    status_map = {
+        "queued": "queued",
+        "in_progress": "processing",
+        "completed": "succeeded",
+        "failed": "failed"
+    }
+    api_status = sora_response.get("status", "queued")
+    mapped_status = status_map.get(api_status, api_status)
+
+    result = {
+        "id": sora_response.get("id"),
+        "status": mapped_status,
+        "prompt": sora_response.get("prompt", ""),
+        "model": sora_response.get("model", "sora"),
+    }
+
+    # Convert size string "WIDTHxHEIGHT" to width and height
+    size = sora_response.get("size", "720x1280")
+    if size and "x" in size:
+        width_str, height_str = size.split("x")
+        result["width"] = int(width_str)
+        result["height"] = int(height_str)
+    else:
+        result["width"] = 720
+        result["height"] = 1280
+
+    # Convert seconds string to int
+    seconds_str = sora_response.get("seconds", "4")
+    result["n_seconds"] = int(seconds_str) if isinstance(
+        seconds_str, str) else seconds_str
+
+    # Add timestamps
+    result["created_at"] = sora_response.get("created_at")
+    result["finished_at"] = sora_response.get("completed_at")
+    result["expires_at"] = sora_response.get("expires_at")
+
+    # Add error info
+    error = sora_response.get("error")
+    if error:
+        result["failure_reason"] = str(
+            error) if isinstance(error, dict) else error
+    else:
+        result["failure_reason"] = None
+
+    # Add generations list - create a generations list with the video ID
+    if mapped_status == "succeeded" and sora_response.get("id"):
+        result["generations"] = [{
+            "id": sora_response.get("id"),
+            "prompt": sora_response.get("prompt", ""),
+            "status": "succeeded"
+        }]
+    else:
+        result["generations"] = []
+
+    # Add additional fields
+    result["has_audio"] = True  # Audio is always included
+    result["is_remix"] = sora_response.get("remixed_from_video_id") is not None
+    result["remixed_from_video_id"] = sora_response.get(
+        "remixed_from_video_id")
+    result["progress"] = sora_response.get("progress", 0)
+
+    return result
+
 
 class Sora:
-    def __init__(self, resource_name, deployment_name, api_key, api_version="preview"):
+    """
+    Sora API client for Azure OpenAI video generation.
+
+    Features:
+    - Text-to-video generation
+    - Image-to-video generation (input_reference)
+    - Video remix (video-to-video transformation)
+    - Automatic audio generation
+
+    Supported sizes: 1280x720 (landscape), 720x1280 (portrait, default)
+    Supported durations: 4, 8, or 12 seconds
+    """
+
+    SUPPORTED_SIZES = [
+        "1280x720",   # Landscape
+        "720x1280",   # Portrait (default)
+    ]
+
+    SUPPORTED_DURATIONS = ["4", "8", "12"]
+
+    def __init__(self, resource_name: str, deployment_name: str, api_key: str, api_version: str = None):
         """
         Initialize the Sora client.
 
         Args:
-            resource_name (str): The resource name from Azure.
-            deployment_name (str): The deployment name.
+            resource_name (str): The Azure OpenAI resource name.
+            deployment_name (str): The Sora deployment name.
             api_key (str): The API key.
+            api_version (str, optional): Not used (v1 API).
         """
         self.resource_name = resource_name
         self.deployment_name = deployment_name
         self.api_key = api_key
-        self.api_version = api_version
-        # Base URL includes the fixed parts of the endpoint.
-        self.base_url = (
-            f"https://{self.resource_name}.openai.azure.com/openai/v1/video"
-        )
+        self.base_url = f"https://{self.resource_name}.openai.azure.com/openai/v1/videos"
         self.headers = {
             "api-key": self.api_key,
             "Content-Type": "application/json"
         }
+        logger.info(
+            f"Initialized Sora client with resource: {resource_name}, deployment: {deployment_name}")
 
-    def create_video_generation_job(self, prompt, n_seconds, height, width, n_variants=1):
+    def _validate_size(self, size: str) -> None:
+        """Validate that the size is supported."""
+        if size not in self.SUPPORTED_SIZES:
+            raise ValueError(
+                f"Unsupported video size '{size}'. "
+                f"Supported sizes: {', '.join(self.SUPPORTED_SIZES)}"
+            )
+
+    def _convert_duration(self, n_seconds: int) -> str:
+        """Convert duration to supported string values (4, 8, or 12)."""
+        if n_seconds <= 6:
+            return "4"
+        elif n_seconds <= 10:
+            return "8"
+        else:
+            return "12"
+
+    def _handle_api_error(self, response: requests.Response) -> None:
+        """Log and raise API errors with details."""
+        try:
+            error_detail = response.json()
+            logger.error(f"Sora API error response: {error_detail}")
+        except Exception:
+            logger.error(
+                f"Sora API error: {response.status_code} {response.text}")
+        response.raise_for_status()
+
+    def create_video_generation_job(self, prompt: str, n_seconds: int = 8,
+                                    height: int = 1280, width: int = 720) -> dict:
         """
         Create a video generation job.
 
+        Audio is automatically generated.
+
         Args:
-            prompt (str): Text prompt for video generation.
-            n_seconds (int): Duration of the video.
-            height (int): Desired video height.
-            width (int): Desired video width.
-            n_variants (int, optional): Number of variants. Defaults to 1.
+            prompt (str): Text prompt describing the video to generate.
+            n_seconds (int): Duration in seconds (will be mapped to 4, 8, or 12).
+            height (int): Video height in pixels.
+            width (int): Video width in pixels.
 
         Returns:
-            dict: JSON response containing the job details.
+            dict: Job details with converted format.
         """
-        url = f"{self.base_url}/generations/jobs?api-version={self.api_version}"
+        url = self.base_url
+
+        seconds = self._convert_duration(n_seconds)
+        size = f"{width}x{height}"
+        self._validate_size(size)
+
         payload = {
             "model": self.deployment_name,
             "prompt": prompt,
-            "n_seconds": n_seconds,
-            "height": height,
-            "width": width,
-            "n_variants": n_variants
+            "size": size,
+            "seconds": seconds
         }
-        response = requests.post(url, json=payload, headers=self.headers)
-        response.raise_for_status()
-        return response.json()
 
-    def get_video_generation_job(self, job_id):
+        logger.info(
+            f"Creating video job: prompt='{prompt[:50]}...', size={size}, seconds={seconds}")
+        response = requests.post(url, json=payload, headers=self.headers)
+
+        if not response.ok:
+            self._handle_api_error(response)
+
+        sora_response = response.json()
+        return convert_sora2_response_to_job_format(sora_response)
+
+    def create_video_generation_job_with_image(self, prompt: str, image_path: str = None,
+                                               image_bytes: bytes = None,
+                                               n_seconds: int = 8,
+                                               height: int = 1280, width: int = 720) -> dict:
         """
-        Retrieve the status of a specific video generation job.
+        Create a video generation job with an input reference image (image-to-video).
+
+        The reference image is used as a visual anchor for the first frame.
 
         Args:
-            job_id (str): The ID of the job.
+            prompt (str): Text prompt describing the video to generate.
+            image_path (str, optional): Path to the reference image file.
+            image_bytes (bytes, optional): Raw bytes of the reference image.
+            n_seconds (int): Duration in seconds (will be mapped to 4, 8, or 12).
+            height (int): Video height in pixels.
+            width (int): Video width in pixels.
 
         Returns:
-            dict: JSON response containing job status/details.
+            dict: Job details with converted format.
         """
-        url = f"{self.base_url}/generations/jobs/{job_id}?api-version={self.api_version}"
+        if not image_path and not image_bytes:
+            raise ValueError(
+                "Either image_path or image_bytes must be provided")
+
+        url = self.base_url
+
+        seconds = self._convert_duration(n_seconds)
+        size = f"{width}x{height}"
+        self._validate_size(size)
+
+        # Prepare multipart form data
+        multipart_headers = {
+            k: v for k, v in self.headers.items() if k.lower() != "content-type"}
+
+        # Load image, resize to match video dimensions, and detect MIME type
+        if image_path:
+            filename = os.path.basename(image_path)
+            img = Image.open(image_path)
+            ext = os.path.splitext(filename)[1].lower()
+        else:
+            filename = "reference.jpg"
+            img = Image.open(io.BytesIO(image_bytes))
+            ext = ".jpg"
+
+        # Resize image to match requested video size (required by API)
+        # Uses letterboxing/pillarboxing to maintain aspect ratio with black padding
+        if img.size != (width, height):
+            original_size = img.size
+            img_width, img_height = img.size
+
+            # Calculate scaling factor to fit within target while maintaining aspect ratio
+            scale = min(width / img_width, height / img_height)
+            new_width = int(img_width * scale)
+            new_height = int(img_height * scale)
+
+            # Resize maintaining aspect ratio
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            # Create black canvas of target size and paste resized image centered
+            canvas = Image.new("RGB", (width, height), (0, 0, 0))
+            paste_x = (width - new_width) // 2
+            paste_y = (height - new_height) // 2
+
+            # Handle images with alpha channel
+            if img.mode == "RGBA":
+                canvas.paste(img, (paste_x, paste_y), img)
+            else:
+                canvas.paste(img, (paste_x, paste_y))
+
+            img = canvas
+            logger.info(
+                f"Resized image from {original_size} to ({width}, {height}) with letterboxing")
+
+        # Convert to bytes with appropriate format
+        mime_types = {
+            ".jpg": ("image/jpeg", "JPEG"),
+            ".jpeg": ("image/jpeg", "JPEG"),
+            ".png": ("image/png", "PNG"),
+            ".webp": ("image/webp", "WEBP")
+        }
+        mime_type, img_format = mime_types.get(ext, ("image/jpeg", "JPEG"))
+
+        # Save resized image to bytes
+        img_buffer = io.BytesIO()
+        img.save(img_buffer, format=img_format)
+        img_buffer.seek(0)
+
+        files = {
+            "input_reference": (filename, img_buffer, mime_type)
+        }
+
+        data = {
+            "model": self.deployment_name,
+            "prompt": prompt,
+            "size": size,
+            "seconds": seconds
+        }
+
+        logger.info(
+            f"Creating image-to-video job: image={filename} ({mime_type}, {width}x{height}), prompt='{prompt[:50]}...'")
+        response = requests.post(
+            url, headers=multipart_headers, data=data, files=files)
+
+        if not response.ok:
+            self._handle_api_error(response)
+
+        sora_response = response.json()
+        return convert_sora2_response_to_job_format(sora_response)
+
+    def create_remix_job(self, video_id: str, prompt: str) -> dict:
+        """
+        Create a remix job to modify an existing video (video-to-video).
+
+        Remix preserves the original video's framework, scene transitions, and layout
+        while implementing the requested changes. For best results, limit modifications
+        to one clearly articulated adjustment.
+
+        Args:
+            video_id (str): ID of the existing video to remix (e.g., "video_...").
+            prompt (str): New prompt describing the desired modifications.
+
+        Returns:
+            dict: Remix job details with converted format.
+        """
+        # Remix uses a separate endpoint: /videos/remix
+        url = f"{self.base_url}/remix"
+        payload = {
+            "model": self.deployment_name,
+            "video_id": video_id,
+            "prompt": prompt
+        }
+
+        logger.info(
+            f"Creating remix job for video {video_id}: prompt='{prompt[:50]}...'")
+        response = requests.post(url, json=payload, headers=self.headers)
+
+        if not response.ok:
+            self._handle_api_error(response)
+
+        sora_response = response.json()
+        return convert_sora2_response_to_job_format(sora_response)
+
+    def get_video_generation_job(self, job_id: str) -> dict:
+        """
+        Retrieve the status of a video generation job.
+
+        Args:
+            job_id (str): The video/job ID.
+
+        Returns:
+            dict: Job status and details with converted format.
+        """
+        url = f"{self.base_url}/{job_id}"
+        logger.info(f"Getting video generation job: {job_id}")
         response = requests.get(url, headers=self.headers)
         response.raise_for_status()
-        return response.json()
+        sora_response = response.json()
+        return convert_sora2_response_to_job_format(sora_response)
 
-    def delete_video_generation_job(self, job_id):
+    def delete_video_generation_job(self, job_id: str) -> int:
         """
         Delete a video generation job.
 
         Args:
-            job_id (str): The ID of the job.
+            job_id (str): The video/job ID.
 
         Returns:
             int: HTTP status code (204 indicates success).
         """
-        url = f"{self.base_url}/generations/jobs/{job_id}?api-version={self.api_version}"
+        url = f"{self.base_url}/{job_id}"
+        logger.info(f"Deleting video generation job: {job_id}")
         response = requests.delete(url, headers=self.headers)
         response.raise_for_status()
         return response.status_code
 
-    def list_video_generation_jobs(self, before=None, after=None, limit=10, statuses=None):
+    def list_video_generation_jobs(self, before: str = None, after: str = None,
+                                   limit: int = 10, statuses: list = None) -> dict:
         """
         List video generation jobs.
 
@@ -105,85 +386,80 @@ class Sora:
             before (str, optional): Return jobs before this ID.
             after (str, optional): Return jobs after this ID.
             limit (int, optional): Maximum number of jobs to return.
-            statuses (list, optional): List of job statuses to filter (e.g., ["queued", "processing"]).
+            statuses (list, optional): Filter by status (e.g., ["queued", "completed"]).
 
         Returns:
-            dict: JSON response containing a list of jobs.
+            dict: Dictionary with "data" key containing list of jobs.
         """
-        url = f"{self.base_url}/generations/jobs?api-version={self.api_version}"
+        url = self.base_url
         params = {"limit": limit}
         if before:
             params["before"] = before
         if after:
             params["after"] = after
         if statuses:
-            # Expecting a list of statuses; join them with commas.
             params["statuses"] = ",".join(statuses)
+
+        logger.info(f"Listing video generation jobs with params: {params}")
         response = requests.get(url, headers=self.headers, params=params)
         response.raise_for_status()
-        return response.json()
 
-    def get_video_generation(self, generation_id):
+        sora_response = response.json()
+        videos = sora_response.get("data", sora_response) if isinstance(
+            sora_response, dict) else sora_response
+        if not isinstance(videos, list):
+            videos = [videos]
+
+        # Convert each video to expected format
+        converted = [convert_sora2_response_to_job_format(
+            video) for video in videos]
+        return {"data": converted}
+
+    def get_video_generation_video_content(self, generation_id: str, file_name: str,
+                                           target_folder: str = 'videos') -> str:
         """
-        Retrieve details of a specific video generation.
+        Download the video content as an MP4 file.
 
         Args:
-            generation_id (str): The generation ID.
-
-        Returns:
-            dict: JSON response containing video generation details.
-        """
-        url = f"{self.base_url}/generations/{generation_id}?api-version={self.api_version}"
-        response = requests.get(url, headers=self.headers)
-        response.raise_for_status()
-        return response.json()
-
-    def get_video_generation_video_content(self, generation_id, file_name, target_folder='videos', quality='high'):
-        """
-        Download the video content for a given generation as an MP4 file to the local folder.
-
-        Args:
-            generation_id (str): The generation ID.
+            generation_id (str): The video ID.
             file_name (str): The filename to save the video as (include .mp4 extension).
             target_folder (str): The folder to save the video to (default: 'videos').
-            quality (str): The video quality ('high' or 'low', default: 'high').
 
         Returns:
             str: The path to the downloaded file.
         """
-        if not os.path.exists(target_folder):
-            os.makedirs(target_folder, exist_ok=True)
+        url = f"{self.base_url}/{generation_id}/content"
 
+        # Create directory if it doesn't exist
+        os.makedirs(target_folder, exist_ok=True)
         file_path = os.path.join(target_folder, file_name)
 
-        url = f"{self.base_url}/generations/{generation_id}/content/video?api-version={self.api_version}"
-        params = {'quality': quality}
-        response = requests.get(url, headers=self.headers,
-                                params=params, stream=True)
+        logger.info(f"Downloading video {generation_id} to {file_path}")
+        response = requests.get(url, headers=self.headers, stream=True)
         response.raise_for_status()
 
-        with open(file_path, "wb") as f:
+        with open(file_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
 
+        logger.info(f"Successfully downloaded video to {file_path}")
         return file_path
 
-    def get_video_generation_video_stream(self, generation_id, quality='high'):
+    def get_video_generation_video_stream(self, generation_id: str) -> io.BytesIO:
         """
         Retrieve video content as an in-memory bytes stream.
 
         Args:
-            generation_id (str): The generation ID.
-            quality (str): The video quality ('high' or 'low', default: 'high').
+            generation_id (str): The video ID.
 
         Returns:
             io.BytesIO: In-memory stream containing the video data.
         """
-        url = f"{self.base_url}/generations/{generation_id}/content/video?api-version={self.api_version}"
-        params = {'quality': quality}
-        response = requests.get(url, headers=self.headers,
-                                params=params, stream=True)
+        url = f"{self.base_url}/{generation_id}/content"
+
+        logger.info(f"Streaming video {generation_id}")
+        response = requests.get(url, headers=self.headers, stream=True)
         response.raise_for_status()
 
         video_stream = io.BytesIO()
@@ -192,27 +468,6 @@ class Sora:
                 video_stream.write(chunk)
         video_stream.seek(0)
         return video_stream
-
-    def get_video_generation_thumbnail(self, generation_id):
-        """
-        Retrieve the thumbnail image for a video generation as a PIL.Image object (in memory).
-
-        Args:
-            generation_id (str): The generation ID.
-
-        Returns:
-            PIL.Image.Image: The thumbnail image.
-        """
-        url = f"{self.base_url}/generations/{generation_id}/content/thumbnail?api-version={self.api_version}"
-        # Remove Content-Type, not needed for GET
-        headers = {k: v for k, v in self.headers.items() if k.lower()
-                   != "content-type"}
-        response = requests.get(url, headers=headers, stream=True)
-        response.raise_for_status()
-        # Load into BytesIO and open as image
-        image_stream = io.BytesIO(response.content)
-        image = Image.open(image_stream)
-        return image
 
 
 class VideoExtractor:
@@ -335,7 +590,7 @@ class VideoAnalyzer:
             "Failed to obtain a valid JSON response from the model")
 
 
-def get_video_metadata(video_path):
+def get_video_metadata(video_path: str) -> dict:
     """
     Returns duration (s), fps, resolution (WxH), and bitrate (kbps) for a video file.
 
@@ -343,7 +598,7 @@ def get_video_metadata(video_path):
         video_path (str): Path to the video file.
 
     Returns:
-        dict: Dictionary with keys: duration, fps, resolution, bitrate.
+        dict: Dictionary with keys: duration, fps, resolution, bitrate_kbps.
     """
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"File not found: {video_path}")
