@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from typing import Dict, List, Optional
 from datetime import datetime
+import asyncio
 import re
 import logging
 import base64
-import requests
+import httpx
 import json
 import io
 from PIL import Image
@@ -38,7 +39,7 @@ from backend.models.images import (
     PipelineSaveOptions,
     PipelineAnalysisOptions,
 )
-from backend.core import llm_client, image_sas_token
+from backend.core import llm_client, async_llm_client, image_sas_token
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.analyze import ImageAnalyzer
 from backend.core.config import settings
@@ -137,8 +138,8 @@ async def generate_filename_for_prompt(prompt: str, extension: str = None) -> st
             prompt=prompt, extension=extension
         )
 
-        # Call the filename generation function directly
-        filename_response = generate_image_filename(filename_request)
+        # Call the filename generation function directly (now async)
+        filename_response = await generate_image_filename(filename_request)
 
         # Normalize the generated filename
         generated_filename = normalize_filename(filename_response.filename)
@@ -327,7 +328,7 @@ async def delete_image(request: ImageDeleteRequest):
 
 
 @router.post("/analyze", response_model=ImageAnalyzeResponse)
-def analyze_image(req: ImageAnalyzeRequest):
+async def analyze_image(req: ImageAnalyzeRequest):
     """
     Analyze an image using an LLM.
 
@@ -358,8 +359,9 @@ def analyze_image(req: ImageAnalyzeRequest):
                 if "?" not in file_path:
                     file_path += f"?{image_sas_token}"
 
-            # Download the image from the URL
-            response = requests.get(file_path, timeout=30)
+            # Download the image from the URL (async)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(file_path, timeout=30)
             if response.status_code != 200:
                 raise HTTPException(
                     status_code=response.status_code,
@@ -439,9 +441,9 @@ def analyze_image(req: ImageAnalyzeRequest):
         # Remove data URL prefix if present
         image_base64 = re.sub(r"^data:image/.+;base64,", "", image_base64)
 
-        # analyze the image using the LLM
-        image_analyzer = ImageAnalyzer(llm_client, settings.LLM_DEPLOYMENT)
-        insights = image_analyzer.image_chat(
+        # analyze the image using the LLM (async)
+        image_analyzer = ImageAnalyzer(llm_client, settings.LLM_DEPLOYMENT, async_llm_client)
+        insights = await image_analyzer.async_image_chat(
             image_base64, analyze_image_system_message)
 
         description = insights.get("description")
@@ -460,16 +462,16 @@ def analyze_image(req: ImageAnalyzeRequest):
 
 
 @router.post("/analyze-custom", response_model=ImageAnalyzeResponse)
-def analyze_image_custom(req: ImageAnalyzeCustomRequest):
+async def analyze_image_custom(req: ImageAnalyzeCustomRequest):
     """
     Analyze an image using a custom prompt while maintaining the same response structure.
-    
+
     Args:
         image_path: path on Azure Blob Storage. Supports a full URL with or without a SAS token.
         OR
         base64_image: Base64-encoded image data to analyze directly.
         custom_prompt: Custom instructions for the analysis.
-        
+
     Returns:
         Response containing description, products, tags, and feedback based on custom prompt.
     """
@@ -477,7 +479,7 @@ def analyze_image_custom(req: ImageAnalyzeCustomRequest):
         # Initialize image_content
         image_content = None
 
-        # Option 1: Process from URL/path  
+        # Option 1: Process from URL/path
         if req.image_path:
             file_path = req.image_path
 
@@ -492,8 +494,9 @@ def analyze_image_custom(req: ImageAnalyzeCustomRequest):
                 if "?" not in file_path:
                     file_path += f"?{image_sas_token}"
 
-            # Download the image from the URL
-            response = requests.get(file_path, timeout=30)
+            # Download the image from the URL (async)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(file_path, timeout=30)
             if response.status_code != 200:
                 raise HTTPException(
                     status_code=response.status_code,
@@ -598,12 +601,12 @@ Return the result as a valid JSON object:
 }}
 """
 
-        # analyze the image using the LLM with custom prompt
-        image_analyzer = ImageAnalyzer(llm_client, settings.LLM_DEPLOYMENT)
-        insights = image_analyzer.image_chat(image_base64, custom_system_message)
+        # analyze the image using the LLM with custom prompt (async)
+        image_analyzer = ImageAnalyzer(llm_client, settings.LLM_DEPLOYMENT, async_llm_client)
+        insights = await image_analyzer.async_image_chat(image_base64, custom_system_message)
 
         description = insights.get("description")
-        products = insights.get("products") 
+        products = insights.get("products")
         tags = insights.get("tags")
         feedback = insights.get("feedback")
 
@@ -618,7 +621,7 @@ Return the result as a valid JSON object:
 
 
 @router.post("/prompt/enhance", response_model=ImagePromptEnhancementResponse)
-def enhance_image_prompt(req: ImagePromptEnhancementRequest):
+async def enhance_image_prompt(req: ImagePromptEnhancementRequest):
     """
     Improves a given text to image prompt considering best practices for the image generation model.
     """
@@ -626,19 +629,19 @@ def enhance_image_prompt(req: ImagePromptEnhancementRequest):
         system_message = img_prompt_enhance_msg
 
         # Ensure LLM client is available
-        if llm_client is None:
+        if async_llm_client is None:
             raise HTTPException(
                 status_code=503,
                 detail="LLM service is currently unavailable. Please check your environment configuration.",
             )
 
         original_prompt = req.original_prompt
-        # Call the LLM to enhance the prompt
+        # Call the LLM to enhance the prompt (async)
         messages = [
             {"role": "system", "content": system_message},
             {"role": "user", "content": original_prompt},
         ]
-        response = llm_client.chat.completions.create(
+        response = await async_llm_client.chat.completions.create(
             messages=messages,
             model=settings.LLM_DEPLOYMENT,
             response_format={"type": "json_object"},
@@ -653,7 +656,7 @@ def enhance_image_prompt(req: ImagePromptEnhancementRequest):
 
 
 @router.post("/prompt/protect", response_model=ImagePromptBrandProtectionResponse)
-def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
+async def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
     """
     Rewrites a given prompt for brand protection.
     """
@@ -673,19 +676,19 @@ def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
             )
 
         # Ensure LLM client is available
-        if llm_client is None:
+        if async_llm_client is None:
             raise HTTPException(
                 status_code=503,
                 detail="LLM service is currently unavailable. Please check your environment configuration.",
             )
 
         original_prompt = req.original_prompt
-        # Call the LLM to enhance the prompt
+        # Call the LLM to enhance the prompt (async)
         messages = [
             {"role": "system", "content": system_message},
             {"role": "user", "content": original_prompt},
         ]
-        response = llm_client.chat.completions.create(
+        response = await async_llm_client.chat.completions.create(
             messages=messages,
             model=settings.LLM_DEPLOYMENT,
             response_format={"type": "json_object"},
@@ -700,7 +703,7 @@ def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
 
 
 @router.post("/filename/generate", response_model=ImageFilenameGenerateResponse)
-def generate_image_filename(req: ImageFilenameGenerateRequest):
+async def generate_image_filename(req: ImageFilenameGenerateRequest):
     """
     Creates a unique name for a file based on the text prompt used for creating the image.
 
@@ -714,7 +717,7 @@ def generate_image_filename(req: ImageFilenameGenerateRequest):
 
     try:
         # Ensure LLM client is available
-        if llm_client is None:
+        if async_llm_client is None:
             raise HTTPException(
                 status_code=503,
                 detail="LLM service is currently unavailable. Please check your environment configuration.",
@@ -725,12 +728,12 @@ def generate_image_filename(req: ImageFilenameGenerateRequest):
             raise HTTPException(
                 status_code=400, detail="Prompt must not be empty.")
 
-        # Call the LLM to enhance the prompt
+        # Call the LLM to generate filename (async)
         messages = [
             {"role": "system", "content": filename_system_message},
             {"role": "user", "content": req.prompt},
         ]
-        response = llm_client.chat.completions.create(
+        response = await async_llm_client.chat.completions.create(
             messages=messages,
             model=settings.LLM_DEPLOYMENT,
             response_format={"type": "json_object"},

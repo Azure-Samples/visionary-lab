@@ -2088,3 +2088,206 @@ export async function analyzeAndUpdateVideoMetadata(videoName: string): Promise<
     throw error;
   }
 } 
+
+// --- SSE Streaming Types and Functions ---
+
+/**
+ * Event types for video generation SSE stream
+ */
+export type VideoStreamEventType = 'status' | 'created' | 'progress' | 'processing' | 'complete' | 'error';
+
+/**
+ * Base interface for SSE events
+ */
+export interface VideoStreamEventBase {
+  type: VideoStreamEventType;
+}
+
+export interface VideoStreamStatusEvent extends VideoStreamEventBase {
+  type: 'status';
+  step: string;
+  message: string;
+}
+
+export interface VideoStreamCreatedEvent extends VideoStreamEventBase {
+  type: 'created';
+  job_id: string;
+  status: string;
+}
+
+export interface VideoStreamProgressEvent extends VideoStreamEventBase {
+  type: 'progress';
+  status: string;
+  progress: number;
+  elapsed: number;
+}
+
+export interface VideoStreamProcessingEvent extends VideoStreamEventBase {
+  type: 'processing';
+  step: 'downloading' | 'analyzing' | 'uploading';
+  generation_id?: string;
+}
+
+export interface VideoStreamCompleteEvent extends VideoStreamEventBase {
+  type: 'complete';
+  job: VideoGenerationJob;
+  analysis_results?: VideoAnalysisResponse[];
+}
+
+export interface VideoStreamErrorEvent extends VideoStreamEventBase {
+  type: 'error';
+  error: string;
+}
+
+export type VideoStreamEvent = 
+  | VideoStreamStatusEvent
+  | VideoStreamCreatedEvent
+  | VideoStreamProgressEvent
+  | VideoStreamProcessingEvent
+  | VideoStreamCompleteEvent
+  | VideoStreamErrorEvent;
+
+/**
+ * Callback function type for SSE events
+ */
+export type VideoStreamEventCallback = (event: VideoStreamEvent) => void;
+
+/**
+ * Stream video generation with analysis using Server-Sent Events.
+ * Provides real-time progress updates without blocking the server.
+ * 
+ * @param request The video generation request parameters
+ * @param onEvent Callback function called for each SSE event
+ * @returns A cleanup function to abort the stream
+ */
+export function streamVideoGenerationWithAnalysis(
+  request: VideoGenerationWithAnalysisRequest,
+  onEvent: VideoStreamEventCallback
+): () => void {
+  const url = `${API_BASE_URL}/videos/generate-with-analysis/stream`;
+  
+  if (API_DEBUG) {
+    console.log(`Starting SSE stream for video generation with analysis`);
+    console.log(`POST ${url}`);
+    console.log('Request:', request);
+  }
+
+  // Build FormData for the request
+  const formData = new FormData();
+  formData.append('prompt', request.prompt);
+  formData.append('n_seconds', String(request.n_seconds));
+  formData.append('height', String(request.height));
+  formData.append('width', String(request.width));
+  formData.append('analyze_video', String(request.analyze_video));
+  
+  // Add folder path from metadata if present
+  const folderPath = request.metadata?.folder;
+  if (folderPath) {
+    formData.append('folder_path', folderPath);
+  }
+  
+  // Add metadata JSON if present
+  if (request.metadata) {
+    formData.append('metadata', JSON.stringify(request.metadata));
+  }
+  
+  // Add images if present
+  if (request.sourceImages && request.sourceImages.length > 0) {
+    for (const file of request.sourceImages) {
+      formData.append('images', file, file.name);
+    }
+  }
+
+  // Create AbortController for cleanup
+  const abortController = new AbortController();
+
+  // Use fetch with ReadableStream to handle SSE from POST request
+  // (EventSource only supports GET requests)
+  fetch(url, {
+    method: 'POST',
+    body: formData,
+    signal: abortController.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        const errorText = await response.text();
+        onEvent({ type: 'error', error: `HTTP ${response.status}: ${errorText}` });
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        onEvent({ type: 'error', error: 'No response body' });
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          if (API_DEBUG) {
+            console.log('SSE stream ended');
+          }
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        let currentEventType: string | null = null;
+        let currentData: string | null = null;
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEventType = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            currentData = line.slice(6);
+          } else if (line === '' && currentEventType && currentData) {
+            // End of event, parse and dispatch
+            try {
+              const parsedData = JSON.parse(currentData);
+              const event: VideoStreamEvent = {
+                type: currentEventType as VideoStreamEventType,
+                ...parsedData,
+              };
+              
+              if (API_DEBUG) {
+                console.log('SSE event:', event);
+              }
+              
+              onEvent(event);
+            } catch (parseError) {
+              console.error('Failed to parse SSE data:', currentData, parseError);
+            }
+            
+            currentEventType = null;
+            currentData = null;
+          }
+        }
+      }
+    })
+    .catch((error) => {
+      if (error.name === 'AbortError') {
+        if (API_DEBUG) {
+          console.log('SSE stream aborted by user');
+        }
+        return;
+      }
+      console.error('SSE stream error:', error);
+      onEvent({ type: 'error', error: error.message || 'Stream error' });
+    });
+
+  // Return cleanup function
+  return () => {
+    if (API_DEBUG) {
+      console.log('Aborting SSE stream');
+    }
+    abortController.abort();
+  };
+} 

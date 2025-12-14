@@ -1,5 +1,5 @@
 import logging
-from openai import AzureOpenAI, OpenAI
+from openai import AzureOpenAI, AsyncAzureOpenAI, OpenAI
 from .config import settings
 from .sora import Sora
 from .gpt_image import GPTImageClient
@@ -37,7 +37,7 @@ except Exception as e:
     logger.error(f"Failed to initialize GPT-Image-1 client: {str(e)}")
     dalle_client = None
 
-# Initialize LLM client
+# Initialize LLM client (sync)
 try:
     llm_client = AzureOpenAI(
         azure_endpoint=f"https://{settings.LLM_AOAI_RESOURCE}.openai.azure.com/",
@@ -51,8 +51,22 @@ except Exception as e:
     logger.error(f"Failed to initialize LLM client: {str(e)}")
     llm_client = None
 
+# Initialize async LLM client (for non-blocking operations)
+try:
+    async_llm_client = AsyncAzureOpenAI(
+        azure_endpoint=f"https://{settings.LLM_AOAI_RESOURCE}.openai.azure.com/",
+        api_key=settings.LLM_AOAI_API_KEY,
+        api_version="2025-01-01-preview"
+    )
+    logger.info(
+        f"Initialized async LLM client with resource: {settings.LLM_AOAI_RESOURCE}")
+except Exception as e:
+    logger.error(f"Failed to initialize async LLM client: {str(e)}")
+    async_llm_client = None
+
 # Generate a blob SAS tokens for the video and image container, valid for 4 hours
 # TODO: Potentially add as a method to the AzureBlobStorage class
+video_sas_token = None
 try:
     video_sas_token = generate_container_sas(
         account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
@@ -65,6 +79,7 @@ try:
 except Exception as e:
     logger.error(f"Failed to generate SAS token for video container: {str(e)}")
 
+image_sas_token = None
 try:
     image_sas_token = generate_container_sas(
         account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,

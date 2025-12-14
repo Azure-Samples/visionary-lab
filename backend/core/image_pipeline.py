@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import logging
@@ -71,7 +72,8 @@ class ImagePipelineService:
                 if request.user:
                     params["user"] = request.user
 
-            response = dalle_client.generate_image(**params)
+            # Run sync SDK call in thread pool to not block event loop
+            response = await asyncio.to_thread(dalle_client.generate_image, **params)
             token_usage = self._extract_token_usage(response)
 
             return ImageGenerationResponse(
@@ -120,7 +122,8 @@ class ImagePipelineService:
                             "Using multiple reference images requires organization verification"
                         )
 
-            response = dalle_client.edit_image(**params)
+            # Run sync SDK call in thread pool to not block event loop
+            response = await asyncio.to_thread(dalle_client.edit_image, **params)
             token_usage = self._extract_token_usage(response)
 
             return ImageGenerationResponse(
@@ -185,12 +188,14 @@ class ImagePipelineService:
             mask_path: Optional[str] = None
             if mask:
                 mask_contents = await mask.read()
-                mask_ext = self._determine_extension(mask.content_type, mask_contents)
+                mask_ext = self._determine_extension(
+                    mask.content_type, mask_contents)
                 mask_fd, mask_path = tempfile.mkstemp(suffix=f".{mask_ext}")
                 temp_files.append((mask_fd, mask_path))
                 with os.fdopen(mask_fd, "wb") as mask_file:
                     mask_file.write(mask_contents)
-                logger.info("Saved mask to %s with format %s", mask_path, mask_ext)
+                logger.info("Saved mask to %s with format %s",
+                            mask_path, mask_ext)
 
             params: Dict[str, object] = {
                 "prompt": prompt,
@@ -257,8 +262,9 @@ class ImagePipelineService:
         saved_images: List[Dict[str, object]] = []
 
         for idx, img_data in enumerate(images_data):
-            img_file, filename, has_transparency = self._prepare_image_file(
-                img_data, request.prompt, idx
+            # Run sync file preparation in thread pool to avoid blocking
+            img_file, filename, has_transparency = await asyncio.to_thread(
+                self._prepare_image_file, img_data, request.prompt, idx
             )
             image_metadata = combined_metadata.copy()
             image_metadata["image_index"] = str(idx + 1)
@@ -273,7 +279,9 @@ class ImagePipelineService:
             )
 
             if cosmos_service:
-                self._create_or_update_metadata(
+                # Run sync cosmos DB call in thread pool to avoid blocking
+                await asyncio.to_thread(
+                    self._create_or_update_metadata,
                     cosmos_service,
                     result,
                     request,
@@ -293,7 +301,7 @@ class ImagePipelineService:
             and cosmos_service
         ):
             analyzed = True
-            analysis_results = self._run_analysis_on_saved_images(
+            analysis_results = await self._run_analysis_on_saved_images(
                 saved_images,
                 cosmos_service,
                 request,
@@ -522,33 +530,38 @@ class ImagePipelineService:
         mask_path: Optional[str],
         params: Dict[str, object],
     ) -> Dict[str, object]:
-        if len(image_paths) == 1:
-            with open(image_paths[0], "rb") as image_file:
-                params["image"] = image_file
+        # Run sync SDK call in thread pool to not block event loop
+        # We use a helper function that handles file opening/closing in the thread
+        def _sync_edit_with_files():
+            if len(image_paths) == 1:
+                with open(image_paths[0], "rb") as image_file:
+                    params["image"] = image_file
+                    if mask_path:
+                        with open(mask_path, "rb") as mask_file:
+                            params["mask"] = mask_file
+                            return dalle_client.edit_image(**params)
+                    return dalle_client.edit_image(**params)
+
+            open_files: List[io.BufferedReader] = []
+            try:
+                image_files = []
+                for path in image_paths:
+                    file_obj = open(path, "rb")
+                    open_files.append(file_obj)
+                    image_files.append(file_obj)
+                params["image"] = image_files
+
                 if mask_path:
-                    with open(mask_path, "rb") as mask_file:
-                        params["mask"] = mask_file
-                        return dalle_client.edit_image(**params)
+                    mask_file = open(mask_path, "rb")
+                    open_files.append(mask_file)
+                    params["mask"] = mask_file
+
                 return dalle_client.edit_image(**params)
+            finally:
+                for file_obj in open_files:
+                    file_obj.close()
 
-        open_files: List[io.BufferedReader] = []
-        try:
-            image_files = []
-            for path in image_paths:
-                file_obj = open(path, "rb")
-                open_files.append(file_obj)
-                image_files.append(file_obj)
-            params["image"] = image_files
-
-            if mask_path:
-                mask_file = open(mask_path, "rb")
-                open_files.append(mask_file)
-                params["mask"] = mask_file
-
-            return dalle_client.edit_image(**params)
-        finally:
-            for file_obj in open_files:
-                file_obj.close()
+        return await asyncio.to_thread(_sync_edit_with_files)
 
     @staticmethod
     def _cleanup_temp_files(temp_files: List[Tuple[int, str]]) -> None:
@@ -628,7 +641,8 @@ class ImagePipelineService:
         image_metadata: Dict[str, str],
     ) -> None:
         try:
-            asset_id = str(upload_result["blob_name"]).split(".")[0].split("/")[-1]
+            asset_id = str(upload_result["blob_name"]).split(".")[
+                0].split("/")[-1]
             width_val = upload_result.get("width")
             height_val = upload_result.get("height")
             width = int(width_val) if width_val else None
@@ -687,7 +701,7 @@ class ImagePipelineService:
         except Exception as exc:
             logger.warning("Failed to create Cosmos DB metadata: %s", exc)
 
-    def _run_analysis_on_saved_images(
+    async def _run_analysis_on_saved_images(
         self,
         saved_images: List[Dict[str, object]],
         cosmos_service: CosmosDBService,
@@ -706,18 +720,24 @@ class ImagePipelineService:
                 if "?" not in image_url:
                     image_url = f"{image_url}?{image_sas_token}"
 
-                response = requests.get(image_url, timeout=30)
+                # Run sync HTTP request in thread pool
+                response = await asyncio.to_thread(
+                    requests.get, image_url, timeout=30
+                )
                 if response.status_code != 200:
                     raise Exception(
                         f"Failed to download image: HTTP {response.status_code}"
                     )
 
-                image_base64 = base64.b64encode(response.content).decode("utf-8")
+                image_base64 = base64.b64encode(
+                    response.content).decode("utf-8")
                 custom_prompt = None
                 if request.metadata and request.metadata.get("analysis_prompt"):
                     custom_prompt = str(request.metadata["analysis_prompt"])
 
-                analysis = analyzer.image_chat(
+                # Run sync LLM call in thread pool
+                analysis = await asyncio.to_thread(
+                    analyzer.image_chat,
                     image_base64,
                     custom_prompt or analyze_image_system_message,
                 )
@@ -731,7 +751,9 @@ class ImagePipelineService:
                     "analyzed_at": datetime.utcnow().isoformat(),
                 }
 
-                cosmos_service.update_asset_metadata(
+                # Run sync cosmos DB call in thread pool to avoid blocking
+                await asyncio.to_thread(
+                    cosmos_service.update_asset_metadata,
                     asset_id,
                     "image",
                     {
@@ -750,7 +772,8 @@ class ImagePipelineService:
                 )
             except Exception as exc:
                 logger.error(
-                    "Failed to analyze image %s: %s", saved_image.get("blob_name"), exc
+                    "Failed to analyze image %s: %s", saved_image.get(
+                        "blob_name"), exc
                 )
                 analysis_results.append(
                     {
@@ -798,12 +821,14 @@ class ImagePipelineService:
 
     def _get_analyzer(self) -> ImageAnalyzer:
         if not self._image_analyzer:
-            self._image_analyzer = ImageAnalyzer(llm_client, settings.LLM_DEPLOYMENT)
+            self._image_analyzer = ImageAnalyzer(
+                llm_client, settings.LLM_DEPLOYMENT)
         return self._image_analyzer
 
     @staticmethod
     def _merge_pipeline_metadata(request: ImagePipelineRequest) -> Dict[str, object]:
-        metadata: Dict[str, object] = request.metadata.copy() if request.metadata else {}
+        metadata: Dict[str, object] = request.metadata.copy(
+        ) if request.metadata else {}
         if request.save_options.metadata:
             metadata.update(request.save_options.metadata)
         if request.analysis_options.custom_prompt:

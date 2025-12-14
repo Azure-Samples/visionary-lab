@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, BackgroundTasks
 from typing import Dict, List, Optional, Any
 import logging
@@ -45,7 +46,9 @@ async def create_asset_metadata(
     try:
         # Convert request to dict and create metadata
         asset_data = request.dict(exclude_unset=True)
-        created_metadata = cosmos_service.create_asset_metadata(asset_data)
+        created_metadata = await asyncio.to_thread(
+            cosmos_service.create_asset_metadata, asset_data
+        )
 
         return AssetMetadataResponse(
             success=True,
@@ -65,7 +68,9 @@ async def get_asset_metadata(
 ):
     """Get metadata for a specific asset"""
     try:
-        metadata = cosmos_service.get_asset_metadata(asset_id, media_type)
+        metadata = await asyncio.to_thread(
+            cosmos_service.get_asset_metadata, asset_id, media_type
+        )
         if not metadata:
             raise HTTPException(
                 status_code=404, detail="Asset metadata not found")
@@ -98,8 +103,8 @@ async def update_asset_metadata(
             raise HTTPException(
                 status_code=400, detail="No valid updates provided")
 
-        updated_metadata = cosmos_service.update_asset_metadata(
-            asset_id, media_type, updates
+        updated_metadata = await asyncio.to_thread(
+            cosmos_service.update_asset_metadata, asset_id, media_type, updates
         )
 
         return AssetMetadataResponse(
@@ -122,7 +127,9 @@ async def delete_asset_metadata(
 ):
     """Delete metadata for an asset"""
     try:
-        success = cosmos_service.delete_asset_metadata(asset_id, media_type)
+        success = await asyncio.to_thread(
+            cosmos_service.delete_asset_metadata, asset_id, media_type
+        )
 
         if not success:
             raise HTTPException(
@@ -162,7 +169,8 @@ async def list_asset_metadata(
         if tags:
             tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
 
-        result = cosmos_service.query_assets(
+        result = await asyncio.to_thread(
+            cosmos_service.query_assets,
             media_type=media_type,
             folder_path=folder_path,
             tags=tag_list,
@@ -198,7 +206,8 @@ async def search_asset_metadata(
     try:
         if request.search_term:
             # Use text search
-            items = cosmos_service.search_assets(
+            items = await asyncio.to_thread(
+                cosmos_service.search_assets,
                 search_term=request.search_term,
                 media_type=request.media_type,
                 limit=request.limit,
@@ -207,7 +216,8 @@ async def search_asset_metadata(
             has_more = False
         else:
             # Use advanced query with filters
-            result = cosmos_service.query_assets(
+            result = await asyncio.to_thread(
+                cosmos_service.query_assets,
                 media_type=request.media_type,
                 folder_path=request.folder_path,
                 tags=request.tags,
@@ -246,7 +256,9 @@ async def get_folder_statistics(
 ):
     """Get folder usage statistics"""
     try:
-        stats = cosmos_service.get_folder_stats(media_type=media_type)
+        stats = await asyncio.to_thread(
+            cosmos_service.get_folder_stats, media_type=media_type
+        )
 
         return FolderStatsResponse(
             success=True,
@@ -269,8 +281,11 @@ async def get_recent_assets(
 ):
     """Get recently created assets"""
     try:
-        items = cosmos_service.get_recent_assets(
-            media_type=media_type, limit=limit)
+        items = await asyncio.to_thread(
+            cosmos_service.get_recent_assets,
+            media_type=media_type,
+            limit=limit,
+        )
 
         # Convert items to AssetMetadata objects
         metadata_items = [AssetMetadata(**item) for item in items]
@@ -286,7 +301,7 @@ async def get_recent_assets(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _sync_metadata_background(
+def _sync_metadata_background(
     sync_request: MetadataSyncRequest,
     cosmos_service: CosmosDBService,
     azure_service: AzureBlobStorageService,

@@ -1,7 +1,19 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
-import { VideoGenerationJob, createVideoGenerationJob, getVideoGenerationJob, mapSettingsToApiRequest, downloadThenUploadToGallery, generateVideoFilename, analyzeAndUpdateVideoMetadata, createVideoGenerationWithAnalysis, VideoGenerationWithAnalysisRequest } from "@/services/api";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
+import { 
+  VideoGenerationJob, 
+  createVideoGenerationJob, 
+  getVideoGenerationJob, 
+  mapSettingsToApiRequest, 
+  downloadThenUploadToGallery, 
+  generateVideoFilename, 
+  analyzeAndUpdateVideoMetadata, 
+  createVideoGenerationWithAnalysis, 
+  VideoGenerationWithAnalysisRequest,
+  streamVideoGenerationWithAnalysis,
+  VideoStreamEvent,
+} from "@/services/api";
 import { toast } from "sonner";
 
 // Global set to track which generation IDs have already been uploaded
@@ -87,6 +99,8 @@ const VideoQueueContext = createContext<VideoQueueContextType | undefined>(undef
 export function VideoQueueProvider({ children }: { children: React.ReactNode }) {
   const [queueItems, setQueueItems] = useState<VideoQueueItem[]>([]);
   const [isClient, setIsClient] = useState(false);
+  // Track active SSE streams so we can abort on completion/removal
+  const streamCleanupRef = useRef<Record<string, () => void>>({});
 
   // This effect runs once on client-side to mark that we're now on the client
   useEffect(() => {
@@ -360,9 +374,9 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
           jobMetadata.analyzeVideo = settings.analyzeVideo.toString();
         }
         
-        // Prefer unified endpoint when analysis is requested (supports optional images)
+        // Prefer SSE streaming endpoint when analysis is requested (real-time progress)
         if (settings.analyzeVideo) {
-          // Use the unified endpoint that handles generation + analysis atomically
+          // Use the SSE streaming endpoint for real-time progress updates
           const unifiedRequest: VideoGenerationWithAnalysisRequest = {
             ...apiRequest,
             analyze_video: true,
@@ -371,56 +385,136 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
             sourceImages: settings.sourceImages,
           };
           
-          try {
-            const unifiedResponse = await createVideoGenerationWithAnalysis(unifiedRequest);
-            const job = unifiedResponse.job;
+          return new Promise<string>((resolve, reject) => {
+            let jobId: string | null = null;
             
-            // Don't show immediate success toast for unified endpoint
-            // The regular polling mechanism will handle the final success notification
-            
-            // Update the queue item with the completed job
+            // Start SSE stream
+            const cleanup = streamVideoGenerationWithAnalysis(unifiedRequest, (event: VideoStreamEvent) => {
+              switch (event.type) {
+                case 'status':
+                  // Initial status update
+                  setQueueItems(prev => 
+                    prev.map(item => 
+                      item.id === tempId
+                        ? { ...item, status: "processing" as const, uploadStarted: true }
+                        : item
+                    )
+                  );
+                  break;
+                  
+                case 'created':
+                  // Job was created - update with real job ID
+                  jobId = event.job_id;
+                  // Move cleanup from tempId to real job id for later cancellation
+                  streamCleanupRef.current[event.job_id] = streamCleanupRef.current[tempId] || cleanup;
+                  delete streamCleanupRef.current[tempId];
             setQueueItems(prev => 
               prev.map(item => 
                 item.id === tempId
+                        ? { 
+                            ...item, 
+                            id: event.job_id,
+                            status: "processing" as const,
+                            job: { id: event.job_id, status: event.status } as VideoGenerationJob,
+                            uploadStarted: true,
+                          }
+                        : item
+                    )
+                  );
+                  break;
+                  
+                case 'progress':
+                  // Progress update from Sora API
+                  setQueueItems(prev => 
+                    prev.map(item => 
+                      (item.id === tempId || item.id === jobId)
+                        ? { 
+                            ...item, 
+                            status: "processing" as const,
+                            progress: event.progress,
+                            uploadStarted: true,
+                          }
+                        : item
+                    )
+                  );
+                  break;
+                  
+                case 'processing':
+                  // Post-generation processing (downloading, analyzing, uploading)
+                  const stepMessages: Record<string, string> = {
+                    'downloading': 'Downloading video...',
+                    'analyzing': 'Analyzing with AI...',
+                    'uploading': 'Uploading to gallery...',
+                  };
+                  // Could show toast or update UI with current step
+                  console.log(`Processing step: ${event.step}`);
+                  break;
+                  
+                case 'complete':
+                  // All done!
+                  const job = event.job;
+                  setQueueItems(prev => 
+                    prev.map(item => 
+                      (item.id === tempId || item.id === jobId)
                   ? { 
                       ...item, 
                       id: job.id, 
-                      job,
-                      status: "completed",
+                            job: job,
+                            status: "completed" as const,
                       progress: 100,
-                      uploadComplete: true, // Mark as complete since unified endpoint handles everything
-                      folder: item.folder // Preserve folder information
+                            uploadComplete: true,
+                            uploadStarted: true,
+                            folder: item.folder,
                     }
                   : item
               )
             );
             
-            return job.id;
-          } catch (error) {
-            console.error("Unified endpoint failed, falling back to traditional approach:", error);
-            toast.error("Unified generation failed, trying traditional approach...");
+                  // Abort stream and cleanup
+                  (streamCleanupRef.current[jobId || tempId] || cleanup)();
+                  delete streamCleanupRef.current[jobId || tempId];
             
-            // Fall back to the traditional approach
-            const job = await createVideoGenerationJob({
-              ...apiRequest,
-              metadata: jobMetadata,
-              // Pass images and analyze/folder form fields for compatibility
-              sourceImages: settings.sourceImages,
-              folder_path: settings.folder,
-              analyze_video: settings.analyzeVideo,
-            });
-            
-            // Update the queue item with the real job ID and data
+                  // Show success toast
+                  const hasAnalysis = event.analysis_results && event.analysis_results.length > 0;
+                  toast.success('Video generated successfully', {
+                    description: hasAnalysis 
+                      ? 'Video uploaded with AI analysis'
+                      : 'Video ready in your gallery',
+                    duration: 5000,
+                  });
+                  
+                  // Notify gallery to refresh
+                  setTimeout(() => {
+                    notifyGalleryRefreshNeeded();
+                  }, 500);
+                  
+                  resolve(job.id);
+                  break;
+                  
+                case 'error':
+                  // Error occurred
+                  console.error('SSE stream error:', event.error);
             setQueueItems(prev => 
               prev.map(item => 
-                item.id === tempId
-                  ? { ...item, id: job.id, job, folder: item.folder } // Preserve folder information
+                      (item.id === tempId || item.id === jobId)
+                        ? { ...item, status: "failed" as const }
                   : item
               )
             );
-            
-            return job.id;
+                  // Abort stream and cleanup
+                  (streamCleanupRef.current[jobId || tempId] || cleanup)();
+                  delete streamCleanupRef.current[jobId || tempId];
+                  toast.error('Video generation failed', {
+                    description: event.error,
+                  });
+                  reject(new Error(event.error));
+                  break;
           }
+            });
+            
+            // Store cleanup function in case we need to abort
+            streamCleanupRef.current[tempId] = cleanup;
+          });
         } else {
           // Use traditional endpoint for non-analysis jobs
           const job = await createVideoGenerationJob({
@@ -464,6 +558,11 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
   };
 
   const removeFromQueue = (id: string) => {
+    const cleanup = streamCleanupRef.current[id];
+    if (cleanup) {
+      cleanup();
+      delete streamCleanupRef.current[id];
+    }
     setQueueItems(prev => prev.filter(item => item.id !== id));
   };
   

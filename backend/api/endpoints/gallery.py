@@ -11,6 +11,7 @@ from fastapi import (
 )
 from typing import Dict, List, Optional, Any
 from fastapi.responses import StreamingResponse
+import asyncio
 import io
 import re
 import os
@@ -85,7 +86,8 @@ async def get_gallery_images(
             tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
 
         # Query Cosmos DB for images only
-        result = cosmos_service.query_assets(
+        result = await asyncio.to_thread(
+            cosmos_service.query_assets,
             media_type="image",  # Images only
             folder_path=folder_path,
             tags=tag_list,
@@ -183,7 +185,8 @@ async def get_gallery_videos(
             tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
 
         # Query Cosmos DB for videos only
-        result = cosmos_service.query_assets(
+        result = await asyncio.to_thread(
+            cosmos_service.query_assets,
             media_type="video",  # Videos only
             folder_path=folder_path,
             tags=tag_list,
@@ -310,7 +313,8 @@ async def _get_gallery_items_from_cosmos(
 ) -> GalleryResponse:
     """Get gallery items from CosmosDB metadata with standardized analysis structure"""
     try:
-        result = cosmos_service.query_assets(
+        result = await asyncio.to_thread(
+            cosmos_service.query_assets,
             folder_path=folder_path,
             limit=limit,
             offset=offset,
@@ -479,8 +483,9 @@ async def upload_asset(
 
                 cosmos_metadata = AssetMetadataCreateRequest(**cosmos_data)
 
-                cosmos_service.create_asset_metadata(
-                    cosmos_metadata.dict(exclude_unset=True)
+                await asyncio.to_thread(
+                    cosmos_service.create_asset_metadata,
+                    cosmos_metadata.dict(exclude_unset=True),
                 )
             except Exception as cosmos_error:
                 # Log error but don't fail the upload
@@ -549,7 +554,9 @@ async def delete_asset(
         # Delete from Cosmos DB first (if available)
         if cosmos_service:
             try:
-                cosmos_service.delete_asset_metadata(asset_id, media_type_str)
+                await asyncio.to_thread(
+                    cosmos_service.delete_asset_metadata, asset_id, media_type_str
+                )
             except Exception as cosmos_error:
                 import logging
 
@@ -558,7 +565,9 @@ async def delete_asset(
                     f"Failed to delete Cosmos DB metadata: {cosmos_error}")
 
         # Delete from Azure Blob Storage
-        success = azure_storage_service.delete_asset(blob_name, container_name)
+        success = await asyncio.to_thread(
+            azure_storage_service.delete_asset, blob_name, container_name
+        )
 
         if not success:
             raise HTTPException(status_code=404, detail="Asset not found")
@@ -598,8 +607,8 @@ async def get_asset_content(
             if media_type == MediaType.IMAGE
             else settings.AZURE_BLOB_VIDEO_CONTAINER
         )
-        content, content_type = azure_storage_service.get_asset_content(
-            blob_name, container_name
+        content, content_type = await asyncio.to_thread(
+            azure_storage_service.get_asset_content, blob_name, container_name
         )
 
         if not content:
@@ -675,7 +684,9 @@ async def health_check(
             settings.AZURE_BLOB_VIDEO_CONTAINER,
         ]
         for container in containers:
-            azure_storage_service._ensure_container_exists(container)
+            await asyncio.to_thread(
+                azure_storage_service._ensure_container_exists, container
+            )
 
         health_status["services"]["azure_blob_storage"] = {
             "status": "healthy",
@@ -692,7 +703,7 @@ async def health_check(
     # Check Cosmos DB
     if cosmos_service:
         try:
-            cosmos_health = cosmos_service.health_check()
+            cosmos_health = await asyncio.to_thread(cosmos_service.health_check)
             health_status["services"]["cosmos_db"] = cosmos_health
 
             if cosmos_health["status"] != "healthy":
@@ -757,14 +768,18 @@ async def metadata_service_status(
     if cosmos_service:
         try:
             # Test basic connectivity
-            cosmos_health = cosmos_service.health_check()
+            cosmos_health = await asyncio.to_thread(cosmos_service.health_check)
 
             # Test query capabilities
-            test_query_result = cosmos_service.query_assets(limit=1, offset=0)
+            test_query_result = await asyncio.to_thread(
+                cosmos_service.query_assets, limit=1, offset=0
+            )
 
             # Test search capabilities
             try:
-                search_result = cosmos_service.search_assets("test", limit=1)
+                search_result = await asyncio.to_thread(
+                    cosmos_service.search_assets, "test", limit=1
+                )
                 search_available = True
             except:
                 search_available = False
@@ -847,11 +862,14 @@ async def list_folders(
 
         # Get folders from Cosmos DB
         media_type_str = media_type.value if media_type else None
-        result = cosmos_service.get_all_folders(media_type=media_type_str)
+        result = await asyncio.to_thread(
+            cosmos_service.get_all_folders, media_type=media_type_str
+        )
 
         # Filter out root folder from the results and build hierarchy for UI
-        filtered_folders = [folder for folder in result['folders'] if folder != '/' and folder.strip()]
-        
+        filtered_folders = [
+            folder for folder in result['folders'] if folder != '/' and folder.strip()]
+
         # Build folder hierarchy for UI
         folder_hierarchy = {}
         for folder_path in filtered_folders:
@@ -883,7 +901,7 @@ async def create_folder(
 ):
     """
     Create a folder placeholder in CosmosDB for immediate navbar visibility.
-    
+
     This creates a special folder metadata record so the folder appears immediately
     in the navigation, even before any assets are added to it.
     """
@@ -918,13 +936,19 @@ async def create_folder(
         if cosmos_service:
             try:
                 # Check if folder placeholder already exists
-                existing_placeholder = cosmos_service.container.query_items(
-                    query="SELECT * FROM c WHERE c.doc_type = 'folder_placeholder' AND c.folder_path = @folder_path",
-                    parameters=[{"name": "@folder_path", "value": normalized_folder}],
-                    enable_cross_partition_query=True
+                existing_placeholder = await asyncio.to_thread(
+                    lambda: list(
+                        cosmos_service.container.query_items(
+                            query="SELECT * FROM c WHERE c.doc_type = 'folder_placeholder' AND c.folder_path = @folder_path",
+                            parameters=[
+                                {"name": "@folder_path", "value": normalized_folder}
+                            ],
+                            enable_cross_partition_query=True,
+                        )
+                    )
                 )
-                
-                if not list(existing_placeholder):
+
+                if not existing_placeholder:
                     # Create folder placeholder record
                     folder_placeholder = {
                         "id": f"folder_{uuid.uuid4().hex[:12]}",
@@ -937,14 +961,19 @@ async def create_folder(
                         "is_placeholder": True,
                         "asset_count": 0
                     }
-                    
-                    cosmos_service.create_asset_metadata(folder_placeholder)
-                    logger.info(f"Created folder placeholder for: {folder_path}")
+
+                    await asyncio.to_thread(
+                        cosmos_service.create_asset_metadata, folder_placeholder
+                    )
+                    logger.info(
+                        f"Created folder placeholder for: {folder_path}")
                 else:
-                    logger.info(f"Folder placeholder already exists for: {folder_path}")
-                    
+                    logger.info(
+                        f"Folder placeholder already exists for: {folder_path}")
+
             except Exception as e:
-                logger.warning(f"Failed to create folder placeholder in CosmosDB: {e}")
+                logger.warning(
+                    f"Failed to create folder placeholder in CosmosDB: {e}")
                 # Continue anyway - folder will still work when assets are added
 
         # Return success

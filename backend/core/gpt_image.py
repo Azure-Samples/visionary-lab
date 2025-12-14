@@ -1,3 +1,4 @@
+import asyncio
 import os
 import logging
 import base64
@@ -450,55 +451,56 @@ class GPTImageClient:
                 )
 
                 try:
-                    # Send the request
-                    response = requests.post(
-                        url, headers=headers, files=files, data=data)
-                    response.raise_for_status()
+                    # Send the request (run in thread pool to avoid blocking)
+                    def _sync_post():
+                        resp = requests.post(url, headers=headers, files=files, data=data)
+                        resp.raise_for_status()
+                        return resp.json()
 
-                    # Return the JSON response
-                    return response.json()
+                    return await asyncio.to_thread(_sync_post)
                 finally:
                     # No need to explicitly close files - requests will handle it
                     pass
             else:
                 # OpenAI SDK approach (original implementation)
-                # Make the API call with proper file objects
+                # Wrap sync edit_image calls in thread pool to avoid blocking
                 if len(image_file_objs) == 1:
                     # Single image case
-                    with open(image_file_objs[0], "rb") as image_file:
-                        params["image"] = image_file
+                    def _sync_edit_single():
+                        with open(image_file_objs[0], "rb") as image_file:
+                            params["image"] = image_file
+                            if mask_file_obj:
+                                with open(mask_file_obj, "rb") as mask_file:
+                                    params["mask"] = mask_file
+                                    return self.edit_image(**params)
+                            else:
+                                return self.edit_image(**params)
 
-                        # Add mask if provided
-                        if mask_file_obj:
-                            with open(mask_file_obj, "rb") as mask_file:
-                                params["mask"] = mask_file
-                                response = self.edit_image(**params)
-                        else:
-                            response = self.edit_image(**params)
+                    response = await asyncio.to_thread(_sync_edit_single)
                 else:
                     # Multiple images case (only for gpt-image-1)
-                    # Create a list to hold all open file handles to close them later
-                    open_files = []
-                    try:
-                        image_files = []
-                        for path in image_file_objs:
-                            f = open(path, "rb")
-                            open_files.append(f)
-                            image_files.append(f)
+                    def _sync_edit_multiple():
+                        open_files = []
+                        try:
+                            image_files = []
+                            for path in image_file_objs:
+                                f = open(path, "rb")
+                                open_files.append(f)
+                                image_files.append(f)
 
-                        params["image"] = image_files
+                            params["image"] = image_files
 
-                        # Add mask if provided
-                        if mask_file_obj:
-                            mask_f = open(mask_file_obj, "rb")
-                            open_files.append(mask_f)
-                            params["mask"] = mask_f
+                            if mask_file_obj:
+                                mask_f = open(mask_file_obj, "rb")
+                                open_files.append(mask_f)
+                                params["mask"] = mask_f
 
-                        response = self.edit_image(**params)
-                    finally:
-                        # Close all open file handles
-                        for f in open_files:
-                            f.close()
+                            return self.edit_image(**params)
+                        finally:
+                            for f in open_files:
+                                f.close()
+
+                    response = await asyncio.to_thread(_sync_edit_multiple)
 
                 return response
         finally:
