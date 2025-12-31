@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Settings, Wand2, Loader2, ArrowUp, Images, FolderTree, Plus, Check, RefreshCw, Layers, FileType, PlusCircle, BarChart4, Eye, Maximize } from "lucide-react";
+import { X, Settings, Wand2, Loader2, ArrowUp, Images, FolderTree, Plus, Check, RefreshCw, Layers, FileType, PlusCircle, BarChart4, Eye, Maximize, AlertTriangle, SlidersHorizontal } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -29,6 +30,7 @@ import { useFolderContext } from "@/context/folder-context";
 interface ImageOverlayProps {
   onGenerate: (settings: {
     prompt: string;
+    model: string;
     imageSize: string;
     saveImages: boolean;
     mode: string;
@@ -59,6 +61,7 @@ export function ImageOverlay({
   onFolderCreated
 }: ImageOverlayProps) {
   const [prompt, setPrompt] = useState("");
+  const [model, setModel] = useState("gpt-image-1");
   const [imageSize, setImageSize] = useState("1024x1024");
   const [saveImages] = useState(true);
   const [mode] = useState("prod");
@@ -66,6 +69,7 @@ export function ImageOverlay({
   const [aiAnalysisEnabled, setAiAnalysisEnabled] = useState(true);
   const [variations, setVariations] = useState("1");
   const [expanded, setExpanded] = useState(true);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [isWizardEnhancing, setIsWizardEnhancing] = useState(false);
   const [folder, setFolder] = useState(selectedFolder || "root");
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -133,7 +137,15 @@ export function ImageOverlay({
     }
   }, [background, outputFormat]);
 
-
+  // Helper function to get model display name for the trigger
+  const getModelDisplayName = (modelValue: string) => {
+    const modelNames: Record<string, string> = {
+      "gpt-image-1": "GPT-Image-1",
+      "gpt-image-1.5": "GPT-Image-1.5",
+      "gpt-image-1-mini": "GPT-Image-1 Mini"
+    };
+    return modelNames[modelValue] || modelValue;
+  };
 
   // Get overlay background color based on theme
   const getOverlayBgColor = () => {
@@ -179,6 +191,7 @@ export function ImageOverlay({
     
     onGenerate({
       prompt,
+      model,
       imageSize,
       saveImages,
       mode,
@@ -444,6 +457,16 @@ export function ImageOverlay({
               </div>
             )}
             
+            {/* Warning for mini model with edit mode */}
+            {isClient && sourceImages.length > 0 && model === "gpt-image-1-mini" && (
+              <Alert variant="destructive" className="animate-in fade-in-0 slide-in-from-top-2 duration-300">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  GPT-Image-1 Mini does not support image editing. Please switch to GPT-Image-1 or GPT-Image-1.5, or remove source images to use text-to-image generation.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             {/* Input row with buttons */}
             <div className="flex items-start gap-3">
               <TooltipProvider>
@@ -588,7 +611,7 @@ export function ImageOverlay({
                       ? "bg-white/10 hover:bg-white/20 text-white" 
                       : "bg-gray-100 hover:bg-gray-200 text-gray-900"
                   )}
-                  disabled={isGenerating || !prompt.trim()}
+                  disabled={isGenerating || !prompt.trim() || (sourceImages.length > 0 && model === "gpt-image-1-mini")}
                 >
                   {isGenerating ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -604,6 +627,49 @@ export function ImageOverlay({
               <div className="flex flex-wrap items-center gap-3 pt-1">
                 <TooltipProvider>
                   <div className="flex flex-wrap items-center gap-3 transition-all duration-200 ease-in-out opacity-100 translate-y-0 w-full">
+                    {/* Model Selection Dropdown */}
+                    <Tooltip delayDuration={300}>
+                      <TooltipTrigger asChild>
+                        <div className="relative">
+                          <Select
+                            value={model}
+                            onValueChange={setModel}
+                            disabled={isGenerating}
+                          >
+                            <SelectTrigger className="w-[180px] h-8">
+                              <div className="flex items-center">
+                                <Wand2 className="h-4 w-4 mr-2" />
+                                <span className="truncate">{getModelDisplayName(model)}</span>
+                              </div>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="gpt-image-1">
+                                <div className="flex flex-col items-start">
+                                  <span className="font-medium">GPT-Image-1</span>
+                                  <span className="text-xs text-muted-foreground">Standard quality</span>
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="gpt-image-1.5">
+                                <div className="flex flex-col items-start">
+                                  <span className="font-medium">GPT-Image-1.5</span>
+                                  <span className="text-xs text-muted-foreground">Enhanced, 4x faster</span>
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="gpt-image-1-mini">
+                                <div className="flex flex-col items-start">
+                                  <span className="font-medium">GPT-Image-1 Mini</span>
+                                  <span className="text-xs text-muted-foreground">Economical</span>
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="font-medium">
+                        <p>Select image generation model</p>
+                      </TooltipContent>
+                    </Tooltip>
+
                     <Tooltip delayDuration={300}>
                       <TooltipTrigger asChild>
                         <div className="relative">
@@ -782,10 +848,34 @@ export function ImageOverlay({
                       </TooltipContent>
                     </Tooltip>
 
-                    {/* Folder Select Dropdown */}
+                    {/* Advanced Settings Toggle Button */}
                     <Tooltip delayDuration={300}>
                       <TooltipTrigger asChild>
-                        <div className="relative">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+                          className={cn(
+                            "h-8 w-8 rounded-md",
+                            showAdvancedSettings && "bg-primary/10"
+                          )}
+                          disabled={isGenerating}
+                        >
+                          <SlidersHorizontal className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="font-medium">
+                        <p>Toggle advanced settings</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* Advanced Settings - Folder & Analysis */}
+                    {showAdvancedSettings && (
+                      <>
+                        {/* Folder Select Dropdown */}
+                        <Tooltip delayDuration={300}>
+                          <TooltipTrigger asChild>
+                            <div className="relative animate-in fade-in-0 slide-in-from-left-2 duration-300">
                           <Select
                             value={folder}
                             onValueChange={setFolder}
@@ -878,8 +968,8 @@ export function ImageOverlay({
                       </TooltipContent>
                     </Tooltip>
 
-                    {/* AI Analysis Toggle Button */}
-                    <Tooltip delayDuration={300}>
+                        {/* AI Analysis Toggle Button */}
+                        <Tooltip delayDuration={300}>
                       <TooltipTrigger asChild>
                         <ToggleGroup 
                           type="single" 
@@ -924,6 +1014,8 @@ export function ImageOverlay({
                         <p>Analyze images for automatic tagging and summary</p>
                       </TooltipContent>
                     </Tooltip>
+                      </>
+                    )}
                   </div>
                 </TooltipProvider>
               </div>

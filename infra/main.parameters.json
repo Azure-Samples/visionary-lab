@@ -35,6 +35,12 @@
     "IMAGEGEN_DEPLOYMENT": {
       "value": "${IMAGEGEN_DEPLOYMENT}"
     },
+    "IMAGEGEN_15_DEPLOYMENT": {
+      "value": "${IMAGEGEN_15_DEPLOYMENT}"
+    },
+    "IMAGEGEN_1_MINI_DEPLOYMENT": {
+      "value": "${IMAGEGEN_1_MINI_DEPLOYMENT}"
+    },
     "SORA_AOAI_RESOURCE": {
       "value": "${SORA_AOAI_RESOURCE}"
     },

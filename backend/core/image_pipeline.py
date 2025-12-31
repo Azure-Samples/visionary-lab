@@ -49,6 +49,15 @@ class ImagePipelineService:
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResponse:
         """Generate images via the configured DALL-E/GPT-image client."""
         try:
+            # Import here to avoid circular dependencies
+            from backend.core.gpt_image import GPTImageClient
+            
+            # Create a model-specific client
+            client = GPTImageClient(
+                provider=settings.MODEL_PROVIDER,
+                model=request.model
+            )
+            
             params: Dict[str, object] = {
                 "prompt": request.prompt,
                 "model": request.model,
@@ -56,25 +65,29 @@ class ImagePipelineService:
                 "size": request.size,
             }
 
-            if request.model == "gpt-image-1":
-                if request.quality:
-                    params["quality"] = request.quality
-                params["background"] = request.background
-                if request.output_format != "png":
-                    params["output_format"] = request.output_format
-                if (
-                    request.output_format in ["webp", "jpeg"]
-                    and request.output_compression != 100
-                ):
-                    params["output_compression"] = request.output_compression
-                if request.moderation != "auto":
-                    params["moderation"] = request.moderation
-                if request.user:
-                    params["user"] = request.user
+            # Add model-specific parameters (supported by all gpt-image models)
+            if request.quality:
+                params["quality"] = request.quality
+            params["background"] = request.background
+            if request.output_format != "png":
+                params["output_format"] = request.output_format
+            if (
+                request.output_format in ["webp", "jpeg"]
+                and request.output_compression != 100
+            ):
+                params["output_compression"] = request.output_compression
+            if request.moderation != "auto":
+                params["moderation"] = request.moderation
+            if request.user:
+                params["user"] = request.user
 
             # Run sync SDK call in thread pool to not block event loop
-            response = await asyncio.to_thread(dalle_client.generate_image, **params)
+            response = await asyncio.to_thread(client.generate_image, **params)
             token_usage = self._extract_token_usage(response)
+            
+            # Extract deployment metadata for tracking
+            deployment_name = response.get("_deployment_name")
+            model_used = response.get("_model", request.model)
 
             return ImageGenerationResponse(
                 success=True,
@@ -89,6 +102,22 @@ class ImagePipelineService:
     async def edit(self, request: ImageEditRequest) -> ImageGenerationResponse:
         """Edit images via the configured client using JSON payload data."""
         try:
+            # Validate mini model restrictions
+            if request.model == "gpt-image-1-mini":
+                raise HTTPException(
+                    status_code=400,
+                    detail="gpt-image-1-mini does not support image editing. Please use gpt-image-1 or gpt-image-1.5 for image editing operations."
+                )
+            
+            # Import here to avoid circular dependencies
+            from backend.core.gpt_image import GPTImageClient
+            
+            # Create a model-specific client
+            client = GPTImageClient(
+                provider=settings.MODEL_PROVIDER,
+                model=request.model
+            )
+            
             params: Dict[str, object] = {
                 "prompt": request.prompt,
                 "model": request.model,
@@ -100,31 +129,35 @@ class ImagePipelineService:
             if request.mask:
                 params["mask"] = request.mask
 
-            if request.model == "gpt-image-1":
-                if request.quality:
-                    params["quality"] = request.quality
-                if request.output_format != "png":
-                    params["output_format"] = request.output_format
-                if (
-                    request.output_format in ["webp", "jpeg"]
-                    and request.output_compression != 100
-                ):
-                    params["output_compression"] = request.output_compression
-                if request.input_fidelity and request.input_fidelity != "low":
-                    params["input_fidelity"] = request.input_fidelity
-                if request.user:
-                    params["user"] = request.user
+            # Add model-specific parameters
+            if request.quality:
+                params["quality"] = request.quality
+            if request.output_format != "png":
+                params["output_format"] = request.output_format
+            if (
+                request.output_format in ["webp", "jpeg"]
+                and request.output_compression != 100
+            ):
+                params["output_compression"] = request.output_compression
+            if request.input_fidelity and request.input_fidelity != "low":
+                params["input_fidelity"] = request.input_fidelity
+            if request.user:
+                params["user"] = request.user
 
-                if isinstance(request.image, list):
-                    image_count = len(request.image)
-                    if image_count > 1 and not settings.OPENAI_ORG_VERIFIED:
-                        logger.warning(
-                            "Using multiple reference images requires organization verification"
-                        )
+            if isinstance(request.image, list):
+                image_count = len(request.image)
+                if image_count > 1 and not settings.OPENAI_ORG_VERIFIED:
+                    logger.warning(
+                        "Using multiple reference images requires organization verification"
+                    )
 
             # Run sync SDK call in thread pool to not block event loop
-            response = await asyncio.to_thread(dalle_client.edit_image, **params)
+            response = await asyncio.to_thread(client.edit_image, **params)
             token_usage = self._extract_token_usage(response)
+            
+            # Extract deployment metadata for tracking
+            deployment_name = response.get("_deployment_name")
+            model_used = response.get("_model", request.model)
 
             return ImageGenerationResponse(
                 success=True,
@@ -150,6 +183,13 @@ class ImagePipelineService:
         mask: Optional[UploadFile] = None,
     ) -> ImageGenerationResponse:
         """Edit images using uploaded multipart files."""
+
+        # Validate mini model restrictions
+        if model == "gpt-image-1-mini":
+            raise HTTPException(
+                status_code=400,
+                detail="gpt-image-1-mini does not support image editing. Please use gpt-image-1 or gpt-image-1.5 for image editing operations."
+            )
 
         if input_fidelity not in ["low", "high"]:
             raise HTTPException(
@@ -204,13 +244,13 @@ class ImagePipelineService:
                 "size": size,
             }
 
-            if model == "gpt-image-1":
-                params["quality"] = quality
-                if input_fidelity != "low":
-                    params["input_fidelity"] = input_fidelity
+            # Add quality and input_fidelity for all gpt-image models
+            params["quality"] = quality
+            if input_fidelity != "low":
+                params["input_fidelity"] = input_fidelity
 
             response = await self._invoke_edit_with_files(
-                image_file_paths, mask_path, params
+                image_file_paths, mask_path, params, model
             )
             token_usage = self._extract_token_usage(response)
 
@@ -260,6 +300,10 @@ class ImagePipelineService:
 
         combined_metadata = self._build_base_metadata(request)
         saved_images: List[Dict[str, object]] = []
+        
+        # Extract deployment metadata for tracking
+        deployment_name = request.generation_response.imgen_model_response.get("_deployment_name")
+        model_used = request.generation_response.imgen_model_response.get("_model")
 
         for idx, img_data in enumerate(images_data):
             # Run sync file preparation in thread pool to avoid blocking
@@ -287,6 +331,8 @@ class ImagePipelineService:
                     request,
                     has_transparency,
                     image_metadata,
+                    deployment_name,
+                    model_used,
                 )
 
             saved_images.append(result)
@@ -529,7 +575,17 @@ class ImagePipelineService:
         image_paths: List[str],
         mask_path: Optional[str],
         params: Dict[str, object],
+        model: str,
     ) -> Dict[str, object]:
+        # Import here to avoid circular dependencies
+        from backend.core.gpt_image import GPTImageClient
+        
+        # Create a model-specific client
+        client = GPTImageClient(
+            provider=settings.MODEL_PROVIDER,
+            model=model
+        )
+        
         # Run sync SDK call in thread pool to not block event loop
         # We use a helper function that handles file opening/closing in the thread
         def _sync_edit_with_files():
@@ -539,8 +595,8 @@ class ImagePipelineService:
                     if mask_path:
                         with open(mask_path, "rb") as mask_file:
                             params["mask"] = mask_file
-                            return dalle_client.edit_image(**params)
-                    return dalle_client.edit_image(**params)
+                            return client.edit_image(**params)
+                    return client.edit_image(**params)
 
             open_files: List[io.BufferedReader] = []
             try:
@@ -556,7 +612,7 @@ class ImagePipelineService:
                     open_files.append(mask_file)
                     params["mask"] = mask_file
 
-                return dalle_client.edit_image(**params)
+                return client.edit_image(**params)
             finally:
                 for file_obj in open_files:
                     file_obj.close()
@@ -639,6 +695,8 @@ class ImagePipelineService:
         request: ImageSaveRequest,
         has_transparency: Optional[bool],
         image_metadata: Dict[str, str],
+        deployment_name: Optional[str] = None,
+        model_used: Optional[str] = None,
     ) -> None:
         try:
             asset_id = str(upload_result["blob_name"]).split(".")[
@@ -659,8 +717,12 @@ class ImagePipelineService:
                 "content_type": upload_result.get("content_type"),
                 "folder_path": upload_result.get("folder_path"),
                 "prompt": request.prompt,
-                "model": request.model,
+                "model": model_used or request.model,
             }
+            
+            # Add deployment name for cost attribution
+            if deployment_name:
+                cosmos_metadata["deployment_name"] = deployment_name
 
             quality = getattr(request, "quality", None)
             if quality and quality != "auto":

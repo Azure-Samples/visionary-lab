@@ -25,16 +25,17 @@ except Exception as e:
     logger.error(f"Failed to initialize Sora 2 client: {str(e)}")
     sora_client = None
 
-# Initialize GPT-Image-1 client
+# Initialize GPT-Image client (using default model)
 try:
-    # Using OpenAI API directly for GPT-Image-1
+    # Using OpenAI API directly for GPT-Image
     dalle_client = GPTImageClient(
         api_key=settings.OPENAI_API_KEY,
-        organization_id=settings.OPENAI_ORG_ID if settings.OPENAI_ORG_ID else None
+        organization_id=settings.OPENAI_ORG_ID if settings.OPENAI_ORG_ID else None,
+        model=settings.DEFAULT_IMAGE_MODEL
     )
-    logger.info("Initialized GPT-Image-1 client using OpenAI API.")
+    logger.info(f"Initialized GPT-Image client using OpenAI API with default model: {settings.DEFAULT_IMAGE_MODEL}")
 except Exception as e:
-    logger.error(f"Failed to initialize GPT-Image-1 client: {str(e)}")
+    logger.error(f"Failed to initialize GPT-Image client: {str(e)}")
     dalle_client = None
 
 # Initialize LLM client (sync)

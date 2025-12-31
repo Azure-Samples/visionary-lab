@@ -37,8 +37,12 @@ param LLM_AOAI_API_KEY string
 // Parameters for the OpenAI deployments - Image Generation
 @description('Name of the Azure OpenAI resource for image generation')
 param IMAGEGEN_AOAI_RESOURCE string
-@description('Name of the image generation deployment')
+@description('Name of the image generation deployment (gpt-image-1)')
 param IMAGEGEN_DEPLOYMENT string
+@description('Name of the gpt-image-1.5 deployment')
+param IMAGEGEN_15_DEPLOYMENT string = ''
+@description('Name of the gpt-image-1-mini deployment')
+param IMAGEGEN_1_MINI_DEPLOYMENT string = ''
 @secure()
 @description('API key for image generation Azure OpenAI service')
 param IMAGEGEN_AOAI_API_KEY string
@@ -203,6 +207,8 @@ module containerAppBackend './modules/containerApp.bicep' = {
     AZURE_CONTAINER_REGISTRY_PASSWORD: containerRegistryMod.outputs.containerRegistryPassword
     IMAGEGEN_AOAI_RESOURCE: IMAGEGEN_AOAI_RESOURCE
     IMAGEGEN_DEPLOYMENT: IMAGEGEN_DEPLOYMENT
+    IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
+    IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
     IMAGEGEN_AOAI_API_KEY: IMAGEGEN_AOAI_API_KEY
     LLM_AOAI_RESOURCE: LLM_AOAI_RESOURCE
     LLM_DEPLOYMENT: LLM_DEPLOYMENT
@@ -242,6 +248,8 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     AZURE_CONTAINER_REGISTRY_PASSWORD: containerRegistryMod.outputs.containerRegistryPassword
     IMAGEGEN_AOAI_RESOURCE: IMAGEGEN_AOAI_RESOURCE
     IMAGEGEN_DEPLOYMENT: IMAGEGEN_DEPLOYMENT
+    IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
+    IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
     IMAGEGEN_AOAI_API_KEY: IMAGEGEN_AOAI_API_KEY
     LLM_AOAI_RESOURCE: LLM_AOAI_RESOURCE
     LLM_DEPLOYMENT: LLM_DEPLOYMENT

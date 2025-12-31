@@ -25,10 +25,16 @@ class Settings(BaseSettings):
     # Azure OpenAI for Image Generation
     # The Azure OpenAI resource name for image generation
     IMAGEGEN_AOAI_RESOURCE: Optional[str] = None
-    # The image generation deployment name
+    # The image generation deployment name (gpt-image-1)
     IMAGEGEN_DEPLOYMENT: Optional[str] = None
+    # The gpt-image-1.5 deployment name
+    IMAGEGEN_15_DEPLOYMENT: Optional[str] = None
+    # The gpt-image-1-mini deployment name
+    IMAGEGEN_1_MINI_DEPLOYMENT: Optional[str] = None
     # The Azure OpenAI API key for image generation
     IMAGEGEN_AOAI_API_KEY: Optional[str] = None
+    # Default image generation model
+    DEFAULT_IMAGE_MODEL: str = "gpt-image-1"
 
     # OpenAI API for Image Generation with GPT-Image-1
     OPENAI_API_KEY: Optional[str] = None

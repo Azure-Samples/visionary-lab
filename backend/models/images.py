@@ -45,7 +45,15 @@ class ImageGenerationRequest(BaseModel):
                         examples=["A futuristic city skyline at sunset"])
     model: str = Field("gpt-image-1",
                        description="Image generation model to use",
-                       examples=["gpt-image-1"])
+                       examples=["gpt-image-1", "gpt-image-1.5", "gpt-image-1-mini"])
+    
+    @validator('model')
+    def validate_model(cls, v):
+        """Validate that the model is one of the supported models"""
+        valid_models = ["gpt-image-1", "gpt-image-1.5", "gpt-image-1-mini"]
+        if v not in valid_models:
+            raise ValueError(f"Model must be one of {valid_models}")
+        return v
     n: int = Field(1,
                    description="Number of images to generate (1-10)")
     size: str = Field("auto",

@@ -1154,12 +1154,13 @@ export async function generateImages(
   response_format: string = "b64_json",
   background: string = "auto",
   outputFormat: string = "png",
-  quality: string = "auto"
+  quality: string = "auto",
+  model: string = "gpt-image-1"
 ): Promise<ImageGenerationResponse> {
   const pipelineRequest: ImagePipelineRequest = {
     action: PipelineAction.GENERATE,
     prompt,
-    model: 'gpt-image-1',
+    model,
     n,
     size,
     response_format,
@@ -1627,6 +1628,7 @@ export async function moveAsset(
  * @param inputFidelity - Input fidelity for better reproduction of input features:
  *   - 'low' (default): Standard fidelity, faster processing
  *   - 'high': Better reproduction of input image features, additional cost (~$0.04-$0.06 per image)
+ * @param model - Image generation model to use (default: "gpt-image-1")
  */
 export async function editImage(
   sourceImages: File | File[],
@@ -1634,7 +1636,8 @@ export async function editImage(
   n: number = 1,
   size: string = "auto",
   quality: string = "auto",
-  inputFidelity: string = "low"
+  inputFidelity: string = "low",
+  model: string = "gpt-image-1"
 ): Promise<ImageGenerationResponse> {
   if (inputFidelity && !["low", "high"].includes(inputFidelity)) {
     throw new Error("input_fidelity must be either 'low' or 'high'");
@@ -1643,13 +1646,13 @@ export async function editImage(
   const filesArray = Array.isArray(sourceImages) ? sourceImages : [sourceImages];
 
   if (API_DEBUG) {
-    console.log(`Editing ${filesArray.length} image(s) with prompt: ${prompt}, input_fidelity: ${inputFidelity}`);
+    console.log(`Editing ${filesArray.length} image(s) with prompt: ${prompt}, model: ${model}, input_fidelity: ${inputFidelity}`);
   }
 
   const pipelineRequest: ImagePipelineRequest = {
     action: PipelineAction.EDIT,
     prompt,
-    model: 'gpt-image-1',
+    model,
     n,
     size,
     response_format: 'b64_json',

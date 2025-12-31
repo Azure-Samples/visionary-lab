@@ -22,6 +22,7 @@ interface ImageCreationContainerProps {
 
 interface ImageGenerationSettings {
   prompt: string;
+  model: string;
   imageSize: string;
   saveImages: boolean;
   mode: string;
@@ -184,7 +185,8 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           newSettings.variations, // Number of variations from dropdown
           newSettings.imageSize, // Use selected size
           newSettings.quality, // Quality parameter
-          newSettings.inputFidelity // Input fidelity parameter
+          newSettings.inputFidelity, // Input fidelity parameter
+          newSettings.model // Model parameter
         );
         
         // Update the loading toast to success
@@ -208,7 +210,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
             output_format: newSettings.outputFormat,
             background: newSettings.background,
             folder_path: normalizedFolder,
-            model: 'gpt-image-1',
+            model: newSettings.model,
             analyze: true,
             save_all: true,
           });
@@ -238,7 +240,8 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
             "b64_json",
             newSettings.background,
             newSettings.outputFormat,
-            newSettings.quality
+            newSettings.quality,
+            newSettings.model
           );
           toast.success("Image generation completed", {
             id: generatingToast,
@@ -265,7 +268,8 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           normalizedFolder,
           newSettings.outputFormat,
           newSettings.background,
-          newSettings.imageSize
+          newSettings.imageSize,
+          newSettings.model
         );
       }
       
@@ -333,6 +337,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
     outputFormat: string = "png",
     background: string = "auto",
     imageSize: string,
+    model: string = "gpt-image-1",
     preAnalysisResults?: ImageAnalysis[] 
   ) => {
     try {
@@ -376,7 +381,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         true, // Save all generated images
         folder, // Folder path
         outputFormat, // Output format
-        "gpt-image-1", // Model - This is always gpt-image-1 in our current implementation
+        model, // Model from parameter
         background, // Background setting
         imageSize, // Pass imageSize here
         shouldAnalyze // Analyze images in the backend if we have pre-analysis results

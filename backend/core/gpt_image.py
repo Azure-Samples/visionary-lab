@@ -23,7 +23,7 @@ class GPTImageClient:
     Client for GPT-Image-1 generation and editing using the official OpenAI or Azure OpenAI Python client.
     """
 
-    def __init__(self, api_key: Optional[str] = None, organization_id: Optional[str] = None, provider: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, organization_id: Optional[str] = None, provider: Optional[str] = None, deployment_name: Optional[str] = None, model: Optional[str] = None):
         """
         Initialize the GPT Image client with either OpenAI or Azure OpenAI client
 
@@ -31,8 +31,11 @@ class GPTImageClient:
             api_key: The API key to use (optional, will use from settings if not provided)
             organization_id: The organization ID for OpenAI (optional)
             provider: The provider to use ('openai' or 'azure', defaults to settings.MODEL_PROVIDER)
+            deployment_name: Specific deployment name to use (for Azure, optional)
+            model: Model name to use (gpt-image-1, gpt-image-1.5, gpt-image-1.5-mini)
         """
         provider = provider or settings.MODEL_PROVIDER
+        self.model = model or settings.DEFAULT_IMAGE_MODEL
 
         if provider.lower() == "azure":
             # Use Azure OpenAI
@@ -46,11 +49,11 @@ class GPTImageClient:
                 api_key=self.api_key,
                 api_version=settings.AOAI_API_VERSION
             )
-            # Set deployment name for later use
-            self.deployment_name = settings.IMAGEGEN_DEPLOYMENT
+            # Set deployment name: use provided or map from model
+            self.deployment_name = deployment_name or self._get_deployment_for_model(self.model)
             self.provider = "azure"
             logger.info(
-                "Initialized GPT-Image-1 client with Azure OpenAI Python SDK")
+                f"Initialized GPT Image client with Azure OpenAI Python SDK (model: {self.model}, deployment: {self.deployment_name})")
         else:
             # Use direct OpenAI
             self.api_key = api_key or settings.OPENAI_API_KEY
@@ -62,8 +65,32 @@ class GPTImageClient:
                 organization=organization_id or settings.OPENAI_ORG_ID
             )
             self.provider = "openai"
+            self.deployment_name = None  # Not used for OpenAI
             logger.info(
-                "Initialized GPT-Image-1 client with OpenAI Python SDK")
+                f"Initialized GPT Image client with OpenAI Python SDK (model: {self.model})")
+    
+    def _get_deployment_for_model(self, model: str) -> str:
+        """
+        Map model name to Azure deployment name
+        
+        Args:
+            model: Model identifier (gpt-image-1, gpt-image-1.5, gpt-image-1-mini)
+            
+        Returns:
+            Deployment name from settings
+        """
+        mapping = {
+            "gpt-image-1": settings.IMAGEGEN_DEPLOYMENT,
+            "gpt-image-1.5": settings.IMAGEGEN_15_DEPLOYMENT,
+            "gpt-image-1-mini": settings.IMAGEGEN_1_MINI_DEPLOYMENT,
+        }
+        deployment = mapping.get(model)
+        
+        if not deployment:
+            logger.warning(f"No deployment configured for model {model}, falling back to default")
+            deployment = settings.IMAGEGEN_DEPLOYMENT
+            
+        return deployment
 
     def generate_image(self, prompt: str, model: str = None, n: int = 1,
                        size: str = "auto", response_format: str = "b64_json",
@@ -168,6 +195,10 @@ class GPTImageClient:
 
                 formatted_response["data"].append(image_data)
 
+            # Add deployment metadata for tracking
+            formatted_response["_deployment_name"] = self.deployment_name
+            formatted_response["_model"] = self.model
+
             return formatted_response
 
         except Exception as e:
@@ -257,8 +288,11 @@ class GPTImageClient:
                     url, headers=headers, files=files, data=data)
                 response.raise_for_status()
 
-                # Parse the response
-                return response.json()
+                # Parse the response and add deployment metadata
+                result = response.json()
+                result["_deployment_name"] = self.deployment_name
+                result["_model"] = self.model
+                return result
             else:
                 # Handle model parameter for OpenAI provider
                 if "model" not in kwargs:
@@ -277,7 +311,11 @@ class GPTImageClient:
 
                 # Call the OpenAI API to edit the image
                 response = self.client.images.edit(**kwargs)
-                return response.model_dump()
+                result = response.model_dump()
+                # Add deployment metadata
+                result["_deployment_name"] = self.deployment_name
+                result["_model"] = self.model
+                return result
 
         except Exception as e:
             logger.error(f"Error editing image: {str(e)}")
@@ -455,7 +493,11 @@ class GPTImageClient:
                     def _sync_post():
                         resp = requests.post(url, headers=headers, files=files, data=data)
                         resp.raise_for_status()
-                        return resp.json()
+                        result = resp.json()
+                        # Add deployment metadata
+                        result["_deployment_name"] = self.deployment_name
+                        result["_model"] = self.model
+                        return result
 
                     return await asyncio.to_thread(_sync_post)
                 finally:
