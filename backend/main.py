@@ -1,16 +1,14 @@
+# Configure logging first, before other imports
+from .core.logging_config import setup_logging
+setup_logging()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-import logging
 import uvicorn
 from .core.config import settings
 from .api.endpoints import images, metadata_router, videos, gallery, env
-
-# Configure logging to suppress Azure Blob Storage verbose logs
-logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
-    logging.WARNING
-)
 
 # Create directories if they don't exist
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)

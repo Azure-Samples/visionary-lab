@@ -36,7 +36,6 @@ from backend.models.gallery import (
 )
 from backend.models.metadata_models import AssetMetadataCreateRequest
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -501,12 +500,7 @@ async def upload_asset(
             **result,
         )
     except Exception as e:
-        import traceback
-
-        error_detail = str(e)
-        error_trace = traceback.format_exc()
-        print(f"Upload error: {error_detail}")
-        print(f"Error trace: {error_trace}")
+        logger.error("Upload error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

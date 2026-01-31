@@ -8,7 +8,6 @@ from typing import List, Dict, Optional
 import cv2
 import numpy as np
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class VideoExtractor:

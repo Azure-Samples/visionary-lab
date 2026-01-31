@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     IMAGE_DIR: str = "./static/images"
     VIDEO_DIR: str = "./static/videos"
 
+    # Logging Configuration
+    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+
     # GPT-Image-1 Default Settings
     GPT_IMAGE_DEFAULT_SIZE: str = "1024x1024"
     GPT_IMAGE_DEFAULT_QUALITY: str = "high"

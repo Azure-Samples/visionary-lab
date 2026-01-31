@@ -8,7 +8,6 @@ from azure.cosmos.database import DatabaseProxy
 from azure.identity import DefaultAzureCredential, CredentialUnavailableError
 from backend.core.config import settings
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 

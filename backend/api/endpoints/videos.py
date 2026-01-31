@@ -48,7 +48,6 @@ from backend.core.cosmos_client import CosmosDBService
 
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -62,9 +61,6 @@ def get_cosmos_service() -> Optional[CosmosDBService]:
             return CosmosDBService()
         return None
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.warning(f"Cosmos DB service unavailable: {e}")
         return None
 
