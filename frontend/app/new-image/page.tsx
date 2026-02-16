@@ -18,7 +18,7 @@ import { useSearchParams } from "next/navigation";
 import { FolderIcon } from "lucide-react";
 import { PageTransition } from "@/components/ui/page-transition";
 import { ImageDetailView } from "@/components/ImageDetailView";
-import { RowBasedMasonryGrid } from "@/components/RowBasedMasonryGrid";
+import { LayoutGrid } from "@/components/ui/layout-grid";
 
 // For the 'any' type issue, let's define a proper interface
 interface GalleryImageItem {
@@ -496,50 +496,60 @@ function NewImagePageContent() {
           </div>
           
           {loading ? (
-            <RowBasedMasonryGrid columns={3} gap={4}>
-              {renderSkeletons(16)}
-            </RowBasedMasonryGrid>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-7xl mx-auto">
+              {renderSkeletons(9)}
+            </div>
           ) : images.length > 0 ? (
             <div className="w-full">
-              {/* Row-based masonry grid for left-to-right, top-to-bottom ordering */}
-              <RowBasedMasonryGrid columns={3} gap={4}>
-                {images.map((image, index) => (
-                  <ImageGalleryCard
-                    key={image.name}
-                    image={image}
-                    index={index}
-                    onClick={() => handleImageClick(image)}
-                    onDelete={(deletedImageId) => {
-                      // Remove the deleted image from the state
-                      setImages(prevImages => prevImages.filter(img => img.id !== deletedImageId));
-                      
-                      // If we've deleted an image, we might want to load another one to replace it
-                      if (hasMore && images.length < limit * 2) {
-                        loadMoreImages();
-                      }
-                    }}
-                    onMove={(movedImageId) => {
-                      // Only remove the moved image if we're in a folder view
-                      if (folderPath) {
-                        // Remove the moved image from the current state
-                        setImages(prevImages => prevImages.filter(img => img.id !== movedImageId));
-                        
-                        // If we've moved an image, we might want to load another one to replace it
+              <LayoutGrid
+                cards={images.map((image, index) => ({
+                  id: image.id,
+                  className: image.size === "large" ? "md:col-span-2" : image.size === "small" ? "row-span-2" : "",
+                  thumbnail: image.src,
+                  onClick: () => handleImageClick(image),
+                  content: (
+                    <div className="text-white">
+                      <p className="font-bold text-xl md:text-2xl">{image.title}</p>
+                      {image.description && (
+                        <p className="text-sm text-white/80 mt-1 line-clamp-2">{image.description}</p>
+                      )}
+                      {image.tags && image.tags.length > 0 && (
+                        <div className="flex gap-1 mt-2 flex-wrap">
+                          {image.tags.slice(0, 3).map((tag) => (
+                            <span key={tag} className="text-xs bg-white/20 rounded px-2 py-0.5">{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ),
+                  children: (
+                    <ImageGalleryCard
+                      image={image}
+                      index={index}
+                      onClick={() => handleImageClick(image)}
+                      onDelete={(deletedImageId) => {
+                        setImages(prevImages => prevImages.filter(img => img.id !== deletedImageId));
                         if (hasMore && images.length < limit * 2) {
                           loadMoreImages();
                         }
-                      } else {
-                        // When in "All Images" view, refresh the gallery to update
-                        loadImages(true);
-                      }
-                      
-                      toast.success("Image moved", {
-                        description: "The image was moved to another folder"
-                      });
-                    }}
-                  />
-                ))}
-              </RowBasedMasonryGrid>
+                      }}
+                      onMove={(movedImageId) => {
+                        if (folderPath) {
+                          setImages(prevImages => prevImages.filter(img => img.id !== movedImageId));
+                          if (hasMore && images.length < limit * 2) {
+                            loadMoreImages();
+                          }
+                        } else {
+                          loadImages(true);
+                        }
+                        toast.success("Image moved", {
+                          description: "The image was moved to another folder"
+                        });
+                      }}
+                    />
+                  ),
+                }))}
+              />
               
               {/* Load more button */}
               {hasMore && (
