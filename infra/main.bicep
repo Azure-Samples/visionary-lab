@@ -221,9 +221,6 @@ module containerAppBackend './modules/containerApp.bicep' = {
     COSMOS_CONTAINER_NAME: cosmosDbMod.outputs.containerName
     azdServiceName: 'backend'
   }
-  dependsOn: [
-    cosmosDbMod
-  ]
 }
 
 // Container App for Frontend
@@ -270,10 +267,6 @@ module cosmosRoleAssignmentMod './modules/cosmosRoleAssignment.bicep' = {
     containerAppPrincipalId: containerAppBackend.outputs.containerAppPrincipalId
     dataContributorRoleId: cosmosDbMod.outputs.dataContributorRoleId
   }
-  dependsOn: [
-    containerAppBackend
-    cosmosDbMod
-  ]
 }
 
 // Outputs for azd

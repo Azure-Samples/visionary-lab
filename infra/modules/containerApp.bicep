@@ -10,6 +10,8 @@ param MODEL_PROVIDER string = 'azure'
 // Azure OpenAI Image Generation
 param IMAGEGEN_AOAI_RESOURCE string = 'aoai-akc-uswest3'
 param IMAGEGEN_DEPLOYMENT string = 'gpt-image-1'
+param IMAGEGEN_15_DEPLOYMENT string = ''
+param IMAGEGEN_1_MINI_DEPLOYMENT string = ''
 @secure()
 param IMAGEGEN_AOAI_API_KEY string
 // Azure OpenAI LLM
@@ -116,6 +118,14 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = if(deployNew) {
             {
               name: 'IMAGEGEN_DEPLOYMENT'
               value: IMAGEGEN_DEPLOYMENT
+            }
+            {
+              name: 'IMAGEGEN_15_DEPLOYMENT'
+              value: IMAGEGEN_15_DEPLOYMENT
+            }
+            {
+              name: 'IMAGEGEN_1_MINI_DEPLOYMENT'
+              value: IMAGEGEN_1_MINI_DEPLOYMENT
             }
             {
               name: 'IMAGEGEN_AOAI_API_KEY'
