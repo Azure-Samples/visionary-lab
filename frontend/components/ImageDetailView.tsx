@@ -351,7 +351,7 @@ export function ImageDetailView({
     <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex items-center justify-center overflow-hidden">
       <div 
         ref={containerRef}
-        className="bg-background w-full max-w-[90vw] max-h-[90vh] rounded-xl shadow-md flex flex-col"
+        className="bg-background w-full max-w-[90vw] max-h-[90vh] border border-border flex flex-col"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 bg-background z-10">

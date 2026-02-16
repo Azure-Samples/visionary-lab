@@ -122,10 +122,10 @@ export default function SettingsPage() {
       
       <div className="flex flex-col h-full p-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="mb-6">
-            <TabsTrigger value="brand">Brand Protection</TabsTrigger>
-            <TabsTrigger value="custom-analysis">Custom Analysis</TabsTrigger>
-            <TabsTrigger value="api">API Status</TabsTrigger>
+          <TabsList className="mb-8">
+            <TabsTrigger value="brand" className="text-xs font-bold tracking-[0.1em] uppercase">Brand Protection</TabsTrigger>
+            <TabsTrigger value="custom-analysis" className="text-xs font-bold tracking-[0.1em] uppercase">Custom Analysis</TabsTrigger>
+            <TabsTrigger value="api" className="text-xs font-bold tracking-[0.1em] uppercase">API Status</TabsTrigger>
           </TabsList>
 
           <TabsContent value="brand" className="space-y-6">

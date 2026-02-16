@@ -251,7 +251,7 @@ function NewImagePageContent() {
     return Array.from({ length: count }).map((_, index) => (
       <Card 
         key={`skeleton-${index}`}
-        className="overflow-hidden border-0 rounded-xl h-full w-full"
+        className="overflow-hidden border-0 h-full w-full"
       >
         <AspectRatio ratio={
           index % 5 === 0 
@@ -445,9 +445,9 @@ function NewImagePageContent() {
       <div className="flex-1 w-full h-full overflow-y-auto gallery-container">
         <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-32">
           {/* Toolbar */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2">
-              <div className="text-xs text-muted-foreground">
+              <div className="text-[10px] text-muted-foreground tracking-[0.1em] uppercase font-medium">
                 {lastRefreshedText}
               </div>
               {folderPath && (
@@ -496,13 +496,12 @@ function NewImagePageContent() {
           </div>
           
           {loading ? (
-            <RowBasedMasonryGrid columns={3} gap={4}>
+            <RowBasedMasonryGrid columns={3} gap={2}>
               {renderSkeletons(16)}
             </RowBasedMasonryGrid>
           ) : images.length > 0 ? (
             <div className="w-full">
-              {/* Row-based masonry grid for left-to-right, top-to-bottom ordering */}
-              <RowBasedMasonryGrid columns={3} gap={4}>
+              <RowBasedMasonryGrid columns={3} gap={2}>
                 {images.map((image, index) => (
                   <ImageGalleryCard
                     key={image.name}
@@ -543,12 +542,12 @@ function NewImagePageContent() {
               
               {/* Load more button */}
               {hasMore && (
-                <div className="mt-8 flex justify-center">
+                <div className="mt-12 flex justify-center">
                   <Button
                     onClick={loadMoreImages}
                     disabled={isLoadingMore}
                     variant="outline"
-                    className="px-8"
+                    className="px-12 py-6 text-xs font-bold tracking-[0.15em] uppercase cursor-pointer"
                   >
                     {isLoadingMore ? (
                       <>
@@ -564,22 +563,22 @@ function NewImagePageContent() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-[calc(100vh-14rem)] py-20 text-muted-foreground">
-              <ImageIcon className="h-16 w-16 mb-4 opacity-20" />
+              <ImageIcon className="h-12 w-12 mb-8 opacity-10" />
               {folderPath ? (
                 <>
-                  <p className="text-xl">This album is empty</p>
-                  <p className="text-sm mt-2">No images found in album &quot;{folderPath.split('/').pop() || folderPath}&quot;</p>
+                  <p className="text-2xl font-black tracking-[-0.03em] uppercase">Empty Album</p>
+                  <p className="text-xs mt-3 tracking-[0.1em] uppercase">No images in &quot;{folderPath.split('/').pop() || folderPath}&quot;</p>
                 </>
               ) : (
                 <>
-                  <p className="text-xl">No images found in the gallery</p>
-                  <p className="text-sm mt-2">Upload some images to get started</p>
+                  <p className="text-2xl font-black tracking-[-0.03em] uppercase">No Images</p>
+                  <p className="text-xs mt-3 tracking-[0.1em] uppercase">Upload to get started</p>
                 </>
               )}
               <Button 
                 onClick={() => loadImages(true)} 
                 variant="outline" 
-                className="mt-6"
+                className="mt-8 px-12 py-6 text-xs font-bold tracking-[0.15em] uppercase cursor-pointer"
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh Gallery

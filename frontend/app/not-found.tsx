@@ -1,21 +1,21 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { HomeIcon } from 'lucide-react';
 
-// Wrapper component that would use useSearchParams if needed
 function NotFoundContent() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen text-center p-4">
-      <h1 className="text-6xl font-bold mb-4">404</h1>
-      <h2 className="text-2xl font-medium mb-6">Page Not Found</h2>
-      <p className="text-muted-foreground mb-8 max-w-md">
-        The page you are looking for doesn&apos;t exist or has been moved.
-      </p>
-      <Button asChild>
+    <div className="flex flex-col items-center justify-center min-h-screen text-center px-4 py-32">
+      <h1 className="text-[clamp(8rem,25vw,20rem)] font-black leading-none tracking-[-0.05em] uppercase">
+        404
+      </h1>
+      <div className="mt-8 mb-16">
+        <p className="text-lg font-medium tracking-[0.2em] uppercase text-muted-foreground">
+          Page not found
+        </p>
+      </div>
+      <Button asChild className="px-12 py-6 text-sm font-bold tracking-[0.15em] uppercase">
         <Link href="/">
-          <HomeIcon className="mr-2 h-4 w-4" />
-          Return Home
+          Return
         </Link>
       </Button>
     </div>
@@ -23,11 +23,10 @@ function NotFoundContent() {
 }
 
 export default function NotFound() {
-  // Wrap in Suspense to fix build error with useSearchParams
   return (
     <Suspense fallback={
       <div className="flex flex-col items-center justify-center min-h-screen">
-        <p>Loading...</p>
+        <p className="text-sm tracking-[0.15em] uppercase">Loading...</p>
       </div>
     }>
       <NotFoundContent />

@@ -1,17 +1,16 @@
-import { GalleryVerticalEnd } from "lucide-react"
-
 import { LoginForm } from "@/components/login-form"
 
 export default function LoginPage() {
   return (
-    // The centering and full-height styling is now handled by app/login/layout.tsx
-    <div className="flex w-full max-w-sm flex-col gap-6">
-      <a href="#" className="flex items-center gap-2 self-center font-medium">
-        <div className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md">
-          <GalleryVerticalEnd className="size-4" />
-        </div>
-        Visionary Lab
-      </a>
+    <div className="flex w-full max-w-md flex-col gap-12">
+      <div className="flex flex-col items-center gap-4">
+        <h1 className="text-[clamp(3rem,8vw,6rem)] font-black leading-none tracking-[-0.05em] uppercase">
+          Visionary
+        </h1>
+        <p className="text-xs font-medium tracking-[0.3em] uppercase text-muted-foreground">
+          Lab
+        </p>
+      </div>
       <LoginForm />
     </div>
   )

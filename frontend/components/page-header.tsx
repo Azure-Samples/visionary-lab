@@ -35,10 +35,10 @@ export function PageHeader({
     >
       <div className="flex flex-col space-y-2">
         <div className="flex flex-col space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+          <h1 className="text-3xl font-black tracking-[-0.04em] uppercase">{title}</h1>
         </div>
         {description && (
-          <p className="text-xs text-muted-foreground mt-1">{description}</p>
+          <p className="text-xs text-muted-foreground font-medium tracking-wide uppercase mt-1">{description}</p>
         )}
       </div>
       {children}

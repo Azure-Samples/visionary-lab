@@ -282,14 +282,14 @@ export default function GalleryPage() {
           </div>
         </PageHeader>
 
-        <div className="text-xs text-muted-foreground px-4 pb-2">
+        <div className="text-[10px] text-muted-foreground px-4 pb-2 tracking-[0.1em] uppercase font-medium">
           {lastRefreshedText}
         </div>
 
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24">
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
                 <Suspense fallback={null}>
                   <SearchParamsWrapper onFolderChange={setFolderParam} />
                 </Suspense>
@@ -310,23 +310,23 @@ export default function GalleryPage() {
                     />
                   ))
                 ) : (
-                  <div className="col-span-full flex flex-col items-center justify-center py-16 text-center bg-muted rounded-xl">
-                    <FileVideo className="h-16 w-16 text-muted-foreground mb-6" />
-                    <h3 className="text-xl font-medium mb-2">No Videos Found</h3>
-                    <p className="text-muted-foreground max-w-md">
-                      There are no videos in this location. You can create a new video using the video generation tool.
+                  <div className="col-span-full flex flex-col items-center justify-center py-24 text-center">
+                    <FileVideo className="h-12 w-12 text-muted-foreground mb-8 opacity-10" />
+                    <h3 className="text-2xl font-black tracking-[-0.03em] uppercase mb-3">No Videos</h3>
+                    <p className="text-xs text-muted-foreground tracking-[0.1em] uppercase max-w-md">
+                      Create a new video using the generation tool
                     </p>
                   </div>
                 )}
               </div>
 
               {hasMore && !loading && (
-                <div className="flex justify-center mt-8">
+                <div className="flex justify-center mt-12">
                   <Button
                     variant="outline"
                     onClick={loadMoreVideos}
                     disabled={isLoadingMore}
-                    className="w-48"
+                    className="px-12 py-6 text-xs font-bold tracking-[0.15em] uppercase cursor-pointer"
                   >
                     {isLoadingMore ? (
                       <>

@@ -187,7 +187,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:justify-center">
+      <SidebarHeader className="p-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:justify-center border-b border-border">
         {mounted ? (
           <>
             <div className="flex items-center group-data-[collapsible=icon]:hidden">
@@ -196,16 +196,15 @@ export function AppSidebar() {
                 alt="Visionary Lab" 
                 width={30} 
                 height={30} 
-                className="mr-2"
+                className="mr-3"
                 onError={(e) => {
-                  // Fallback to SVG if PNG fails to load
                   const imgElement = e.currentTarget;
                   if (logoSrc.endsWith('.png')) {
                     imgElement.src = logoSrc.replace('.png', '.svg');
                   }
                 }}
               />
-              <h2 className="font-semibold text-lg">Visionary Lab</h2>
+              <h2 className="font-black text-lg tracking-[-0.04em] uppercase">Visionary Lab</h2>
             </div>
             <div className="hidden group-data-[collapsible=icon]:flex items-center justify-center">
               <Image 
@@ -214,7 +213,6 @@ export function AppSidebar() {
                 width={24} 
                 height={24}
                 onError={(e) => {
-                  // Fallback to SVG if PNG fails to load
                   const imgElement = e.currentTarget;
                   if (logoSrc.endsWith('.png')) {
                     imgElement.src = logoSrc.replace('.png', '.svg');
@@ -224,14 +222,13 @@ export function AppSidebar() {
             </div>
           </>
         ) : (
-          // Placeholder during SSR
           <div className="h-8 group-data-[collapsible=icon]:h-6"></div>
         )}
       </SidebarHeader>
       <SidebarContent>
         {/* Create Section */}
         <SidebarGroup>
-          <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">Create</SidebarGroupLabel>
+          <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden text-xs font-black tracking-[0.15em] uppercase text-muted-foreground">Create</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {createItems.map((item) => (
@@ -406,7 +403,7 @@ export function AppSidebar() {
 
         {/* Manage Section */}
         <SidebarGroup>
-          <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">Manage</SidebarGroupLabel>
+          <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden text-xs font-black tracking-[0.15em] uppercase text-muted-foreground">Manage</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {manageItems.map((item) => (
@@ -427,9 +424,9 @@ export function AppSidebar() {
       </SidebarContent>
       
       {/* Add a footer with theme toggle */}
-      <SidebarFooter className="p-4 group-data-[collapsible=icon]:p-2 border-t">
+      <SidebarFooter className="p-4 group-data-[collapsible=icon]:p-2 border-t border-border">
         <div className="flex items-center justify-between group-data-[collapsible=icon]:justify-center">
-          <span className="text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">Theme</span>
+          <span className="text-xs font-bold tracking-[0.1em] uppercase text-muted-foreground group-data-[collapsible=icon]:hidden">Theme</span>
           <ThemeToggle />
         </div>
       </SidebarFooter>
