@@ -1,6 +1,6 @@
 import React, { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
-import { Bebas_Neue, Source_Sans_3, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider"
 import { AppSidebar } from "@/components/app-sidebar";
@@ -23,16 +23,9 @@ type RootLayoutProps = {
   children: React.ReactNode
 }
 
-const bebasNeue = Bebas_Neue({
-  weight: "400",
-  variable: "--font-display",
+const geistSans = Geist({
+  variable: "--font-geist-sans",
   subsets: ["latin"],
-});
-
-const sourceSans = Source_Sans_3({
-  variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "900"],
 });
 
 const geistMono = Geist_Mono({
@@ -71,7 +64,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   const session = await auth();
 
   return (
-    <html lang="en" suppressHydrationWarning className={`${bebasNeue.variable} ${sourceSans.variable} ${geistMono.variable} antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -109,10 +102,10 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                           <AppSidebar />
                         </Suspense>
                         <SidebarInset className="flex-1 flex flex-col h-full w-full">
-                          <div className="flex h-14 items-center gap-2 border-b border-border shrink-0 px-3">
+                          <div className="flex h-14 items-center gap-2 border-b shrink-0 px-3">
                             <SidebarTrigger />
                             <Separator orientation="vertical" className="mx-2 h-4" />
-                            <div className="ml-auto flex items-center space-x-1">
+                            <div className="ml-auto flex items-center space-x-2">
                               <RefreshJobsButton />
                               <VideoQueueClient />
                             </div>

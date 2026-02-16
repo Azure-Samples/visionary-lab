@@ -282,14 +282,14 @@ export default function GalleryPage() {
           </div>
         </PageHeader>
 
-        <div className="text-[10px] text-muted-foreground px-4 pb-2 tracking-[0.1em] uppercase font-medium">
+        <div className="text-xs text-muted-foreground px-4 pb-2">
           {lastRefreshedText}
         </div>
 
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24">
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 <Suspense fallback={null}>
                   <SearchParamsWrapper onFolderChange={setFolderParam} />
                 </Suspense>
@@ -310,24 +310,23 @@ export default function GalleryPage() {
                     />
                   ))
                 ) : (
-                  <div className="col-span-full flex flex-col items-center justify-center py-32 text-center">
-                    <FileVideo className="h-10 w-10 text-muted-foreground mb-10 opacity-[0.06]" strokeWidth={1} />
-                    <h3 className="text-3xl font-black tracking-[-0.04em] uppercase mb-0 animate-reveal-up">No Videos</h3>
-                    <div className="w-8 h-[2px] my-4 animate-line-draw stagger-2" style={{ background: 'var(--red-thread)' }} />
-                    <p className="text-[10px] text-muted-foreground tracking-[0.2em] uppercase max-w-md animate-fade-in stagger-3">
-                      Create a new video using the generation tool
+                  <div className="col-span-full flex flex-col items-center justify-center py-16 text-center bg-muted rounded-xl">
+                    <FileVideo className="h-16 w-16 text-muted-foreground mb-6" />
+                    <h3 className="text-xl font-medium mb-2">No Videos Found</h3>
+                    <p className="text-muted-foreground max-w-md">
+                      There are no videos in this location. You can create a new video using the video generation tool.
                     </p>
                   </div>
                 )}
               </div>
 
               {hasMore && !loading && (
-                <div className="flex justify-center mt-12">
+                <div className="flex justify-center mt-8">
                   <Button
                     variant="outline"
                     onClick={loadMoreVideos}
                     disabled={isLoadingMore}
-                    className="px-12 py-6 text-xs font-bold tracking-[0.15em] uppercase cursor-pointer"
+                    className="w-48"
                   >
                     {isLoadingMore ? (
                       <>

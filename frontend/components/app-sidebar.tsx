@@ -187,7 +187,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:justify-center border-b border-border">
+      <SidebarHeader className="p-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:justify-center">
         {mounted ? (
           <>
             <div className="flex items-center group-data-[collapsible=icon]:hidden">
@@ -196,15 +196,16 @@ export function AppSidebar() {
                 alt="Visionary Lab" 
                 width={30} 
                 height={30} 
-                className="mr-3"
+                className="mr-2"
                 onError={(e) => {
+                  // Fallback to SVG if PNG fails to load
                   const imgElement = e.currentTarget;
                   if (logoSrc.endsWith('.png')) {
                     imgElement.src = logoSrc.replace('.png', '.svg');
                   }
                 }}
               />
-              <h2 className="font-black text-lg tracking-[-0.04em] uppercase red-thread" data-active="true">Visionary Lab</h2>
+              <h2 className="font-semibold text-lg">Visionary Lab</h2>
             </div>
             <div className="hidden group-data-[collapsible=icon]:flex items-center justify-center">
               <Image 
@@ -213,6 +214,7 @@ export function AppSidebar() {
                 width={24} 
                 height={24}
                 onError={(e) => {
+                  // Fallback to SVG if PNG fails to load
                   const imgElement = e.currentTarget;
                   if (logoSrc.endsWith('.png')) {
                     imgElement.src = logoSrc.replace('.png', '.svg');
@@ -222,13 +224,14 @@ export function AppSidebar() {
             </div>
           </>
         ) : (
+          // Placeholder during SSR
           <div className="h-8 group-data-[collapsible=icon]:h-6"></div>
         )}
       </SidebarHeader>
       <SidebarContent>
         {/* Create Section */}
         <SidebarGroup>
-          <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden text-xs font-black tracking-[0.15em] uppercase text-muted-foreground">Create</SidebarGroupLabel>
+          <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">Create</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {createItems.map((item) => (
@@ -279,7 +282,7 @@ export function AppSidebar() {
                         <SidebarMenuButton 
                           asChild
                           data-active={isVideoFolderActive(null)}
-                          className="red-thread data-[active=true]:font-bold"
+                          className="data-[active=true]:bg-accent"
                         >
                           <a>
                             <FileVideo className="h-4 w-4 mr-2" />
@@ -305,7 +308,7 @@ export function AppSidebar() {
                             <SidebarMenuButton 
                               asChild
                               data-active={isVideoFolderActive(folder)}
-                              className="red-thread data-[active=true]:font-bold"
+                              className="data-[active=true]:bg-accent"
                               onClick={() => handleVideoFolderClick(folder)}
                             >
                               <a>
@@ -356,7 +359,7 @@ export function AppSidebar() {
                         <SidebarMenuButton 
                           asChild
                           data-active={isImageFolderActive(null)}
-                          className="red-thread data-[active=true]:font-bold"
+                          className="data-[active=true]:bg-accent"
                         >
                           <a>
                             <ImageIcon className="h-4 w-4 mr-2" />
@@ -382,7 +385,7 @@ export function AppSidebar() {
                             <SidebarMenuButton 
                               asChild
                               data-active={isImageFolderActive(folder)}
-                              className="red-thread data-[active=true]:font-bold"
+                              className="data-[active=true]:bg-accent"
                               onClick={() => handleImageFolderClick(folder)}
                             >
                               <a>
@@ -403,7 +406,7 @@ export function AppSidebar() {
 
         {/* Manage Section */}
         <SidebarGroup>
-          <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden text-xs font-black tracking-[0.15em] uppercase text-muted-foreground">Manage</SidebarGroupLabel>
+          <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">Manage</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {manageItems.map((item) => (
@@ -424,9 +427,9 @@ export function AppSidebar() {
       </SidebarContent>
       
       {/* Add a footer with theme toggle */}
-      <SidebarFooter className="p-4 group-data-[collapsible=icon]:p-2 border-t border-border">
+      <SidebarFooter className="p-4 group-data-[collapsible=icon]:p-2 border-t">
         <div className="flex items-center justify-between group-data-[collapsible=icon]:justify-center">
-          <span className="text-xs font-bold tracking-[0.1em] uppercase text-muted-foreground group-data-[collapsible=icon]:hidden">Theme</span>
+          <span className="text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">Theme</span>
           <ThemeToggle />
         </div>
       </SidebarFooter>

@@ -169,29 +169,29 @@ function JobsPageContent() {
       
       <div className="flex-1 w-full h-full overflow-y-auto">
         <div className="w-full mx-auto px-10 py-6 pb-16">
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-4 mb-8">
-            <Card className="stat-card border-border">
-              <CardHeader className="pb-2 pt-6">
-                <CardTitle className="text-5xl font-black tracking-[-0.05em] leading-none">{stats.total}</CardTitle>
-                <CardDescription className="text-[9px] tracking-[0.2em] uppercase font-bold mt-2">Total Jobs</CardDescription>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4 mb-6">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{stats.total}</CardTitle>
+                <CardDescription>Total Jobs</CardDescription>
               </CardHeader>
             </Card>
-            <Card className="stat-card border-border">
-              <CardHeader className="pb-2 pt-6">
-                <CardTitle className="text-5xl font-black tracking-[-0.05em] leading-none">{stats.pending + stats.inProgress}</CardTitle>
-                <CardDescription className="text-[9px] tracking-[0.2em] uppercase font-bold mt-2">In Queue</CardDescription>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{stats.pending + stats.inProgress}</CardTitle>
+                <CardDescription>In Queue</CardDescription>
               </CardHeader>
             </Card>
-            <Card className="stat-card border-border">
-              <CardHeader className="pb-2 pt-6">
-                <CardTitle className="text-5xl font-black tracking-[-0.05em] leading-none">{stats.completed}</CardTitle>
-                <CardDescription className="text-[9px] tracking-[0.2em] uppercase font-bold mt-2">Completed</CardDescription>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{stats.completed}</CardTitle>
+                <CardDescription>Completed</CardDescription>
               </CardHeader>
             </Card>
-            <Card className="stat-card border-border">
-              <CardHeader className="pb-2 pt-6">
-                <CardTitle className="text-5xl font-black tracking-[-0.05em] leading-none">{stats.failed}</CardTitle>
-                <CardDescription className="text-[9px] tracking-[0.2em] uppercase font-bold mt-2">Failed</CardDescription>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{stats.failed}</CardTitle>
+                <CardDescription>Failed</CardDescription>
               </CardHeader>
             </Card>
           </div>
@@ -202,8 +202,8 @@ function JobsPageContent() {
             </div>
           )}
 
-          <div className="mb-6 flex justify-between items-center">
-            <h2 className="text-lg font-black tracking-[-0.03em] uppercase">Recent Jobs</h2>
+          <div className="mb-4 flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Recent Jobs</h2>
             <div className="flex items-center space-x-2">
               <TooltipProvider>
                 <Tooltip>
@@ -255,18 +255,18 @@ export default function JobsPage() {
           <PageHeader title="Video Generation Jobs" />
           <div className="flex-1 w-full h-full overflow-y-auto">
             <div className="w-full mx-auto px-10 py-6 pb-16">
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-4 mb-8">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-4 mb-6">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <Card key={i} className="border-border">
+                  <Card key={i}>
                     <CardHeader className="pb-2">
-                      <Skeleton className="h-10 w-16" />
-                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className="h-8 w-16" />
+                      <Skeleton className="h-4 w-24" />
                     </CardHeader>
                   </Card>
                 ))}
               </div>
               
-              <div className="mb-6 flex justify-between items-center">
+              <div className="mb-4 flex justify-between items-center">
                 <Skeleton className="h-6 w-32" />
                 <Skeleton className="h-8 w-24" />
               </div>

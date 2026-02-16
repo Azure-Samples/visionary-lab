@@ -244,13 +244,13 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
       className="relative w-full mb-0"
     >
       <Card 
-        className="gallery-card overflow-hidden border border-border group hover:border-foreground transition-all duration-300 h-full p-0 w-full bg-card"
+        className="overflow-hidden border rounded-xl group hover:shadow-md transition-all duration-200 h-full p-0 w-full bg-card"
       >
         {/* Add dropdown menu - only visible on hover */}
         <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <DropdownMenu onOpenChange={handleDropdownOpen}>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="icon" className="h-8 w-8 bg-black/50 hover:bg-black/70 text-white cursor-pointer">
+              <Button variant="ghost" size="icon" className="h-8 w-8 bg-black/30 hover:bg-black/40 text-white">
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -363,9 +363,10 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
             )}
             
             {/* Gradient overlay for image info */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-                <h3 className="font-bold text-xs leading-tight line-clamp-2 tracking-[0.05em] uppercase">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
+                {/* Display prompt if available, otherwise fall back to title/name */}
+                <h3 className="font-medium text-sm leading-tight line-clamp-2">
                   {image.originalItem?.metadata?.prompt || image.title || image.name}
                 </h3>
                 
@@ -376,12 +377,12 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
                 {parsedTags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {parsedTags.slice(0, 3).map((tag, index) => (
-                      <Badge key={index} variant="secondary" className="bg-white/20 text-white text-[10px] tracking-[0.05em] uppercase py-0 h-5">
+                      <Badge key={index} variant="secondary" className="bg-black/40 text-white text-xs py-0 h-5">
                         {String(tag).replace(/"/g, '').replace(/^_|_$/g, '')}
                       </Badge>
                     ))}
                     {parsedTags.length > 3 && (
-                      <Badge variant="secondary" className="bg-white/20 text-white text-[10px] tracking-[0.05em] uppercase py-0 h-5">
+                      <Badge variant="secondary" className="bg-black/40 text-white text-xs py-0 h-5">
                         +{parsedTags.length - 3}
                       </Badge>
                     )}

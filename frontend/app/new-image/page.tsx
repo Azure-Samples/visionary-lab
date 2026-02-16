@@ -251,7 +251,7 @@ function NewImagePageContent() {
     return Array.from({ length: count }).map((_, index) => (
       <Card 
         key={`skeleton-${index}`}
-        className="overflow-hidden border-0 h-full w-full"
+        className="overflow-hidden border-0 rounded-xl h-full w-full"
       >
         <AspectRatio ratio={
           index % 5 === 0 
@@ -445,9 +445,9 @@ function NewImagePageContent() {
       <div className="flex-1 w-full h-full overflow-y-auto gallery-container">
         <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-32">
           {/* Toolbar */}
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
-              <div className="text-[10px] text-muted-foreground tracking-[0.1em] uppercase font-medium">
+              <div className="text-xs text-muted-foreground">
                 {lastRefreshedText}
               </div>
               {folderPath && (
@@ -496,12 +496,13 @@ function NewImagePageContent() {
           </div>
           
           {loading ? (
-            <RowBasedMasonryGrid columns={3} gap={2}>
+            <RowBasedMasonryGrid columns={3} gap={4}>
               {renderSkeletons(16)}
             </RowBasedMasonryGrid>
           ) : images.length > 0 ? (
             <div className="w-full">
-              <RowBasedMasonryGrid columns={3} gap={2}>
+              {/* Row-based masonry grid for left-to-right, top-to-bottom ordering */}
+              <RowBasedMasonryGrid columns={3} gap={4}>
                 {images.map((image, index) => (
                   <ImageGalleryCard
                     key={image.name}
@@ -542,12 +543,12 @@ function NewImagePageContent() {
               
               {/* Load more button */}
               {hasMore && (
-                <div className="mt-12 flex justify-center">
+                <div className="mt-8 flex justify-center">
                   <Button
                     onClick={loadMoreImages}
                     disabled={isLoadingMore}
                     variant="outline"
-                    className="px-12 py-6 text-xs font-bold tracking-[0.15em] uppercase cursor-pointer"
+                    className="px-8"
                   >
                     {isLoadingMore ? (
                       <>
@@ -563,24 +564,22 @@ function NewImagePageContent() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-[calc(100vh-14rem)] py-20 text-muted-foreground">
-              <ImageIcon className="h-10 w-10 mb-10 opacity-[0.06]" strokeWidth={1} />
+              <ImageIcon className="h-16 w-16 mb-4 opacity-20" />
               {folderPath ? (
                 <>
-                  <p className="text-3xl font-black tracking-[-0.04em] uppercase animate-reveal-up">Empty</p>
-                  <div className="w-8 h-[2px] my-4 animate-line-draw stagger-2" style={{ background: 'var(--red-thread)' }} />
-                  <p className="text-[10px] tracking-[0.2em] uppercase animate-fade-in stagger-3">No images in &quot;{folderPath.split('/').pop() || folderPath}&quot;</p>
+                  <p className="text-xl">This album is empty</p>
+                  <p className="text-sm mt-2">No images found in album &quot;{folderPath.split('/').pop() || folderPath}&quot;</p>
                 </>
               ) : (
                 <>
-                  <p className="text-3xl font-black tracking-[-0.04em] uppercase animate-reveal-up">No Images</p>
-                  <div className="w-8 h-[2px] my-4 animate-line-draw stagger-2" style={{ background: 'var(--red-thread)' }} />
-                  <p className="text-[10px] tracking-[0.2em] uppercase animate-fade-in stagger-3">Upload to get started</p>
+                  <p className="text-xl">No images found in the gallery</p>
+                  <p className="text-sm mt-2">Upload some images to get started</p>
                 </>
               )}
               <Button 
                 onClick={() => loadImages(true)} 
                 variant="outline" 
-                className="mt-8 px-12 py-6 text-xs font-bold tracking-[0.15em] uppercase cursor-pointer"
+                className="mt-6"
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh Gallery
