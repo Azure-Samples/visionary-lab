@@ -33,12 +33,12 @@ export function PageHeader({
         left: state === "expanded" ? "calc(var(--sidebar-width) + 4.5rem)" : "calc(var(--sidebar-width-icon) + 4.5rem)",
       }}
     >
-      <div className="flex flex-col space-y-2">
-        <div className="flex flex-col space-y-1">
-          <h1 className="text-3xl font-black tracking-[-0.04em] uppercase">{title}</h1>
+      <div className="flex flex-col">
+        <div className="flex flex-col">
+          <h1 className="text-3xl font-black tracking-[-0.04em] uppercase red-thread" data-active="true">{title}</h1>
         </div>
         {description && (
-          <p className="text-xs text-muted-foreground font-medium tracking-wide uppercase mt-1">{description}</p>
+          <p className="text-[10px] text-muted-foreground font-medium tracking-[0.15em] uppercase mt-2">{description}</p>
         )}
       </div>
       {children}

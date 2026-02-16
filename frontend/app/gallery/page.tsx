@@ -310,10 +310,11 @@ export default function GalleryPage() {
                     />
                   ))
                 ) : (
-                  <div className="col-span-full flex flex-col items-center justify-center py-24 text-center">
-                    <FileVideo className="h-12 w-12 text-muted-foreground mb-8 opacity-10" />
-                    <h3 className="text-2xl font-black tracking-[-0.03em] uppercase mb-3">No Videos</h3>
-                    <p className="text-xs text-muted-foreground tracking-[0.1em] uppercase max-w-md">
+                  <div className="col-span-full flex flex-col items-center justify-center py-32 text-center">
+                    <FileVideo className="h-10 w-10 text-muted-foreground mb-10 opacity-[0.06]" strokeWidth={1} />
+                    <h3 className="text-3xl font-black tracking-[-0.04em] uppercase mb-0 animate-reveal-up">No Videos</h3>
+                    <div className="w-8 h-[2px] my-4 animate-line-draw stagger-2" style={{ background: 'var(--red-thread)' }} />
+                    <p className="text-[10px] text-muted-foreground tracking-[0.2em] uppercase max-w-md animate-fade-in stagger-3">
                       Create a new video using the generation tool
                     </p>
                   </div>

@@ -15,14 +15,14 @@ export function LoginForm({
 }: React.ComponentProps<"div">) {
   return (
     <div className={cn("flex flex-col gap-8", className)} {...props}>
-      <Card className="border-border">
-        <CardHeader className="text-center pb-2">
+      <Card className="border-2 border-border hover:border-foreground transition-colors duration-300">
+        <CardHeader className="text-center pb-2 pt-8">
           <CardTitle className="text-2xl font-black tracking-[-0.03em] uppercase">Sign In</CardTitle>
-          <CardDescription className="text-xs tracking-[0.1em] uppercase text-muted-foreground mt-2">
+          <CardDescription className="text-[10px] tracking-[0.15em] uppercase text-muted-foreground mt-3">
             Continue with Microsoft
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pb-8">
           <form
             action={async () => {
               "use server"
@@ -30,11 +30,11 @@ export function LoginForm({
             }}
             className="space-y-8"
           >
-            <Button type="submit" className="w-full py-6 text-sm font-bold tracking-[0.15em] uppercase cursor-pointer">
+            <Button type="submit" className="w-full py-7 text-[11px] font-bold tracking-[0.2em] uppercase cursor-pointer transition-all duration-300 hover:tracking-[0.3em]">
               Sign In
             </Button>
           </form>
-          <div className="text-muted-foreground *:[a]:hover:text-foreground mt-8 text-center text-[10px] tracking-[0.05em] uppercase text-balance *:[a]:underline *:[a]:underline-offset-4">
+          <div className="text-muted-foreground *:[a]:hover:text-foreground mt-8 text-center text-[9px] tracking-[0.08em] uppercase text-balance *:[a]:underline *:[a]:underline-offset-4 *:[a]:decoration-[var(--red-thread)]">
             By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
             and <a href="#">Privacy Policy</a>.
           </div>

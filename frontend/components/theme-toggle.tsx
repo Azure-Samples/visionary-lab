@@ -21,16 +21,16 @@ export function ThemeToggle() {
           <Button
             variant="ghost"
             size="icon"
-            className="cursor-pointer"
+            className="relative cursor-pointer hover:bg-transparent group/toggle"
             onClick={() => setTheme(theme === "light" ? "dark" : "light")}
           >
-            <Sun className="h-4 w-4 rotate-0 scale-100 transition-all duration-200 dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all duration-200 dark:rotate-0 dark:scale-100" />
+            <Sun className="h-4 w-4 rotate-0 scale-100 transition-all duration-300 dark:-rotate-90 dark:scale-0 group-hover/toggle:text-[var(--red-thread)]" />
+            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all duration-300 dark:rotate-0 dark:scale-100 dark:group-hover/toggle:text-[var(--red-thread)]" />
             <span className="sr-only">Toggle theme</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          <p className="text-xs tracking-[0.05em] uppercase">Toggle theme</p>
+          <p className="text-[10px] tracking-[0.1em] uppercase">Toggle theme</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

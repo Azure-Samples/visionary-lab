@@ -437,7 +437,7 @@ export function VideoCard({
     >
       <Card 
         className={cn(
-          "overflow-hidden border border-border group hover:border-foreground transition-all duration-200 h-full p-0 w-full bg-card",
+          "gallery-card overflow-hidden border border-border group hover:border-foreground transition-all duration-300 h-full p-0 w-full bg-card",
           className,
           onClick && "cursor-pointer"
         )}

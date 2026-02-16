@@ -204,7 +204,7 @@ export function AppSidebar() {
                   }
                 }}
               />
-              <h2 className="font-black text-lg tracking-[-0.04em] uppercase">Visionary Lab</h2>
+              <h2 className="font-black text-lg tracking-[-0.04em] uppercase red-thread" data-active="true">Visionary Lab</h2>
             </div>
             <div className="hidden group-data-[collapsible=icon]:flex items-center justify-center">
               <Image 
@@ -279,7 +279,7 @@ export function AppSidebar() {
                         <SidebarMenuButton 
                           asChild
                           data-active={isVideoFolderActive(null)}
-                          className="data-[active=true]:bg-accent"
+                          className="red-thread data-[active=true]:font-bold"
                         >
                           <a>
                             <FileVideo className="h-4 w-4 mr-2" />
@@ -305,7 +305,7 @@ export function AppSidebar() {
                             <SidebarMenuButton 
                               asChild
                               data-active={isVideoFolderActive(folder)}
-                              className="data-[active=true]:bg-accent"
+                              className="red-thread data-[active=true]:font-bold"
                               onClick={() => handleVideoFolderClick(folder)}
                             >
                               <a>
@@ -356,7 +356,7 @@ export function AppSidebar() {
                         <SidebarMenuButton 
                           asChild
                           data-active={isImageFolderActive(null)}
-                          className="data-[active=true]:bg-accent"
+                          className="red-thread data-[active=true]:font-bold"
                         >
                           <a>
                             <ImageIcon className="h-4 w-4 mr-2" />
@@ -382,7 +382,7 @@ export function AppSidebar() {
                             <SidebarMenuButton 
                               asChild
                               data-active={isImageFolderActive(folder)}
-                              className="data-[active=true]:bg-accent"
+                              className="red-thread data-[active=true]:font-bold"
                               onClick={() => handleImageFolderClick(folder)}
                             >
                               <a>

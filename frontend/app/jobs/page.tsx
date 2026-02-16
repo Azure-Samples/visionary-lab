@@ -170,28 +170,28 @@ function JobsPageContent() {
       <div className="flex-1 w-full h-full overflow-y-auto">
         <div className="w-full mx-auto px-10 py-6 pb-16">
           <div className="grid grid-cols-1 gap-2 md:grid-cols-4 mb-8">
-            <Card className="border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-4xl font-black tracking-[-0.04em]">{stats.total}</CardTitle>
-                <CardDescription className="text-[10px] tracking-[0.15em] uppercase font-bold">Total Jobs</CardDescription>
+            <Card className="stat-card border-border">
+              <CardHeader className="pb-2 pt-6">
+                <CardTitle className="text-5xl font-black tracking-[-0.05em] leading-none">{stats.total}</CardTitle>
+                <CardDescription className="text-[9px] tracking-[0.2em] uppercase font-bold mt-2">Total Jobs</CardDescription>
               </CardHeader>
             </Card>
-            <Card className="border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-4xl font-black tracking-[-0.04em]">{stats.pending + stats.inProgress}</CardTitle>
-                <CardDescription className="text-[10px] tracking-[0.15em] uppercase font-bold">In Queue</CardDescription>
+            <Card className="stat-card border-border">
+              <CardHeader className="pb-2 pt-6">
+                <CardTitle className="text-5xl font-black tracking-[-0.05em] leading-none">{stats.pending + stats.inProgress}</CardTitle>
+                <CardDescription className="text-[9px] tracking-[0.2em] uppercase font-bold mt-2">In Queue</CardDescription>
               </CardHeader>
             </Card>
-            <Card className="border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-4xl font-black tracking-[-0.04em]">{stats.completed}</CardTitle>
-                <CardDescription className="text-[10px] tracking-[0.15em] uppercase font-bold">Completed</CardDescription>
+            <Card className="stat-card border-border">
+              <CardHeader className="pb-2 pt-6">
+                <CardTitle className="text-5xl font-black tracking-[-0.05em] leading-none">{stats.completed}</CardTitle>
+                <CardDescription className="text-[9px] tracking-[0.2em] uppercase font-bold mt-2">Completed</CardDescription>
               </CardHeader>
             </Card>
-            <Card className="border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-4xl font-black tracking-[-0.04em]">{stats.failed}</CardTitle>
-                <CardDescription className="text-[10px] tracking-[0.15em] uppercase font-bold">Failed</CardDescription>
+            <Card className="stat-card border-border">
+              <CardHeader className="pb-2 pt-6">
+                <CardTitle className="text-5xl font-black tracking-[-0.05em] leading-none">{stats.failed}</CardTitle>
+                <CardDescription className="text-[9px] tracking-[0.2em] uppercase font-bold mt-2">Failed</CardDescription>
               </CardHeader>
             </Card>
           </div>

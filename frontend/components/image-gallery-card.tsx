@@ -244,7 +244,7 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
       className="relative w-full mb-0"
     >
       <Card 
-        className="overflow-hidden border border-border group hover:border-foreground transition-all duration-200 h-full p-0 w-full bg-card"
+        className="gallery-card overflow-hidden border border-border group hover:border-foreground transition-all duration-300 h-full p-0 w-full bg-card"
       >
         {/* Add dropdown menu - only visible on hover */}
         <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -363,9 +363,9 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
             )}
             
             {/* Gradient overlay for image info */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
               <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-                <h3 className="font-bold text-sm leading-tight line-clamp-2 tracking-tight uppercase">
+                <h3 className="font-bold text-xs leading-tight line-clamp-2 tracking-[0.05em] uppercase">
                   {image.originalItem?.metadata?.prompt || image.title || image.name}
                 </h3>
                 

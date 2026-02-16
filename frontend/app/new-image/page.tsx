@@ -563,16 +563,18 @@ function NewImagePageContent() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-[calc(100vh-14rem)] py-20 text-muted-foreground">
-              <ImageIcon className="h-12 w-12 mb-8 opacity-10" />
+              <ImageIcon className="h-10 w-10 mb-10 opacity-[0.06]" strokeWidth={1} />
               {folderPath ? (
                 <>
-                  <p className="text-2xl font-black tracking-[-0.03em] uppercase">Empty Album</p>
-                  <p className="text-xs mt-3 tracking-[0.1em] uppercase">No images in &quot;{folderPath.split('/').pop() || folderPath}&quot;</p>
+                  <p className="text-3xl font-black tracking-[-0.04em] uppercase animate-reveal-up">Empty</p>
+                  <div className="w-8 h-[2px] my-4 animate-line-draw stagger-2" style={{ background: 'var(--red-thread)' }} />
+                  <p className="text-[10px] tracking-[0.2em] uppercase animate-fade-in stagger-3">No images in &quot;{folderPath.split('/').pop() || folderPath}&quot;</p>
                 </>
               ) : (
                 <>
-                  <p className="text-2xl font-black tracking-[-0.03em] uppercase">No Images</p>
-                  <p className="text-xs mt-3 tracking-[0.1em] uppercase">Upload to get started</p>
+                  <p className="text-3xl font-black tracking-[-0.04em] uppercase animate-reveal-up">No Images</p>
+                  <div className="w-8 h-[2px] my-4 animate-line-draw stagger-2" style={{ background: 'var(--red-thread)' }} />
+                  <p className="text-[10px] tracking-[0.2em] uppercase animate-fade-in stagger-3">Upload to get started</p>
                 </>
               )}
               <Button 
