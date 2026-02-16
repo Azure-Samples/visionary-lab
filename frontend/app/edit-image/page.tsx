@@ -3,7 +3,8 @@
 import React from 'react';
 import EditorContainer from './components/EditorContainer';
 import { PageHeader } from '@/components/page-header';
-import { FadeScaleTransition } from '@/components/ui/page-transition';
+import dynamic from "next/dynamic";
+const FadeScaleTransition = dynamic(() => import('@/components/ui/page-transition').then(m => ({ default: m.FadeScaleTransition })), { ssr: false });
 
 export default function EditImagePage() {
   return (

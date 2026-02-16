@@ -6,7 +6,8 @@ import { RefreshCw, Clock } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { useJobs } from "@/context/jobs-context"
 import { VideoJob, convertToVideoJob } from "@/types/jobs"
-import { FadeScaleTransition } from "@/components/ui/page-transition"
+import dynamic from "next/dynamic";
+const FadeScaleTransition = dynamic(() => import("@/components/ui/page-transition").then(m => ({ default: m.FadeScaleTransition })), { ssr: false });
 
 import {
   Card,

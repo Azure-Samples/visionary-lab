@@ -181,3 +181,5 @@ videos
 # Visionary Lab
 notebooks/video-generations/
 frontend/lighthouse-report.html
+scripts/allow-local-access.sh
+.agents

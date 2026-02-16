@@ -20,7 +20,8 @@ import { Loader2, Check, AlertCircle, Plus, X, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useImageSettings, BrandsProtectionMode } from "@/context/image-settings-context";
 import { useSearchParams } from "next/navigation";
-import { FadeScaleTransition } from "@/components/ui/page-transition";
+import dynamic from "next/dynamic";
+const FadeScaleTransition = dynamic(() => import("@/components/ui/page-transition").then(m => ({ default: m.FadeScaleTransition })), { ssr: false });
 
 // No longer need video settings types
 

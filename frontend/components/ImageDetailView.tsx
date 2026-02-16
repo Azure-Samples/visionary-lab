@@ -211,8 +211,8 @@ export function ImageDetailView({
       };
       
       // Add event listeners
-      img.addEventListener('load', handleImageLoad);
-      img.addEventListener('error', handleImageError);
+      img.addEventListener('load', handleImageLoad, { passive: true });
+      img.addEventListener('error', handleImageError, { passive: true });
       
       // Check if image is already loaded
       if (img.complete) {

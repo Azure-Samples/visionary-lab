@@ -14,7 +14,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { formatDistanceToNow } from "date-fns";
 import { useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { SlideTransition } from "@/components/ui/page-transition";
+import dynamic from "next/dynamic";
+const SlideTransition = dynamic(() => import("@/components/ui/page-transition").then(m => ({ default: m.SlideTransition })), { ssr: false });
 
 // Component that safely uses useSearchParams
 function SearchParamsWrapper({ onFolderChange }: { onFolderChange: (folder: string | null) => void }) {

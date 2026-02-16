@@ -189,13 +189,13 @@ export function VideoDetailView({
     clearListeners();
     
     // Add event listeners
-    videoElement.addEventListener('timeupdate', handleTimeUpdate);
-    videoElement.addEventListener('durationchange', handleDurationChange);
-    videoElement.addEventListener('play', handlePlay);
-    videoElement.addEventListener('pause', handlePause);
-    videoElement.addEventListener('volumechange', handleVolumeChange);
-    videoElement.addEventListener('loadeddata', handleLoadedData);
-    videoElement.addEventListener('error', handleError);
+    videoElement.addEventListener('timeupdate', handleTimeUpdate, { passive: true });
+    videoElement.addEventListener('durationchange', handleDurationChange, { passive: true });
+    videoElement.addEventListener('play', handlePlay, { passive: true });
+    videoElement.addEventListener('pause', handlePause, { passive: true });
+    videoElement.addEventListener('volumechange', handleVolumeChange, { passive: true });
+    videoElement.addEventListener('loadeddata', handleLoadedData, { passive: true });
+    videoElement.addEventListener('error', handleError, { passive: true });
     
     // Also check if the video is already loaded
     if (videoElement.readyState >= 3) {

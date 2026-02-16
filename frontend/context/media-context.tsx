@@ -69,7 +69,7 @@ export function MediaProvider({ children }: { children: ReactNode }) {
     };
     
     // Add event listeners
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', handleResize, { passive: true });
     const navigatorWithConnection = navigator as NavigatorWithConnection;
     if (navigatorWithConnection.connection) {
       navigatorWithConnection.connection.addEventListener('change', updateConnectionInfo);

@@ -18,7 +18,8 @@ import { VideoOverlay } from "@/components/VideoOverlay";
 import { useVideoQueue, registerGalleryRefreshCallback, unregisterGalleryRefreshCallback } from "@/context/video-queue-context";
 import { protectImagePrompt, fetchFolders, MediaType } from "@/services/api";
 import { useImageSettings } from "@/context/image-settings-context";
-import { SlideTransition } from "@/components/ui/page-transition";
+import dynamic from "next/dynamic";
+const SlideTransition = dynamic(() => import("@/components/ui/page-transition").then(m => ({ default: m.SlideTransition })), { ssr: false });
 import { VideoDetailView } from "@/components/VideoDetailView";
 
 // Separate component that uses useSearchParams

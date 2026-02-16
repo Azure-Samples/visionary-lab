@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { analyzeImageCustom, type ImageAnalysisResponse } from "@/services/api";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { PageTransition } from "@/components/ui/page-transition";
+import dynamic from "next/dynamic";
+const PageTransition = dynamic(() => import("@/components/ui/page-transition").then(m => ({ default: m.PageTransition })), { ssr: false });
 import { useImageSettings } from "@/context/image-settings-context";
 
 export default function AnalyzePage() {

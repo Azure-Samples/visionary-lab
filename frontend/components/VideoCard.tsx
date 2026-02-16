@@ -149,10 +149,10 @@ export function VideoCard({
       setIsLoading(false);
     };
 
-    video.addEventListener('loadedmetadata', handleMetadata);
-    video.addEventListener('loadstart', handleLoadStart);
-    video.addEventListener('canplay', handleCanPlay);
-    video.addEventListener('error', handleError);
+    video.addEventListener('loadedmetadata', handleMetadata, { passive: true });
+    video.addEventListener('loadstart', handleLoadStart, { passive: true });
+    video.addEventListener('canplay', handleCanPlay, { passive: true });
+    video.addEventListener('error', handleError, { passive: true });
     
     // If video is already loaded
     if (video.readyState >= 3) {

@@ -43,7 +43,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '26mb', // Increased for large image uploads
     },
     // Enable modern bundling optimizations
-    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', 'framer-motion'],
     // Enable turbo mode for faster builds
     turbo: {
       rules: {
