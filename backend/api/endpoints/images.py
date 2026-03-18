@@ -62,8 +62,7 @@ pipeline_service = ImagePipelineService()
 def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
     try:
-        # Check if we have either managed identity or key-based auth configured
-        if settings.AZURE_COSMOS_DB_ENDPOINT and (settings.USE_MANAGED_IDENTITY or settings.AZURE_COSMOS_DB_KEY):
+        if settings.AZURE_COSMOS_DB_ENDPOINT:
             return CosmosDBService()
         return None
     except Exception as e:

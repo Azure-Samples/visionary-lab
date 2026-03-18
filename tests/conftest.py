@@ -5,28 +5,20 @@ All tests run without real Azure credentials by mocking external services.
 
 import os
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 # Set environment variables BEFORE importing anything from the backend,
 # so that Settings() picks up test values instead of requiring real creds.
 os.environ.setdefault("MODEL_PROVIDER", "azure")
-os.environ.setdefault("IMAGEGEN_AOAI_RESOURCE", "test-resource")
-os.environ.setdefault("IMAGEGEN_DEPLOYMENT", "test-deployment")
-os.environ.setdefault("IMAGEGEN_AOAI_API_KEY", "test-key")
-os.environ.setdefault("LLM_AOAI_RESOURCE", "test-llm-resource")
+os.environ.setdefault("AI_FOUNDRY_ENDPOINT", "https://test-foundry.cognitiveservices.azure.com/")
 os.environ.setdefault("LLM_DEPLOYMENT", "test-llm-deployment")
-os.environ.setdefault("LLM_AOAI_API_KEY", "test-llm-key")
-os.environ.setdefault("SORA_AOAI_RESOURCE", "test-sora-resource")
+os.environ.setdefault("IMAGEGEN_DEPLOYMENT", "test-deployment")
 os.environ.setdefault("SORA_DEPLOYMENT", "test-sora-deployment")
-os.environ.setdefault("SORA_AOAI_API_KEY", "test-sora-key")
 os.environ.setdefault("AZURE_STORAGE_ACCOUNT_NAME", "teststorage")
-os.environ.setdefault("AZURE_STORAGE_ACCOUNT_KEY", "dGVzdC1rZXk=")
 os.environ.setdefault("AZURE_BLOB_SERVICE_URL", "https://teststorage.blob.core.windows.net/")
 os.environ.setdefault("AZURE_BLOB_IMAGE_CONTAINER", "images")
 os.environ.setdefault("AZURE_BLOB_VIDEO_CONTAINER", "videos")
 os.environ.setdefault("AZURE_COSMOS_DB_ENDPOINT", "https://test.documents.azure.com:443/")
-os.environ.setdefault("AZURE_COSMOS_DB_KEY", "test-cosmos-key")
-os.environ.setdefault("USE_MANAGED_IDENTITY", "false")
 
 from fastapi.testclient import TestClient
 

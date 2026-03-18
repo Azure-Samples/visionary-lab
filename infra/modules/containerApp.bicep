@@ -5,43 +5,31 @@ param DOCKER_IMAGE string
 param deployNew bool = true
 param azdServiceName string = ''
 
-// Env Variables
-param MODEL_PROVIDER string = 'azure'
-// Azure OpenAI Image Generation
-param IMAGEGEN_AOAI_RESOURCE string = 'aoai-akc-uswest3'
+// AI Foundry endpoint (unified for all AI services)
+param AI_FOUNDRY_ENDPOINT string = ''
+// Model deployment names
+param LLM_DEPLOYMENT string = 'gpt-4o'
 param IMAGEGEN_DEPLOYMENT string = 'gpt-image-1'
 param IMAGEGEN_15_DEPLOYMENT string = ''
 param IMAGEGEN_1_MINI_DEPLOYMENT string = ''
-@secure()
-param IMAGEGEN_AOAI_API_KEY string
-// Azure OpenAI LLM
-param LLM_AOAI_RESOURCE string = 'emea-gbb-sweden-central'
-param LLM_DEPLOYMENT string = 'gpt-4o-2'
-@secure()
-param LLM_AOAI_API_KEY string
-// Azure OpenAI Sora
-param SORA_AOAI_RESOURCE string = 'aoai-akc-uswest3'
 param SORA_DEPLOYMENT string = 'sora'
-@secure()
-param SORA_AOAI_API_KEY string = ''
-// Azure Blob Storage
+
+// Azure Blob Storage (managed identity — no keys)
 param AZURE_BLOB_SERVICE_URL string
 param AZURE_STORAGE_ACCOUNT_NAME string
-param AZURE_STORAGE_ACCOUNT_KEY string
 param AZURE_BLOB_IMAGE_CONTAINER string = 'images'
 
 param targetPort int = 80
 param API_PROTOCOL string = 'http'
 param API_HOSTNAME string = 'localhost'
 param API_PORT string = '80'
-// Add these parameters to your containerApp.bicep file
+
+// Cosmos DB (managed identity — no keys)
 param COSMOS_ENDPOINT string = ''
 param COSMOS_DATABASE_NAME string = ''
 param COSMOS_CONTAINER_NAME string = ''
-// @secure()
-// param COSMOS_DB_KEY string = '' // Removed for managed identity
 
-// Azure Container Registry parameters
+// Azure Container Registry
 param AZURE_CONTAINER_REGISTRY_ENDPOINT string = ''
 @secure()
 param AZURE_CONTAINER_REGISTRY_USERNAME string = ''
@@ -108,12 +96,12 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = if(deployNew) {
           ]
           env: [
             {
-              name: 'MODEL_PROVIDER'
-              value: MODEL_PROVIDER
+              name: 'AI_FOUNDRY_ENDPOINT'
+              value: AI_FOUNDRY_ENDPOINT
             }
             {
-              name: 'IMAGEGEN_AOAI_RESOURCE'
-              value: IMAGEGEN_AOAI_RESOURCE
+              name: 'LLM_DEPLOYMENT'
+              value: LLM_DEPLOYMENT
             }
             {
               name: 'IMAGEGEN_DEPLOYMENT'
@@ -128,32 +116,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = if(deployNew) {
               value: IMAGEGEN_1_MINI_DEPLOYMENT
             }
             {
-              name: 'IMAGEGEN_AOAI_API_KEY'
-              value: IMAGEGEN_AOAI_API_KEY
-            }
-            {
-              name: 'LLM_AOAI_RESOURCE'
-              value: LLM_AOAI_RESOURCE
-            }
-            {
-              name: 'LLM_DEPLOYMENT'
-              value: LLM_DEPLOYMENT
-            }
-            {
-              name: 'LLM_AOAI_API_KEY'
-              value: LLM_AOAI_API_KEY
-            }
-            {
-              name: 'SORA_AOAI_RESOURCE'
-              value: SORA_AOAI_RESOURCE
-            }
-            {
               name: 'SORA_DEPLOYMENT'
               value: SORA_DEPLOYMENT
-            }
-            {
-              name: 'SORA_AOAI_API_KEY'
-              value: SORA_AOAI_API_KEY
             }
             {
               name: 'AZURE_BLOB_SERVICE_URL'
@@ -162,10 +126,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = if(deployNew) {
             {
               name: 'AZURE_STORAGE_ACCOUNT_NAME'
               value: AZURE_STORAGE_ACCOUNT_NAME
-            }
-            {
-              name: 'AZURE_STORAGE_ACCOUNT_KEY'
-              value: AZURE_STORAGE_ACCOUNT_KEY
             }
             {
               name: 'AZURE_BLOB_IMAGE_CONTAINER'
@@ -196,10 +156,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = if(deployNew) {
               value: API_PORT
             }
             {
-              name: 'STORAGE_ACCOUNT_NAME'
-              value: AZURE_STORAGE_ACCOUNT_NAME
-            }
-            {
               name: 'AZURE_COSMOS_DB_ENDPOINT'
               value: COSMOS_ENDPOINT
             }
@@ -212,17 +168,12 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = if(deployNew) {
               value: COSMOS_CONTAINER_NAME
             }
             {
-              name: 'USE_MANAGED_IDENTITY'
-              value: 'true'
-            }
-            {
               name: 'AZURE_CONTAINER_REGISTRY_ENDPOINT'
               value: AZURE_CONTAINER_REGISTRY_ENDPOINT
             }
           ]
         }
       ]
-      // Keep at least one replica running to avoid scale-to-zero
       scale: {
         minReplicas: 1
       }

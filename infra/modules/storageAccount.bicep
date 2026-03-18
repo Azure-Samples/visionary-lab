@@ -15,5 +15,5 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2024-01-01' = if(depl
 
 output storageAccountPrimaryEndpoint string = storageAccount.properties.primaryEndpoints.blob
 output storageAccountId string = storageAccount.id
-output storageAccountKey string = storageAccount.listKeys().keys[0].value
+output storageAccountName string = storageAccount.name
 

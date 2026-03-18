@@ -6,9 +6,10 @@ This guide shows how to deploy the Visionary Lab to Azure using the Azure Develo
 
 - [Azure Developer CLI (azd)](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/install-azd) installed
 - Azure subscription with access to:
+  - Azure AI Foundry (AIServices)
   - Azure Container Apps
-  - Azure OpenAI Service (with GPT-4o, DALL-E 3, and Sora deployments)
   - Azure Storage Account
+  - Azure Cosmos DB
   - Azure Log Analytics
 
 ## Quick Start (One-Click Deployment)
@@ -26,31 +27,23 @@ This guide shows how to deploy the Visionary Lab to Azure using the Azure Develo
    ```
 
 3. **Configure during deployment**:
-   When prompted by `azd up`, provide your Azure OpenAI service details in this order:
-   
-   **LLM Configuration:**
-   - **LLM_AOAI_RESOURCE**: Your Azure OpenAI resource name for LLM
-   - **LLM_DEPLOYMENT**: Your GPT deployment name (e.g., "gpt-4.1")
-   - **LLM_AOAI_API_KEY**: Your LLM API key
-   
-   **Image Generation Configuration:**
-   - **IMAGEGEN_AOAI_RESOURCE**: Your Azure OpenAI resource name for image generation
-   - **IMAGEGEN_DEPLOYMENT**: Your image generation deployment name (e.g., "gpt-image-1")
-   - **IMAGEGEN_AOAI_API_KEY**: Your image generation API key
-   
-   **Sora Configuration:**
-   - **SORA_AOAI_RESOURCE**: Your Azure OpenAI resource name for Sora
-   - **SORA_DEPLOYMENT**: Your Sora deployment name (e.g., "sora")
-   - **SORA_AOAI_API_KEY**: Your Sora API key
+   When prompted by `azd up`, provide:
+
+   - **AI_FOUNDRY_NAME**: Name for your AI Foundry resource (must be globally unique)
+   - **AI_FOUNDRY_LOCATION**: Azure region for AI Foundry (default: `swedencentral`)
+   - **LLM_DEPLOYMENT**: LLM deployment name (default: `gpt-4o`)
+   - **IMAGEGEN_DEPLOYMENT**: Image generation deployment name (default: `gpt-image-1`)
+   - **SORA_DEPLOYMENT**: Video generation deployment name (default: `sora`)
+
+   > **No API keys required.** All services use Azure Managed Identity for authentication.
 
 That's it! The `azd up` command will:
 - Create a new environment
-- Prompt for required Azure OpenAI configuration (resource names, deployments, API keys)
-- Provision all Azure resources (Container Registry, Container Apps, Storage, etc.)
-- Build Docker images for frontend and backend
-- Push images to your private Azure Container Registry
-- Deploy both services to Azure Container Apps
-- Configure networking, authentication, and environment variables
+- Provision the AI Foundry resource with all model deployments
+- Provision Storage, Cosmos DB, Container Registry, Container Apps
+- Assign RBAC roles (Cognitive Services OpenAI User, Storage Blob Data Contributor, etc.)
+- Build and deploy Docker images for frontend and backend
+- Configure networking and environment variables
 - Provide you with the application URLs
 
 ## Manual Steps
@@ -63,22 +56,17 @@ azd env new <environment-name>
 ```
 
 ### 2. Configure Environment Variables
-Set your Azure OpenAI service details:
 ```bash
-# LLM OpenAI
-azd env set LLM_AOAI_RESOURCE "your-openai-resource-name"
-azd env set LLM_DEPLOYMENT "gpt-4.1"
-azd env set LLM_AOAI_API_KEY "your-gpt-key"
+# AI Foundry
+azd env set AI_FOUNDRY_NAME "your-foundry-name"
+azd env set AI_FOUNDRY_LOCATION "swedencentral"
 
-# Image Generation OpenAI
-azd env set IMAGEGEN_AOAI_RESOURCE "your-openai-resource-name"
+# Model deployments (names must match what gets deployed)
+azd env set LLM_DEPLOYMENT "gpt-4o"
 azd env set IMAGEGEN_DEPLOYMENT "gpt-image-1"
-azd env set IMAGEGEN_AOAI_API_KEY "your-image-gen-key"
-
-# Sora OpenAI
-azd env set SORA_AOAI_RESOURCE "your-openai-resource-name"
+azd env set IMAGEGEN_15_DEPLOYMENT "gpt-image-1-5"
+azd env set IMAGEGEN_1_MINI_DEPLOYMENT "gpt-image-1-mini"
 azd env set SORA_DEPLOYMENT "sora"
-azd env set SORA_AOAI_API_KEY "your-sora-key"
 ```
 
 ### 3. Deploy Infrastructure
@@ -95,39 +83,58 @@ azd deploy
 
 The deployment creates:
 
+- **Azure AI Foundry** (AIServices): Unified AI resource with all model deployments
+- **AI Foundry Project**: Scoped workspace for the application
 - **Azure Container Apps Environment**: Serverless container hosting
-- **Backend Container App**: FastAPI application (Python)
+- **Backend Container App**: FastAPI application (Python) with SystemAssigned managed identity
 - **Frontend Container App**: Next.js application (Node.js)
 - **Azure Container Registry**: Private registry for storing Docker images
 - **Azure Storage Account**: For storing generated images and videos
+- **Azure Cosmos DB**: For metadata storage
 - **Log Analytics Workspace**: For monitoring and logging
+
+### RBAC Role Assignments (auto-provisioned)
+
+| Principal | Role | Scope |
+|-----------|------|-------|
+| Backend Container App | Cognitive Services OpenAI User | AI Foundry |
+| Backend Container App | Storage Blob Data Contributor | Storage Account |
+| Backend Container App | Storage Blob Delegator | Storage Account |
+| Backend Container App | Cosmos DB Data Contributor | Cosmos DB Account |
 
 ## Environment Variables
 
-The following environment variables are automatically configured:
+The following environment variables are automatically configured by the infrastructure:
 
-### Backend & Frontend
-- `AZURE_STORAGE_ACCOUNT_NAME`: Auto-generated storage account
-- `AZURE_BLOB_SERVICE_URL`: Storage endpoint URL
-- `AZURE_STORAGE_ACCOUNT_KEY`: Storage access key
-- `AZURE_BLOB_IMAGE_CONTAINER`: Container for images (default: "images")
-- `AZURE_CONTAINER_REGISTRY_ENDPOINT`: Container registry login server
-
-### AI Services (All Configurable)
-**LLM Configuration:**
-- `LLM_AOAI_RESOURCE`: LLM OpenAI resource name
+### Backend
+- `AI_FOUNDRY_ENDPOINT`: AI Foundry endpoint URL
 - `LLM_DEPLOYMENT`: LLM deployment name
-- `LLM_AOAI_API_KEY`: LLM API key
-
-**Image Generation Configuration:**
-- `IMAGEGEN_AOAI_RESOURCE`: Image generation OpenAI resource name
 - `IMAGEGEN_DEPLOYMENT`: Image generation deployment name
-- `IMAGEGEN_AOAI_API_KEY`: Image generation API key
-
-**Sora Configuration:**
-- `SORA_AOAI_RESOURCE`: Sora OpenAI resource name
+- `IMAGEGEN_15_DEPLOYMENT`: GPT-Image-1.5 deployment name
+- `IMAGEGEN_1_MINI_DEPLOYMENT`: GPT-Image-1-mini deployment name
 - `SORA_DEPLOYMENT`: Sora deployment name
-- `SORA_AOAI_API_KEY`: Sora API key
+- `AZURE_BLOB_SERVICE_URL`: Storage endpoint URL
+- `AZURE_STORAGE_ACCOUNT_NAME`: Storage account name
+- `AZURE_BLOB_IMAGE_CONTAINER`: Container for images (default: "images")
+- `AZURE_COSMOS_DB_ENDPOINT`: Cosmos DB endpoint
+- `AZURE_COSMOS_DB_ID`: Database name
+- `AZURE_COSMOS_CONTAINER_ID`: Container name
+
+## Local Development
+
+For local development, the app uses `DefaultAzureCredential` which picks up your Azure CLI credentials:
+
+```bash
+# Login to Azure (required for local development)
+az login
+
+# Set environment variables in .env (see .env.example)
+cp .env.example .env
+# Edit .env with your AI Foundry endpoint and deployment names
+
+# Run the backend
+cd backend && uvicorn main:app --reload
+```
 
 ## Monitoring
 
@@ -153,9 +160,10 @@ azd down
 
 ### Common Issues
 
-1. **Missing OpenAI Resources**: Ensure you have created Azure OpenAI resources with the required model deployments
-2. **Permission Issues**: Verify your Azure account has Contributor access to the subscription
-3. **Region Availability**: Some OpenAI models may not be available in all regions
+1. **Credential errors locally**: Run `az login` to authenticate. `DefaultAzureCredential` requires an active Azure CLI session.
+2. **RBAC propagation delay**: After initial deployment, role assignments may take 1-5 minutes to propagate. If the app shows 403 errors on first start, wait and restart.
+3. **Region availability**: Some models (Sora, GPT-Image) may not be available in all regions. Default is `swedencentral`.
+4. **Permission Issues**: You need Owner role on the resource group to create RBAC assignments.
 
 ### Getting Help
 

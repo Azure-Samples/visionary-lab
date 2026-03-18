@@ -11,51 +11,30 @@ class Settings(BaseSettings):
     # Model Provider Configuration
     MODEL_PROVIDER: str = "azure"  # Can be 'azure' or 'openai'
 
-    # Azure OpenAI for Sora Video Generation
-    SORA_AOAI_RESOURCE: Optional[str] = None  # The Azure OpenAI resource name for Sora
-    SORA_DEPLOYMENT: Optional[str] = None  # The Sora deployment name
-    SORA_AOAI_API_KEY: Optional[str] = None  # The Azure OpenAI API key for Sora
+    # AI Foundry endpoint (unified for all AI services via managed identity)
+    AI_FOUNDRY_ENDPOINT: Optional[str] = None
 
-    # Azure OpenAI for LLM
-    # The Azure OpenAI resource name for LLM
-    LLM_AOAI_RESOURCE: Optional[str] = None
-    LLM_DEPLOYMENT: Optional[str] = None  # The LLM deployment name
-    LLM_AOAI_API_KEY: Optional[str] = None  # The Azure OpenAI API key for LLM
-
-    # Azure OpenAI for Image Generation
-    # The Azure OpenAI resource name for image generation
-    IMAGEGEN_AOAI_RESOURCE: Optional[str] = None
-    # The image generation deployment name (gpt-image-1)
+    # Model deployment names
+    LLM_DEPLOYMENT: Optional[str] = None
     IMAGEGEN_DEPLOYMENT: Optional[str] = None
-    # The gpt-image-1.5 deployment name
     IMAGEGEN_15_DEPLOYMENT: Optional[str] = None
-    # The gpt-image-1-mini deployment name
     IMAGEGEN_1_MINI_DEPLOYMENT: Optional[str] = None
-    # The Azure OpenAI API key for image generation
-    IMAGEGEN_AOAI_API_KEY: Optional[str] = None
-    # Default image generation model
+    SORA_DEPLOYMENT: Optional[str] = None
     DEFAULT_IMAGE_MODEL: str = "gpt-image-1"
 
-    # OpenAI API for Image Generation with GPT-Image-1
+    # OpenAI API for direct OpenAI usage (non-Azure)
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_ORG_ID: Optional[str] = None  # Organization ID for OpenAI
-    # Whether organization is verified on OpenAI
+    OPENAI_ORG_ID: Optional[str] = None
     OPENAI_ORG_VERIFIED: bool = False
-    GPT_IMAGE_MAX_TOKENS: int = 150000  # Maximum token usage limit
+    GPT_IMAGE_MAX_TOKENS: int = 150000
 
-    # Azure Blob Storage Settings
-    # Option 1: Connection string (deprecated)
-    AZURE_STORAGE_CONNECTION_STRING: Optional[str] = None
-
-    # Option 2: Individual credential components (preferred)
-    # https://<account>.blob.core.windows.net/
+    # Azure Blob Storage Settings (managed identity — no keys)
     AZURE_BLOB_SERVICE_URL: Optional[str] = None
-    AZURE_STORAGE_ACCOUNT_NAME: Optional[str] = None  # Storage account name
-    AZURE_STORAGE_ACCOUNT_KEY: Optional[str] = None  # Storage account key
+    AZURE_STORAGE_ACCOUNT_NAME: Optional[str] = None
 
     # Container names
-    AZURE_BLOB_IMAGE_CONTAINER: str = "images"  # Container name for images
-    AZURE_BLOB_VIDEO_CONTAINER: str = "videos"  # Container name for videos
+    AZURE_BLOB_IMAGE_CONTAINER: str = "images"
+    AZURE_BLOB_VIDEO_CONTAINER: str = "videos"
 
     # CORS Configuration
     CORS_ALLOWED_ORIGINS: str = Field(
@@ -63,21 +42,13 @@ class Settings(BaseSettings):
         description="Comma-separated list of allowed CORS origins, or * for all origins"
     )
 
-    # Azure Cosmos DB Settings
-    AZURE_COSMOS_DB_ENDPOINT: Optional[str] = None  # Cosmos DB endpoint URL
-    AZURE_COSMOS_DB_KEY: Optional[str] = None  # Cosmos DB primary key
-    AZURE_COSMOS_DB_ID: str = "visionarylab"  # Database name
-    AZURE_COSMOS_CONTAINER_ID: str = "metadata"  # Container name for metadata
-
-    # Alternative: Managed Identity settings (for Azure-hosted deployments)
-    USE_MANAGED_IDENTITY: bool = (
-        True  # Default to managed identity for enhanced security
-    )
+    # Azure Cosmos DB Settings (managed identity — no keys)
+    AZURE_COSMOS_DB_ENDPOINT: Optional[str] = None
+    AZURE_COSMOS_DB_ID: str = "visionarylab"
+    AZURE_COSMOS_CONTAINER_ID: str = "metadata"
 
     # Azure OpenAI API Version
     AOAI_API_VERSION: str = "2025-04-01-preview"
-
-    SORA_API_VERSION: str = "2025-04-01-preview"
 
     # File storage paths
     UPLOAD_DIR: str = "./static/uploads"
@@ -85,14 +56,13 @@ class Settings(BaseSettings):
     VIDEO_DIR: str = "./static/videos"
 
     # Logging Configuration
-    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    LOG_LEVEL: str = "INFO"
 
     # GPT-Image-1 Default Settings
     GPT_IMAGE_DEFAULT_SIZE: str = "1024x1024"
     GPT_IMAGE_DEFAULT_QUALITY: str = "high"
     GPT_IMAGE_DEFAULT_FORMAT: str = "PNG"
     GPT_IMAGE_ALLOW_TRANSPARENT: bool = True
-    # Max file size in MB for image uploads
     GPT_IMAGE_MAX_FILE_SIZE_MB: int = 25
 
     @validator('CORS_ALLOWED_ORIGINS')
@@ -101,17 +71,14 @@ class Settings(BaseSettings):
         if v == "*":
             return v
         
-        # Split and clean origins
         origins = [origin.strip() for origin in v.split(",") if origin.strip()]
         
-        # Check if wildcard is mixed with specific origins
         if "*" in origins and len(origins) > 1:
             raise ValueError(
                 "Cannot mix wildcard '*' with specific origins in CORS configuration. "
                 "Use either '*' alone for all origins, or specify individual origins without '*'."
             )
         
-        # Validate origin format (basic URL validation)
         for origin in origins:
             if origin != "*" and not (origin.startswith("http://") or origin.startswith("https://")):
                 raise ValueError(f"Invalid origin format: {origin}. Origins must start with http:// or https://")

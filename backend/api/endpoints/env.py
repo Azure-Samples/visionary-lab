@@ -19,18 +19,12 @@ def env_status():
     """
     # Required variables (must be set for the application to work properly)
     required_vars = [
-        'SORA_AOAI_RESOURCE',
-        'SORA_AOAI_API_KEY',
-        'SORA_DEPLOYMENT',
-        'LLM_AOAI_RESOURCE',
+        'AI_FOUNDRY_ENDPOINT',
         'LLM_DEPLOYMENT',
-        'LLM_AOAI_API_KEY',
-        'IMAGEGEN_AOAI_RESOURCE',
         'IMAGEGEN_DEPLOYMENT',
-        'IMAGEGEN_AOAI_API_KEY',
+        'SORA_DEPLOYMENT',
         'AZURE_BLOB_SERVICE_URL',
         'AZURE_STORAGE_ACCOUNT_NAME',
-        'AZURE_STORAGE_ACCOUNT_KEY',
         'AZURE_BLOB_IMAGE_CONTAINER',
         'AZURE_BLOB_VIDEO_CONTAINER',
     ]

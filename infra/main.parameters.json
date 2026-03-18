@@ -14,23 +14,14 @@
     "DOCKER_IMAGE_FRONTEND": {
       "value": "${SERVICE_FRONTEND_IMAGE_NAME}"
     },
-    "IMAGEGEN_AOAI_API_KEY": {
-      "value": "${IMAGEGEN_AOAI_API_KEY}"
+    "aiFoundryName": {
+      "value": "${AI_FOUNDRY_NAME}"
     },
-    "LLM_AOAI_API_KEY": {
-      "value": "${LLM_AOAI_API_KEY}"
-    },
-    "SORA_AOAI_API_KEY": {
-      "value": "${SORA_AOAI_API_KEY}"
-    },
-    "LLM_AOAI_RESOURCE": {
-      "value": "${LLM_AOAI_RESOURCE}"
+    "aiFoundryLocation": {
+      "value": "${AI_FOUNDRY_LOCATION}"
     },
     "LLM_DEPLOYMENT": {
       "value": "${LLM_DEPLOYMENT}"
-    },
-    "IMAGEGEN_AOAI_RESOURCE": {
-      "value": "${IMAGEGEN_AOAI_RESOURCE}"
     },
     "IMAGEGEN_DEPLOYMENT": {
       "value": "${IMAGEGEN_DEPLOYMENT}"
@@ -40,9 +31,6 @@
     },
     "IMAGEGEN_1_MINI_DEPLOYMENT": {
       "value": "${IMAGEGEN_1_MINI_DEPLOYMENT}"
-    },
-    "SORA_AOAI_RESOURCE": {
-      "value": "${SORA_AOAI_RESOURCE}"
     },
     "SORA_DEPLOYMENT": {
       "value": "${SORA_DEPLOYMENT}"

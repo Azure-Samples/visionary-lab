@@ -16,7 +16,8 @@ import re
 import uuid
 import logging
 from datetime import datetime, timedelta, timezone
-from azure.storage.blob import generate_container_sas, ContainerSasPermissions
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient, generate_container_sas, ContainerSasPermissions
 
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.cosmos_client import CosmosDBService
@@ -124,14 +125,10 @@ def _build_additional_custom_metadata(
 def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
     try:
-        # Check if we have either managed identity or key-based auth configured
-        if settings.AZURE_COSMOS_DB_ENDPOINT and (
-            settings.USE_MANAGED_IDENTITY or settings.AZURE_COSMOS_DB_KEY
-        ):
+        if settings.AZURE_COSMOS_DB_ENDPOINT:
             return CosmosDBService()
         return None
     except Exception as e:
-        # Log error but don't fail - Cosmos DB is optional
         logger.warning(f"Cosmos DB service unavailable: {e}")
         return None
 
@@ -627,23 +624,34 @@ async def get_asset_content(
 async def get_sas_tokens():
     """Generate and return SAS tokens for frontend direct access to blob storage"""
     try:
+        credential = DefaultAzureCredential()
+        account_url = f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
+        blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
+
+        start_time = datetime.now(timezone.utc)
+        expiry_time = start_time + timedelta(hours=1)
+        user_delegation_key = blob_service_client.get_user_delegation_key(
+            key_start_time=start_time,
+            key_expiry_time=expiry_time,
+        )
+
         video_token = generate_container_sas(
             account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
             container_name=settings.AZURE_BLOB_VIDEO_CONTAINER,
-            account_key=settings.AZURE_STORAGE_ACCOUNT_KEY,
+            user_delegation_key=user_delegation_key,
             permission=ContainerSasPermissions(read=True),
-            expiry=datetime.now(timezone.utc) + timedelta(hours=1),
+            expiry=expiry_time,
+            start=start_time,
         )
 
         image_token = generate_container_sas(
             account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
             container_name=settings.AZURE_BLOB_IMAGE_CONTAINER,
-            account_key=settings.AZURE_STORAGE_ACCOUNT_KEY,
+            user_delegation_key=user_delegation_key,
             permission=ContainerSasPermissions(read=True),
-            expiry=datetime.now(timezone.utc) + timedelta(hours=1),
+            expiry=expiry_time,
+            start=start_time,
         )
-
-        expiry_time = datetime.now(timezone.utc) + timedelta(hours=1)
         return {
             "success": True,
             "message": "SAS tokens generated successfully",

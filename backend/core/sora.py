@@ -2,6 +2,7 @@ import httpx
 import os
 import logging
 import io
+import urllib.parse
 from typing import Optional
 
 # Set up logging
@@ -94,17 +95,23 @@ class Sora:
 
     SUPPORTED_DURATIONS = ["4", "8", "12"]
 
-    def __init__(self, resource_name, deployment_name, api_key, api_version=None):
-        self.resource_name = resource_name
+    def __init__(self, endpoint, deployment_name, credential, token_provider=None, api_version=None):
         self.deployment_name = deployment_name
-        self.api_key = api_key
-        self.base_url = f"https://{self.resource_name}.openai.azure.com/openai/v1/videos"
+        self.credential = credential
 
-        # Important: don't set a default Content-Type on the client.
-        # httpx will set the correct Content-Type for JSON and multipart automatically.
-        self.headers = {
-            "api-key": self.api_key,
-        }
+        # Use token_provider if given (handles caching); otherwise create one
+        if token_provider is None:
+            from azure.identity import get_bearer_token_provider
+            token_provider = get_bearer_token_provider(
+                credential, "https://cognitiveservices.azure.com/.default"
+            )
+        self._token_provider = token_provider
+
+        # Extract resource name from endpoint to build the OpenAI-subdomain URL.
+        # e.g. "https://myFoundry.cognitiveservices.azure.com/" → "myFoundry"
+        parsed = urllib.parse.urlparse(endpoint)
+        resource_name = parsed.hostname.split('.')[0]
+        self.base_url = f"https://{resource_name}.openai.azure.com/openai/v1/videos"
 
         # Lazy-initialized async client
         self._client: Optional[httpx.AsyncClient] = None
@@ -112,12 +119,16 @@ class Sora:
         logger.info(
             f"Initialized Sora 2 client with resource: {resource_name}, deployment: {deployment_name}")
 
+    def _get_auth_headers(self) -> dict:
+        """Get Bearer token headers using the cached token provider."""
+        token = self._token_provider()
+        return {"Authorization": f"Bearer {token}"}
+
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the async HTTP client (lazy initialization)."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(60.0, connect=10.0),
-                headers=self.headers
             )
         return self._client
 
@@ -180,7 +191,7 @@ class Sora:
             f"Creating Sora 2 video generation job with prompt: {prompt[:50]}... "
             f"(size={size}, seconds={seconds})")
 
-        response = await client.post(url, json=payload)
+        response = await client.post(url, json=payload, headers=self._get_auth_headers())
 
         if not response.is_success:
             self._handle_api_error(response)
@@ -225,8 +236,6 @@ class Sora:
         size = f"{width}x{height}"
         self._validate_size(size)
 
-        multipart_headers = dict(self.headers)
-
         files = {
             "input_reference": (first_filename, io.BytesIO(first_image), "image/jpeg")
         }
@@ -243,7 +252,7 @@ class Sora:
 
         response = await client.post(
             url,
-            headers=multipart_headers,
+            headers=self._get_auth_headers(),
             data=data,
             files=files
         )
@@ -260,7 +269,7 @@ class Sora:
         url = f"{self.base_url}/{job_id}"
         logger.info(f"Getting video generation job: {job_id}")
 
-        response = await client.get(url)
+        response = await client.get(url, headers=self._get_auth_headers())
         response.raise_for_status()
 
         sora2_response = response.json()
@@ -273,7 +282,7 @@ class Sora:
         url = f"{self.base_url}/{job_id}"
         logger.info(f"Deleting video generation job: {job_id}")
 
-        response = await client.delete(url)
+        response = await client.delete(url, headers=self._get_auth_headers())
         response.raise_for_status()
         return response.status_code
 
@@ -290,7 +299,7 @@ class Sora:
             params["statuses"] = ",".join(statuses)
         logger.info(f"Listing video generation jobs with params: {params}")
 
-        response = await client.get(url, params=params)
+        response = await client.get(url, params=params, headers=self._get_auth_headers())
         response.raise_for_status()
 
         sora2_response = response.json()
@@ -328,7 +337,7 @@ class Sora:
             f"Downloading video content for generation {generation_id} to {file_path}")
 
         # Stream the download to handle large files
-        async with client.stream("GET", url) as response:
+        async with client.stream("GET", url, headers=self._get_auth_headers()) as response:
             response.raise_for_status()
             with open(file_path, 'wb') as f:
                 async for chunk in response.aiter_bytes(chunk_size=8192):
@@ -361,7 +370,7 @@ class Sora:
         logger.info(
             f"Downloading GIF content for generation {generation_id} to {file_path}")
 
-        async with client.stream("GET", url) as response:
+        async with client.stream("GET", url, headers=self._get_auth_headers()) as response:
             response.raise_for_status()
             with open(file_path, 'wb') as f:
                 async for chunk in response.aiter_bytes(chunk_size=8192):
@@ -385,15 +394,13 @@ class Sora:
         client = await self._get_client()
         url = f"{self.base_url}/cameo/references"
 
-        multipart_headers = dict(self.headers)
-        
         files = [("face", ("face.jpg", io.BytesIO(face_image), "image/jpeg"))]
         if voice_audio:
             files.append(
                 ("voice", ("voice.mp3", io.BytesIO(voice_audio), "audio/mpeg")))
         
         logger.info("Uploading cameo reference (face and voice)")
-        response = await client.post(url, headers=multipart_headers, files=files)
+        response = await client.post(url, headers=self._get_auth_headers(), files=files)
         response.raise_for_status()
         return response.json()
     
@@ -411,7 +418,7 @@ class Sora:
         url = f"{self.base_url}/cameo/references?limit={limit}"
         logger.info(f"Listing cameo references (limit={limit})")
 
-        response = await client.get(url)
+        response = await client.get(url, headers=self._get_auth_headers())
         response.raise_for_status()
         return response.json()
     
@@ -429,7 +436,7 @@ class Sora:
         url = f"{self.base_url}/cameo/references/{reference_id}"
         logger.info(f"Deleting cameo reference: {reference_id}")
 
-        response = await client.delete(url)
+        response = await client.delete(url, headers=self._get_auth_headers())
         response.raise_for_status()
         return response.status_code
     
@@ -456,7 +463,7 @@ class Sora:
         logger.info(
             f"Creating Sora 2 remix job for video {video_id} with prompt: {prompt[:50]}...")
 
-        response = await client.post(url, json=payload)
+        response = await client.post(url, json=payload, headers=self._get_auth_headers())
         response.raise_for_status()
 
         sora2_response = response.json()

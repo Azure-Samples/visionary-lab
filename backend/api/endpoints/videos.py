@@ -49,10 +49,7 @@ logger = logging.getLogger(__name__)
 def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
     try:
-        # Check if we have either managed identity or key-based auth configured
-        if settings.AZURE_COSMOS_DB_ENDPOINT and (
-            settings.USE_MANAGED_IDENTITY or settings.AZURE_COSMOS_DB_KEY
-        ):
+        if settings.AZURE_COSMOS_DB_ENDPOINT:
             return CosmosDBService()
         return None
     except Exception as e:
@@ -812,9 +809,7 @@ async def create_video_generation_with_analysis(
         # Log service availability for debugging
         logger.info(
             f"Cosmos DB service available: {cosmos_service is not None}")
-        logger.info(f"Cosmos DB config - Endpoint: {settings.AZURE_COSMOS_DB_ENDPOINT is not None}, "
-                   f"Use Managed Identity: {settings.USE_MANAGED_IDENTITY}, "
-                   f"Has Key: {settings.AZURE_COSMOS_DB_KEY is not None}")
+        logger.info(f"Cosmos DB config - Endpoint: {settings.AZURE_COSMOS_DB_ENDPOINT is not None}")
         if cosmos_service:
             logger.info(
                 "Cosmos DB service initialized successfully for video generation")

@@ -20,30 +20,38 @@ class GPTImageClient:
     Client for GPT-Image-1 generation and editing using the official OpenAI or Azure OpenAI Python client.
     """
 
-    def __init__(self, api_key: Optional[str] = None, organization_id: Optional[str] = None, provider: Optional[str] = None, deployment_name: Optional[str] = None, model: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, organization_id: Optional[str] = None,
+                 provider: Optional[str] = None, deployment_name: Optional[str] = None,
+                 model: Optional[str] = None, credential=None, token_provider=None):
         """
         Initialize the GPT Image client with either OpenAI or Azure OpenAI client
 
         Args:
-            api_key: The API key to use (optional, will use from settings if not provided)
+            api_key: The API key to use (for OpenAI provider only)
             organization_id: The organization ID for OpenAI (optional)
             provider: The provider to use ('openai' or 'azure', defaults to settings.MODEL_PROVIDER)
             deployment_name: Specific deployment name to use (for Azure, optional)
             model: Model name to use (gpt-image-1, gpt-image-1.5, gpt-image-1.5-mini)
+            credential: DefaultAzureCredential instance (for Azure provider)
+            token_provider: Bearer token provider from get_bearer_token_provider (for Azure provider)
         """
         provider = provider or settings.MODEL_PROVIDER
         self.model = model or settings.DEFAULT_IMAGE_MODEL
 
         if provider.lower() == "azure":
-            # Use Azure OpenAI
-            if not settings.IMAGEGEN_AOAI_RESOURCE or not settings.IMAGEGEN_AOAI_API_KEY:
-                raise ValueError(
-                    "IMAGEGEN_AOAI_RESOURCE and IMAGEGEN_AOAI_API_KEY must be set for Azure OpenAI")
-
-            self.api_key = settings.IMAGEGEN_AOAI_API_KEY
+            # Use Azure OpenAI with managed identity
+            if credential is None:
+                from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+                credential = DefaultAzureCredential()
+                token_provider = get_bearer_token_provider(
+                    credential, "https://cognitiveservices.azure.com/.default"
+                )
+            self.credential = credential
+            self.token_provider = token_provider
+            self.endpoint = settings.AI_FOUNDRY_ENDPOINT.rstrip('/') if settings.AI_FOUNDRY_ENDPOINT else ''
             self.client = AzureOpenAI(
-                azure_endpoint=f"https://{settings.IMAGEGEN_AOAI_RESOURCE}.openai.azure.com/",
-                api_key=self.api_key,
+                azure_ad_token_provider=token_provider,
+                azure_endpoint=self.endpoint,
                 api_version=settings.AOAI_API_VERSION
             )
             # Set deployment name: use provided or map from model
@@ -225,12 +233,13 @@ class GPTImageClient:
                     raise ValueError(
                         "IMAGEGEN_DEPLOYMENT must be set for Azure OpenAI")
 
-                # Prepare the URL for the REST API - exactly as in the notebook
-                url = f"https://{settings.IMAGEGEN_AOAI_RESOURCE}.openai.azure.com/openai/deployments/{self.deployment_name}/images/edits?api-version={settings.AOAI_API_VERSION}"
+                # Prepare the URL for the REST API
+                url = f"{self.endpoint}/openai/deployments/{self.deployment_name}/images/edits?api-version={settings.AOAI_API_VERSION}"
 
-                # Prepare headers with API key - exactly as in the notebook
+                # Prepare headers with Bearer token from managed identity
+                token = self.credential.get_token("https://cognitiveservices.azure.com/.default")
                 headers = {
-                    "api-key": self.api_key
+                    "Authorization": f"Bearer {token.token}"
                 }
 
                 # Prepare files dictionary exactly as in the notebook
@@ -438,11 +447,12 @@ class GPTImageClient:
             # For Azure provider, we need to use the REST API directly
             if self.provider == "azure":
                 # Prepare the URL for the REST API
-                url = f"https://{settings.IMAGEGEN_AOAI_RESOURCE}.openai.azure.com/openai/deployments/{self.deployment_name}/images/edits?api-version={settings.AOAI_API_VERSION}"
+                url = f"{self.endpoint}/openai/deployments/{self.deployment_name}/images/edits?api-version={settings.AOAI_API_VERSION}"
 
-                # Prepare headers with API key
+                # Prepare headers with Bearer token from managed identity
+                token = self.credential.get_token("https://cognitiveservices.azure.com/.default")
                 headers = {
-                    "api-key": self.api_key
+                    "Authorization": f"Bearer {token.token}"
                 }
 
                 # Prepare files exactly as the notebook does

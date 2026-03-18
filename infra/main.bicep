@@ -1,9 +1,10 @@
 // File: infra/main.bicep
 
-// This Bicep template deploys an Azure Container App Environment and two Container Apps (backend and frontend) for the Visionary Lab project
-// It also creates an Azure Storage Account and a Log Analytics workspace for monitoring and logging
-// The backend container app is configured to use the Azure Blob Storage account and OpenAI deployments for LLM and image generation
-// The frontend container app is configured to use the Azure Blob Storage account and OpenAI deployments for LLM and image generation
+// This Bicep template deploys the Visionary Lab infrastructure:
+// - Azure AI Foundry (AIServices) with all model deployments
+// - Azure Container App Environment with backend and frontend Container Apps
+// - Azure Storage Account, Cosmos DB, Container Registry, Log Analytics
+// - RBAC role assignments for managed identity access (no API keys)
 
 @description('Location for all resources')
 param location string = resourceGroup().location
@@ -14,52 +15,44 @@ param containerAppEnvName string = 'cae-${environmentName}'
 @description('Name of the Container App')
 param containerAppNameBackend string = 'ca-backend-${environmentName}'
 param containerAppNameFrontend string = 'ca-frontend-${environmentName}'
-// Parameters for the Log Analytics workspace
 param logAnalyticsWorkspaceName string = 'log-${environmentName}'
 
-// Parameters for the Azure Storage Account
 @description('Unique name for the Storage Account (3-24 lowercase letters and numbers)')
 param storageAccountName string = 'st${toLower(uniqueString(resourceGroup().id, environmentName))}'
 
-// Parameters for the Azure Container Registry
 @description('Unique name for the Container Registry (5-50 lowercase letters and numbers)')
 param containerRegistryName string = 'cr${toLower(uniqueString(resourceGroup().id, environmentName))}'
 
-// Parameters for the OpenAI deployments - LLM
-@description('Name of the Azure OpenAI resource for LLM')
-param LLM_AOAI_RESOURCE string
-@description('Name of the LLM deployment')
-param LLM_DEPLOYMENT string
-@secure()
-@description('API key for LLM Azure OpenAI service')
-param LLM_AOAI_API_KEY string
+// AI Foundry parameters
+@description('Name of the AI Foundry resource')
+param aiFoundryName string
+@description('Name of the AI Foundry project')
+param aiProjectName string = '${aiFoundryName}-proj'
+@description('Location for AI Foundry (some models are region-specific)')
+param aiFoundryLocation string = 'swedencentral'
 
-// Parameters for the OpenAI deployments - Image Generation
-@description('Name of the Azure OpenAI resource for image generation')
-param IMAGEGEN_AOAI_RESOURCE string
+// Model deployment names
+@description('Name of the LLM deployment')
+param LLM_DEPLOYMENT string = 'gpt-4o'
 @description('Name of the image generation deployment (gpt-image-1)')
-param IMAGEGEN_DEPLOYMENT string
+param IMAGEGEN_DEPLOYMENT string = 'gpt-image-1'
 @description('Name of the gpt-image-1.5 deployment')
 param IMAGEGEN_15_DEPLOYMENT string = ''
 @description('Name of the gpt-image-1-mini deployment')
 param IMAGEGEN_1_MINI_DEPLOYMENT string = ''
-@secure()
-@description('API key for image generation Azure OpenAI service')
-param IMAGEGEN_AOAI_API_KEY string
-
-// Parameters for the OpenAI deployments - Sora
-@description('Name of the Azure OpenAI resource for Sora')
-param SORA_AOAI_RESOURCE string
 @description('Name of the Sora deployment')
-param SORA_DEPLOYMENT string
-@secure()
-@description('API key for Sora Azure OpenAI service')
-param SORA_AOAI_API_KEY string
+param SORA_DEPLOYMENT string = 'sora'
 
-// Model types (internal use)
+// Model types and versions
 param llmModelType string = 'gpt-4o'
+param llmModelVersion string = '2024-11-20'
 param imageGenModelType string = 'gpt-image-1'
-// Parameters for the Docker images for the backend and frontend container apps
+param imageGenModelVersion string = '2024-11-20'
+param imageGen15ModelVersion string = '2024-11-20'
+param imageGen1MiniModelVersion string = '2024-11-20'
+param soraModelVersion string = '2024-11-20'
+
+// Docker images for the backend and frontend container apps
 param DOCKER_IMAGE_BACKEND string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 param DOCKER_IMAGE_FRONTEND string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 param API_PROTOCOL string = ''
@@ -68,56 +61,45 @@ param API_PORT string = ''
 
 // Environment name for azd
 param environmentName string = ''
-// param principalId string = '' // Unused parameter removed
 
 // Parameters for Cosmos DB
 param cosmosAccountName string = 'visionary-lab-cosmos'
 param cosmosDatabaseName string = 'VisionaryLabDB'
 param cosmosContainerName string = 'visionarylab'
 
-// No Virtual Network or Private Endpoints in public-only mode
-
-// Azure Storage Account
+// ─── Azure Storage Account ───
 module storageAccountMod './modules/storageAccount.bicep' = {
   name: 'storageAccountMod'
   params: {
     location: location
     storageAccountName: storageAccountName
-    // keyVaultName: keyVaultMod.outputs.keyVaultName
-    deployNew: true // set false to reuse an existing storage account
+    deployNew: true
   }
 }
 
-
-// Azure Storage Account Container
-// This module creates a container in the storage account for storing images
 module storageContainerMod './modules/storageAccountContainer.bicep' = {
   name: 'storageContainerMod'
   params: {
     storageAccountName: storageAccountName
     containerName: 'images'
-    deployNew: true // set false to reuse an existing container
+    deployNew: true
   }
   dependsOn: [
     storageAccountMod
   ]
 }
 
-// Azure Container Registry
-// This module creates a container registry for storing Docker images
+// ─── Azure Container Registry ───
 module containerRegistryMod './modules/containerRegistry.bicep' = {
   name: 'containerRegistryMod'
   params: {
     location: location
     containerRegistryName: containerRegistryName
-    deployNew: true  // set false to reuse an existing container registry
+    deployNew: true
   }
 }
 
-// Add this module after your storage modules
-// Azure Cosmos DB Account for Visionary Lab
-// This module creates a Cosmos DB account with SQL API for storing Visionary Lab data
-// Generate a short, stable prefix per environment to avoid name collisions across deployments
+// ─── Azure Cosmos DB ───
 var cosmosPrefix = toLower(substring(uniqueString(resourceGroup().id, environmentName), 0, 5))
 var cosmosAccountNamePrefixed = '${cosmosPrefix}-${cosmosAccountName}'
 module cosmosDbMod './modules/cosmosDb.bicep' = {
@@ -127,53 +109,107 @@ module cosmosDbMod './modules/cosmosDb.bicep' = {
     cosmosAccountName: cosmosAccountNamePrefixed
     databaseName: cosmosDatabaseName
     containerName: cosmosContainerName
-    subnetId: '' // Private Endpoint is used; VNet rules not required
+    subnetId: ''
     deployNew: true
     publicNetworkAccess: 'Enabled'
   }
 }
 
-// No Private DNS or Private Endpoints in public-only mode
-
-// OpenAI deployment module for LLM
-// This module creates an OpenAI deployment for the LLM model
-module llmOpenAiAccount './modules/openAiDeployment.bicep' = {
-  name: 'llmOpenAiAccount'
+// ─── AI Foundry (replaces separate Azure OpenAI resources) ───
+module aiFoundryMod './modules/aiFoundry.bicep' = {
+  name: 'aiFoundryMod'
   params: {
-    openAiAccountName: LLM_AOAI_RESOURCE
-    DeploymentName: LLM_DEPLOYMENT
-    ModelType: llmModelType
-    ModelVersion: '2024-11-20'
-    location: location
-    deployNew: false // set false to reuse an existing deployment
+    aiFoundryName: aiFoundryName
+    location: aiFoundryLocation
+    deployNew: true
+  }
+}
+
+module aiFoundryProjectMod './modules/aiFoundryProject.bicep' = {
+  name: 'aiFoundryProjectMod'
+  params: {
+    aiProjectName: aiProjectName
+    aiFoundryName: aiFoundryName
+    location: aiFoundryLocation
   }
   dependsOn: [
-    // keyVaultMod
-    storageAccountMod
+    aiFoundryMod
   ]
 }
 
-// OpenAI deployment for Image Generation
-// This module creates an OpenAI deployment for the image generation models
-module imageGenOpenAiAccount './modules/openAiDeployment.bicep' = {
-  name: 'imageGenOpenAiAccount'
+// ─── Model Deployments (under AI Foundry) ───
+// Chained sequentially — Azure doesn't support parallel deployments on the same account
+module llmDeployment './modules/aiFoundryModelDeployment.bicep' = {
+  name: 'llmDeployment'
   params: {
-    openAiAccountName: IMAGEGEN_AOAI_RESOURCE
-    DeploymentName: IMAGEGEN_DEPLOYMENT
-    ModelType: imageGenModelType
-    ModelVersion: '2024-11-20'
-    location: location
-    deployNew: false // set false to reuse an existing deployment
+    aiFoundryName: aiFoundryName
+    deploymentName: LLM_DEPLOYMENT
+    modelName: llmModelType
+    modelVersion: llmModelVersion
+    skuCapacity: 30
   }
   dependsOn: [
-    storageAccountMod
+    aiFoundryMod
   ]
 }
 
-// Azure Container App Environment
-// This module creates a container app environment for the backend and frontend container apps
-// It also creates a Log Analytics workspace for monitoring and logging
-// The Log Analytics workspace is linked to the container app environment
+module imageGenDeployment './modules/aiFoundryModelDeployment.bicep' = {
+  name: 'imageGenDeployment'
+  params: {
+    aiFoundryName: aiFoundryName
+    deploymentName: IMAGEGEN_DEPLOYMENT
+    modelName: imageGenModelType
+    modelVersion: imageGenModelVersion
+    skuCapacity: 1
+  }
+  dependsOn: [
+    llmDeployment
+  ]
+}
+
+module imageGen15Deployment './modules/aiFoundryModelDeployment.bicep' = if (IMAGEGEN_15_DEPLOYMENT != '') {
+  name: 'imageGen15Deployment'
+  params: {
+    aiFoundryName: aiFoundryName
+    deploymentName: IMAGEGEN_15_DEPLOYMENT
+    modelName: 'gpt-image-1.5'
+    modelVersion: imageGen15ModelVersion
+    skuCapacity: 1
+  }
+  dependsOn: [
+    imageGenDeployment
+  ]
+}
+
+module imageGen1MiniDeployment './modules/aiFoundryModelDeployment.bicep' = if (IMAGEGEN_1_MINI_DEPLOYMENT != '') {
+  name: 'imageGen1MiniDeployment'
+  params: {
+    aiFoundryName: aiFoundryName
+    deploymentName: IMAGEGEN_1_MINI_DEPLOYMENT
+    modelName: 'gpt-image-1-mini'
+    modelVersion: imageGen1MiniModelVersion
+    skuCapacity: 1
+  }
+  dependsOn: [
+    imageGen15Deployment
+  ]
+}
+
+module soraDeployment './modules/aiFoundryModelDeployment.bicep' = {
+  name: 'soraDeployment'
+  params: {
+    aiFoundryName: aiFoundryName
+    deploymentName: SORA_DEPLOYMENT
+    modelName: 'sora'
+    modelVersion: soraModelVersion
+    skuCapacity: 1
+  }
+  dependsOn: [
+    imageGen1MiniDeployment
+  ]
+}
+
+// ─── Container App Environment ───
 module containerAppEnvMod './modules/containerAppEnv.bicep' = {
   name: 'containerAppEnvMod'
   params: {
@@ -181,14 +217,11 @@ module containerAppEnvMod './modules/containerAppEnv.bicep' = {
     containerAppEnvName: containerAppEnvName
     logAnalyticsWorkspaceName: logAnalyticsWorkspaceName
     subnetId: ''
-    deployNew: true // set false to reuse an existing environment
+    deployNew: true
   }
 }
 
-// Container App for Backend
-// This module creates a container app for the backend service
-// It uses the container app environment created in the previous module
-// The container app is configured to use the Azure Blob Storage account and OpenAI deployments for LLM and image generation
+// ─── Container App: Backend ───
 module containerAppBackend './modules/containerApp.bicep' = {
   name: 'containerAppBackend'
   params: {
@@ -196,26 +229,20 @@ module containerAppBackend './modules/containerApp.bicep' = {
     containerAppName: containerAppNameBackend
     containerAppEnvId: containerAppEnvMod.outputs.containerAppEnvId
     targetPort: 80
-    deployNew: true // set false to reuse an existing container app
+    deployNew: true
     AZURE_BLOB_SERVICE_URL: storageAccountMod.outputs.storageAccountPrimaryEndpoint
-    AZURE_STORAGE_ACCOUNT_KEY: storageAccountMod.outputs.storageAccountKey
     AZURE_STORAGE_ACCOUNT_NAME: storageAccountName
     AZURE_BLOB_IMAGE_CONTAINER: 'images'
     DOCKER_IMAGE: DOCKER_IMAGE_BACKEND
     AZURE_CONTAINER_REGISTRY_ENDPOINT: containerRegistryMod.outputs.containerRegistryLoginServer
     AZURE_CONTAINER_REGISTRY_USERNAME: containerRegistryMod.outputs.containerRegistryUsername
     AZURE_CONTAINER_REGISTRY_PASSWORD: containerRegistryMod.outputs.containerRegistryPassword
-    IMAGEGEN_AOAI_RESOURCE: IMAGEGEN_AOAI_RESOURCE
+    AI_FOUNDRY_ENDPOINT: aiFoundryMod.outputs.aiFoundryEndpoint
+    LLM_DEPLOYMENT: LLM_DEPLOYMENT
     IMAGEGEN_DEPLOYMENT: IMAGEGEN_DEPLOYMENT
     IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
     IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
-    IMAGEGEN_AOAI_API_KEY: IMAGEGEN_AOAI_API_KEY
-    LLM_AOAI_RESOURCE: LLM_AOAI_RESOURCE
-    LLM_DEPLOYMENT: LLM_DEPLOYMENT
-    LLM_AOAI_API_KEY: LLM_AOAI_API_KEY
-    SORA_AOAI_RESOURCE: SORA_AOAI_RESOURCE
     SORA_DEPLOYMENT: SORA_DEPLOYMENT
-    SORA_AOAI_API_KEY: SORA_AOAI_API_KEY
     COSMOS_ENDPOINT: cosmosDbMod.outputs.cosmosAccountEndpoint
     COSMOS_DATABASE_NAME: cosmosDbMod.outputs.databaseName
     COSMOS_CONTAINER_NAME: cosmosDbMod.outputs.containerName
@@ -223,10 +250,7 @@ module containerAppBackend './modules/containerApp.bicep' = {
   }
 }
 
-// Container App for Frontend
-// This module creates a container app for the frontend service
-// It uses the container app environment created in the previous module
-// The container app is configured to use the Azure Blob Storage account and OpenAI deployments for LLM and image generation
+// ─── Container App: Frontend ───
 module containerAppFrontend './modules/containerApp.bicep' = {
   name: 'containerAppFrontend'
   params: {
@@ -234,32 +258,29 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     containerAppName: containerAppNameFrontend
     containerAppEnvId: containerAppEnvMod.outputs.containerAppEnvId
     targetPort: 3000
-    deployNew: true // set false to reuse an existing container app
+    deployNew: true
     AZURE_BLOB_SERVICE_URL: storageAccountMod.outputs.storageAccountPrimaryEndpoint
-    AZURE_STORAGE_ACCOUNT_KEY: storageAccountMod.outputs.storageAccountKey
     AZURE_STORAGE_ACCOUNT_NAME: storageAccountName
     AZURE_BLOB_IMAGE_CONTAINER: 'images'
     DOCKER_IMAGE: DOCKER_IMAGE_FRONTEND
     AZURE_CONTAINER_REGISTRY_ENDPOINT: containerRegistryMod.outputs.containerRegistryLoginServer
     AZURE_CONTAINER_REGISTRY_USERNAME: containerRegistryMod.outputs.containerRegistryUsername
     AZURE_CONTAINER_REGISTRY_PASSWORD: containerRegistryMod.outputs.containerRegistryPassword
-    IMAGEGEN_AOAI_RESOURCE: IMAGEGEN_AOAI_RESOURCE
+    AI_FOUNDRY_ENDPOINT: aiFoundryMod.outputs.aiFoundryEndpoint
+    LLM_DEPLOYMENT: LLM_DEPLOYMENT
     IMAGEGEN_DEPLOYMENT: IMAGEGEN_DEPLOYMENT
     IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
     IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
-    IMAGEGEN_AOAI_API_KEY: IMAGEGEN_AOAI_API_KEY
-    LLM_AOAI_RESOURCE: LLM_AOAI_RESOURCE
-    LLM_DEPLOYMENT: LLM_DEPLOYMENT
-    LLM_AOAI_API_KEY: LLM_AOAI_API_KEY
+    SORA_DEPLOYMENT: SORA_DEPLOYMENT
     API_PROTOCOL: API_PROTOCOL == '' ? 'https' : API_PROTOCOL
     API_PORT: API_PORT == '' ? '443' : API_PORT
-    // Use the backend external FQDN (public Internet)
     API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
     azdServiceName: 'frontend'
   }
 }
 
-// Role assignment module - deployed after both Container App and Cosmos DB exist
+// ─── RBAC Role Assignments ───
+
 module cosmosRoleAssignmentMod './modules/cosmosRoleAssignment.bicep' = {
   name: 'cosmosRoleAssignmentMod'
   params: {
@@ -269,19 +290,34 @@ module cosmosRoleAssignmentMod './modules/cosmosRoleAssignment.bicep' = {
   }
 }
 
-// Outputs for azd
+module aiFoundryRoleAssignmentMod './modules/aiFoundryRoleAssignment.bicep' = {
+  name: 'aiFoundryRoleAssignmentMod'
+  params: {
+    aiFoundryId: aiFoundryMod.outputs.aiFoundryId
+    aiFoundryName: aiFoundryName
+    containerAppPrincipalId: containerAppBackend.outputs.containerAppPrincipalId
+  }
+}
+
+module storageRoleAssignmentMod './modules/storageRoleAssignment.bicep' = {
+  name: 'storageRoleAssignmentMod'
+  params: {
+    storageAccountName: storageAccountName
+    containerAppPrincipalId: containerAppBackend.outputs.containerAppPrincipalId
+  }
+}
+
+// ─── Outputs ───
 output AZURE_LOCATION string = location
 output AZURE_CONTAINER_ENVIRONMENT_NAME string = containerAppEnvMod.outputs.containerAppEnvId
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistryMod.outputs.containerRegistryLoginServer
 output BACKEND_URI string = 'https://${containerAppBackend.outputs.containerAppFqdn}'
-// Internal URI not used in public-only mode; mirror external for compatibility
 output BACKEND_INTERNAL_URI string = 'https://${containerAppBackend.outputs.containerAppFqdn}'
 output FRONTEND_URI string = 'https://${containerAppFrontend.outputs.containerAppFqdn}'
 output AZURE_STORAGE_ACCOUNT_NAME string = storageAccountName
 output AZURE_BLOB_SERVICE_URL string = storageAccountMod.outputs.storageAccountPrimaryEndpoint
-
-// Cosmos DB outputs
+output AI_FOUNDRY_ENDPOINT string = aiFoundryMod.outputs.aiFoundryEndpoint
+output AI_FOUNDRY_NAME string = aiFoundryName
 output COSMOS_DB_ENDPOINT string = cosmosDbMod.outputs.cosmosAccountEndpoint
 output COSMOS_DB_DATABASE_NAME string = cosmosDbMod.outputs.databaseName
 output COSMOS_DB_CONTAINER_NAME string = cosmosDbMod.outputs.containerName
-// Intentionally do not output the Cosmos DB key; using Managed Identity + RBAC
