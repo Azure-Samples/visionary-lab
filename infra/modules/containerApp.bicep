@@ -5,6 +5,14 @@ param DOCKER_IMAGE string
 param deployNew bool = true
 param azdServiceName string = ''
 
+// Easy Auth configuration (set enableAuth=true for frontend)
+param enableAuth bool = false
+@secure()
+param authClientId string = ''
+@secure()
+param authClientSecret string = ''
+param authIssuer string = ''
+
 // AI Foundry endpoint (unified for all AI services)
 param AI_FOUNDRY_ENDPOINT string = ''
 // Model deployment names
@@ -67,12 +75,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = if(deployNew) {
           passwordSecretRef: 'acr-password'
         }
       ] : []
-      secrets: AZURE_CONTAINER_REGISTRY_ENDPOINT != '' ? [
-        {
-          name: 'acr-password'
-          value: AZURE_CONTAINER_REGISTRY_PASSWORD
-        }
-      ] : []
+      secrets: concat(
+        AZURE_CONTAINER_REGISTRY_ENDPOINT != '' ? [
+          {
+            name: 'acr-password'
+            value: AZURE_CONTAINER_REGISTRY_PASSWORD
+          }
+        ] : [],
+        enableAuth ? [
+          {
+            name: 'microsoft-provider-authentication-secret'
+            value: authClientSecret
+          }
+        ] : []
+      )
     }
     template: {
       containers: [
@@ -181,6 +197,36 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = if(deployNew) {
       ]
       scale: {
         minReplicas: 1
+      }
+    }
+  }
+}
+
+// Easy Auth configuration (only when enableAuth is true)
+resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (deployNew && enableAuth) {
+  name: 'current'
+  parent: containerApp
+  properties: {
+    platform: {
+      enabled: true
+    }
+    globalValidation: {
+      unauthenticatedClientAction: 'RedirectToLoginPage'
+      redirectToProvider: 'azureactivedirectory'
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        registration: {
+          clientId: authClientId
+          clientSecretSettingName: 'microsoft-provider-authentication-secret'
+          openIdIssuer: authIssuer
+        }
+        validation: {
+          allowedAudiences: [
+            'api://${authClientId}'
+            authClientId
+          ]
+        }
       }
     }
   }

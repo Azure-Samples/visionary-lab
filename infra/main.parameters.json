@@ -37,6 +37,15 @@
     },
     "FLUX_KONTEXT_DEPLOYMENT": {
       "value": "${FLUX_KONTEXT_DEPLOYMENT}"
+    },
+    "AUTH_CLIENT_ID": {
+      "value": "${AUTH_CLIENT_ID}"
+    },
+    "AUTH_CLIENT_SECRET": {
+      "value": "${AUTH_CLIENT_SECRET}"
+    },
+    "AUTH_ISSUER": {
+      "value": "${AUTH_ISSUER}"
     }
   }
 }

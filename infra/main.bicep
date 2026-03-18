@@ -66,6 +66,13 @@ param API_PROTOCOL string = ''
 param API_HOSTNAME string = ''
 param API_PORT string = ''
 
+// Easy Auth for frontend (Microsoft tenant restriction)
+@secure()
+param AUTH_CLIENT_ID string = ''
+@secure()
+param AUTH_CLIENT_SECRET string = ''
+param AUTH_ISSUER string = 'https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0'
+
 // Environment name for azd
 param environmentName string = ''
 
@@ -284,6 +291,10 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     API_PROTOCOL: API_PROTOCOL == '' ? 'https' : API_PROTOCOL
     API_PORT: API_PORT == '' ? '443' : API_PORT
     API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
+    enableAuth: AUTH_CLIENT_ID != ''
+    authClientId: AUTH_CLIENT_ID
+    authClientSecret: AUTH_CLIENT_SECRET
+    authIssuer: AUTH_ISSUER
     azdServiceName: 'frontend'
   }
 }
