@@ -13,6 +13,7 @@ param IMAGEGEN_DEPLOYMENT string = 'gpt-image-1-5'
 param IMAGEGEN_15_DEPLOYMENT string = ''
 param IMAGEGEN_1_MINI_DEPLOYMENT string = ''
 param SORA_DEPLOYMENT string = 'sora'
+param FLUX_KONTEXT_DEPLOYMENT string = ''
 
 // Azure Blob Storage (managed identity — no keys)
 param AZURE_BLOB_SERVICE_URL string
@@ -118,6 +119,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = if(deployNew) {
             {
               name: 'SORA_DEPLOYMENT'
               value: SORA_DEPLOYMENT
+            }
+            {
+              name: 'FLUX_KONTEXT_DEPLOYMENT'
+              value: FLUX_KONTEXT_DEPLOYMENT
             }
             {
               name: 'AZURE_BLOB_SERVICE_URL'

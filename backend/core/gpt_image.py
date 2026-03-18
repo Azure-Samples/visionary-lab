@@ -88,6 +88,7 @@ class GPTImageClient:
             "gpt-image-1.5": settings.IMAGEGEN_DEPLOYMENT,
             "gpt-image-1": settings.IMAGEGEN_DEPLOYMENT,  # legacy alias
             "gpt-image-1-mini": settings.IMAGEGEN_1_MINI_DEPLOYMENT,
+            "flux-kontext-pro": settings.FLUX_KONTEXT_DEPLOYMENT,
         }
         deployment = mapping.get(model)
         
@@ -127,7 +128,6 @@ class GPTImageClient:
                 "prompt": prompt,
                 "n": n,
                 "size": size,
-                "quality": quality,
             }
 
             # Use the appropriate model parameter based on provider
@@ -143,15 +143,18 @@ class GPTImageClient:
             if user:
                 params["user"] = user
 
-            # Add gpt-image-1.5 specific parameters that are supported by the client
-            if model == "gpt-image-1.5":
-                # Include background parameter regardless of provider
+            # FLUX models only support basic params (prompt, model, n, size, output_format)
+            is_flux = model and "flux" in model.lower()
+
+            if not is_flux:
+                # Add quality for gpt-image models
+                params["quality"] = quality
+
+            # Add gpt-image-1.5 specific parameters
+            if not is_flux and model in ("gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"):
                 if background != "auto":
                     params["background"] = background
-
-                # Add other parameters as they become supported by the client
                 try:
-                    # These will only work if the client supports them
                     if output_format != "png":
                         params["output_format"] = output_format
                     if output_format in ["webp", "jpeg"] and output_compression != 100:

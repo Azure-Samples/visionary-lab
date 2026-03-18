@@ -42,6 +42,8 @@ param IMAGEGEN_15_DEPLOYMENT string = ''
 param IMAGEGEN_1_MINI_DEPLOYMENT string = ''
 @description('Name of the Sora deployment')
 param SORA_DEPLOYMENT string = ''
+@description('Name of the FLUX Kontext Pro deployment')
+param FLUX_KONTEXT_DEPLOYMENT string = ''
 
 // Model types and versions (for Bicep-managed deployments)
 param llmModelType string = 'gpt-4o'
@@ -248,6 +250,7 @@ module containerAppBackend './modules/containerApp.bicep' = {
     IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
     IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
     SORA_DEPLOYMENT: SORA_DEPLOYMENT
+    FLUX_KONTEXT_DEPLOYMENT: FLUX_KONTEXT_DEPLOYMENT
     COSMOS_ENDPOINT: cosmosDbMod.outputs.cosmosAccountEndpoint
     COSMOS_DATABASE_NAME: cosmosDbMod.outputs.databaseName
     COSMOS_CONTAINER_NAME: cosmosDbMod.outputs.containerName
@@ -277,6 +280,7 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
     IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
     SORA_DEPLOYMENT: SORA_DEPLOYMENT
+    FLUX_KONTEXT_DEPLOYMENT: FLUX_KONTEXT_DEPLOYMENT
     API_PROTOCOL: API_PROTOCOL == '' ? 'https' : API_PROTOCOL
     API_PORT: API_PORT == '' ? '443' : API_PORT
     API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME

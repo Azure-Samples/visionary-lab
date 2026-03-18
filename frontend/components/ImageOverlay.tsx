@@ -78,6 +78,7 @@ export function ImageOverlay({
   const [quality, setQuality] = useState("auto");
   const [inputFidelity, setInputFidelity] = useState("low");
   const [sourceImages, setSourceImages] = useState<File[]>([]);
+  const isFluxModel = model.toLowerCase().includes("flux");
   
   // Reference to the textarea element
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -602,7 +603,8 @@ export function ImageOverlay({
                       </SelectContent>
                     </Select>
 
-                    {/* Background */}
+                    {/* Background — gpt-image models only */}
+                    {!isFluxModel && (
                     <Select value={background} onValueChange={setBackground} disabled={isGenerating}>
                       <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <SelectValue />
@@ -613,8 +615,10 @@ export function ImageOverlay({
                         <SelectItem value="opaque">Opaque</SelectItem>
                       </SelectContent>
                     </Select>
+                    )}
 
-                    {/* Format */}
+                    {/* Format — gpt-image models only */}
+                    {!isFluxModel && (
                     <Select value={outputFormat} onValueChange={setOutputFormat} disabled={isGenerating}>
                       <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <SelectValue />
@@ -625,8 +629,10 @@ export function ImageOverlay({
                         <SelectItem value="webp">WebP</SelectItem>
                       </SelectContent>
                     </Select>
+                    )}
 
-                    {/* Quality */}
+                    {/* Quality — gpt-image models only */}
+                    {!isFluxModel && (
                     <Select value={quality} onValueChange={setQuality} disabled={isGenerating}>
                       <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <SelectValue />
@@ -638,6 +644,7 @@ export function ImageOverlay({
                         <SelectItem value="high">High</SelectItem>
                       </SelectContent>
                     </Select>
+                    )}
 
                     {/* Fidelity — only when editing images */}
                     {sourceImages.length > 0 && (

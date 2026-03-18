@@ -50,7 +50,7 @@ class ImageGenerationRequest(BaseModel):
     @validator('model')
     def validate_model(cls, v):
         """Validate that the model is one of the supported models"""
-        valid_models = ["gpt-image-1", "gpt-image-1.5", "gpt-image-1-mini"]
+        valid_models = ["gpt-image-1.5", "gpt-image-1-mini", "flux-kontext-pro"]
         if v not in valid_models:
             raise ValueError(f"Model must be one of {valid_models}")
         return v

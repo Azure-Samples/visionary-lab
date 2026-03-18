@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     IMAGEGEN_DEPLOYMENT: Optional[str] = None
     IMAGEGEN_15_DEPLOYMENT: Optional[str] = None
     IMAGEGEN_1_MINI_DEPLOYMENT: Optional[str] = None
+    FLUX_KONTEXT_DEPLOYMENT: Optional[str] = None
     SORA_DEPLOYMENT: Optional[str] = None
     DEFAULT_IMAGE_MODEL: str = "gpt-image-1.5"
 

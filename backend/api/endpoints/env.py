@@ -30,7 +30,10 @@ def env_status():
     ]
 
     # Optional variables (app can function without them)
-    optional_vars = []
+    optional_vars = [
+        'FLUX_KONTEXT_DEPLOYMENT',
+        'IMAGEGEN_1_MINI_DEPLOYMENT',
+    ]
 
     set_required_vars = [var for var in required_vars if _is_setting_defined(var)]
     missing_vars = [var for var in required_vars if var not in set_required_vars]
