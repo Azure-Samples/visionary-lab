@@ -9,7 +9,7 @@ param azdServiceName string = ''
 param AI_FOUNDRY_ENDPOINT string = ''
 // Model deployment names
 param LLM_DEPLOYMENT string = 'gpt-4o'
-param IMAGEGEN_DEPLOYMENT string = 'gpt-image-1'
+param IMAGEGEN_DEPLOYMENT string = 'gpt-image-1-5'
 param IMAGEGEN_15_DEPLOYMENT string = ''
 param IMAGEGEN_1_MINI_DEPLOYMENT string = ''
 param SORA_DEPLOYMENT string = 'sora'

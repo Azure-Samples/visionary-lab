@@ -161,7 +161,7 @@ async def edit_image(request: ImageEditRequest):
 @router.post("/edit/upload", response_model=ImageGenerationResponse)
 async def edit_image_upload(
     prompt: str = Form(...),
-    model: str = Form("gpt-image-1"),
+    model: str = Form("gpt-image-1.5"),
     n: int = Form(1),
     size: str = Form("auto"),
     quality: str = Form("auto"),

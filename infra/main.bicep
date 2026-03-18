@@ -49,7 +49,7 @@ param llmModelVersion string = '2024-11-20'
 // Image/video models may be deployed via CLI when Bicep doesn't support the format
 @description('Set to true to deploy image gen models via Bicep (requires OpenAI-format models)')
 param deployImageGenModels bool = false
-param imageGenModelType string = 'gpt-image-1'
+param imageGenModelType string = 'gpt-image-1.5'
 param imageGenModelVersion string = '2024-04-01'
 param imageGen15ModelVersion string = '2024-04-01'
 param imageGen1MiniModelVersion string = '2024-04-01'

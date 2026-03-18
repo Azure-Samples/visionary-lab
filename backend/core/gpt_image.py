@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class GPTImageClient:
     """
-    Client for GPT-Image-1 generation and editing using the official OpenAI or Azure OpenAI Python client.
+    Client for GPT-Image-1.5 generation and editing using the official OpenAI or Azure OpenAI Python client.
     """
 
     def __init__(self, api_key: Optional[str] = None, organization_id: Optional[str] = None,
@@ -31,7 +31,7 @@ class GPTImageClient:
             organization_id: The organization ID for OpenAI (optional)
             provider: The provider to use ('openai' or 'azure', defaults to settings.MODEL_PROVIDER)
             deployment_name: Specific deployment name to use (for Azure, optional)
-            model: Model name to use (gpt-image-1, gpt-image-1.5, gpt-image-1.5-mini)
+            model: Model name to use (gpt-image-1.5, gpt-image-1, gpt-image-1-mini)
             credential: DefaultAzureCredential instance (for Azure provider)
             token_provider: Bearer token provider from get_bearer_token_provider (for Azure provider)
         """
@@ -79,14 +79,14 @@ class GPTImageClient:
         Map model name to Azure deployment name
         
         Args:
-            model: Model identifier (gpt-image-1, gpt-image-1.5, gpt-image-1-mini)
+            model: Model identifier (gpt-image-1.5, gpt-image-1, gpt-image-1-mini)
             
         Returns:
             Deployment name from settings
         """
         mapping = {
-            "gpt-image-1": settings.IMAGEGEN_DEPLOYMENT,
-            "gpt-image-1.5": settings.IMAGEGEN_15_DEPLOYMENT,
+            "gpt-image-1.5": settings.IMAGEGEN_DEPLOYMENT,
+            "gpt-image-1": settings.IMAGEGEN_DEPLOYMENT,  # legacy alias
             "gpt-image-1-mini": settings.IMAGEGEN_1_MINI_DEPLOYMENT,
         }
         deployment = mapping.get(model)
@@ -106,8 +106,8 @@ class GPTImageClient:
         Generate images using the model
 
         Args:
-            prompt: A text description of the desired image (max 32000 chars for gpt-image-1)
-            model: The model to use for image generation (defaults to IMAGEGEN_DEPLOYMENT for Azure or gpt-image-1 for OpenAI)
+            prompt: A text description of the desired image (max 32000 chars for gpt-image-1.5)
+            model: The model to use for image generation (defaults to IMAGEGEN_DEPLOYMENT for Azure or gpt-image-1.5 for OpenAI)
             n: The number of images to generate (1-10)
             size: The size of the generated images
             response_format: The format in which the generated images are returned
@@ -137,14 +137,14 @@ class GPTImageClient:
                         "IMAGEGEN_DEPLOYMENT must be set for Azure OpenAI")
                 params["model"] = self.deployment_name
             else:
-                params["model"] = model or "gpt-image-1"
+                params["model"] = model or "gpt-image-1.5"
 
             # Add user parameter if provided
             if user:
                 params["user"] = user
 
-            # Add gpt-image-1 specific parameters that are supported by the client
-            if model == "gpt-image-1":
+            # Add gpt-image-1.5 specific parameters that are supported by the client
+            if model == "gpt-image-1.5":
                 # Include background parameter regardless of provider
                 if background != "auto":
                     params["background"] = background
@@ -174,7 +174,7 @@ class GPTImageClient:
                 "data": []
             }
 
-            # Extract token usage if available (for gpt-image-1 only)
+            # Extract token usage if available (for gpt-image-1.5 only)
             if hasattr(response, "usage"):
                 formatted_response["usage"] = {
                     "total_tokens": getattr(response.usage, "total_tokens", 0),
@@ -215,7 +215,7 @@ class GPTImageClient:
         Edit an image based on the provided prompt, mask (optional), and settings
 
         For Azure OpenAI, this will use the REST API since the Python SDK doesn't support edits
-        For direct OpenAI, this will use the model provided or default to gpt-image-1
+        For direct OpenAI, this will use the model provided or default to gpt-image-1.5
         """
         try:
             # Extract key parameters for easier access
@@ -302,7 +302,7 @@ class GPTImageClient:
             else:
                 # Handle model parameter for OpenAI provider
                 if "model" not in kwargs:
-                    kwargs["model"] = "gpt-image-1"
+                    kwargs["model"] = "gpt-image-1.5"
 
                 # Get model for logging
                 model = kwargs.get("model")
@@ -335,7 +335,7 @@ class GPTImageClient:
 
         Args:
             prompt: Text prompt for image editing
-            model: Model to use (defaults to IMAGEGEN_DEPLOYMENT for Azure or gpt-image-1 for OpenAI)
+            model: Model to use (defaults to IMAGEGEN_DEPLOYMENT for Azure or gpt-image-1.5 for OpenAI)
             n: Number of images to generate
             size: Image size
             quality: Image quality
@@ -438,7 +438,7 @@ class GPTImageClient:
                         "IMAGEGEN_DEPLOYMENT must be set for Azure OpenAI")
                 params["model"] = self.deployment_name
             else:
-                params["model"] = model or "gpt-image-1"
+                params["model"] = model or "gpt-image-1.5"
 
             # Add quality parameter
             if quality != "auto":

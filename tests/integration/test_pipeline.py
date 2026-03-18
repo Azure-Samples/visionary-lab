@@ -25,7 +25,7 @@ class TestImagePipeline:
 
         request = ImageGenerationRequest(
             prompt="A simple blue circle on white background",
-            model="gpt-image-1",
+            model="gpt-image-1.5",
             size="1024x1024",
             quality="low",
             n=1,

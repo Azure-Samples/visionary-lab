@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     IMAGEGEN_15_DEPLOYMENT: Optional[str] = None
     IMAGEGEN_1_MINI_DEPLOYMENT: Optional[str] = None
     SORA_DEPLOYMENT: Optional[str] = None
-    DEFAULT_IMAGE_MODEL: str = "gpt-image-1"
+    DEFAULT_IMAGE_MODEL: str = "gpt-image-1.5"
 
     # OpenAI API for direct OpenAI usage (non-Azure)
     OPENAI_API_KEY: Optional[str] = None
