@@ -47,10 +47,10 @@ param SORA_DEPLOYMENT string = 'sora'
 param llmModelType string = 'gpt-4o'
 param llmModelVersion string = '2024-11-20'
 param imageGenModelType string = 'gpt-image-1'
-param imageGenModelVersion string = '2024-11-20'
-param imageGen15ModelVersion string = '2024-11-20'
-param imageGen1MiniModelVersion string = '2024-11-20'
-param soraModelVersion string = '2024-11-20'
+param imageGenModelVersion string = '2024-04-01'
+param imageGen15ModelVersion string = '2024-04-01'
+param imageGen1MiniModelVersion string = '2024-04-01'
+param soraModelVersion string = '2025-05-02'
 
 // Docker images for the backend and frontend container apps
 param DOCKER_IMAGE_BACKEND string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
@@ -153,7 +153,7 @@ module llmDeployment './modules/aiFoundryModelDeployment.bicep' = {
   ]
 }
 
-module imageGenDeployment './modules/aiFoundryModelDeployment.bicep' = {
+module imageGenDeployment './modules/aiFoundryModelDeployment.bicep' = if (IMAGEGEN_DEPLOYMENT != '') {
   name: 'imageGenDeployment'
   params: {
     aiFoundryName: aiFoundryName
