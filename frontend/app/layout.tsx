@@ -13,6 +13,7 @@ import { FolderProvider } from "@/context/folder-context";
 import { VideoQueueClient } from "@/components/video-queue-client";
 import { RefreshJobsButton } from "@/components/refresh-jobs-button";
 import { Toaster } from "@/components/ui/sonner";
+import dynamic from "next/dynamic";
 import { AnimatedLayout } from "@/components/animated-layout";
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/auth";

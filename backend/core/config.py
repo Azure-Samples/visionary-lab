@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     # Logging Configuration
     LOG_LEVEL: str = "INFO"
 
+
     # GPT-Image-1 Default Settings
     GPT_IMAGE_DEFAULT_SIZE: str = "1024x1024"
     GPT_IMAGE_DEFAULT_QUALITY: str = "high"

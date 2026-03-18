@@ -10,6 +10,7 @@ import uvicorn  # noqa: E402
 from .core.config import settings  # noqa: E402
 from .api.endpoints import images, metadata_router, videos, gallery, env  # noqa: E402
 
+
 # Create directories if they don't exist
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 os.makedirs(settings.IMAGE_DIR, exist_ok=True)
