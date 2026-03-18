@@ -71,7 +71,7 @@ param API_PORT string = ''
 param AUTH_CLIENT_ID string = ''
 @secure()
 param AUTH_CLIENT_SECRET string = ''
-param AUTH_ISSUER string = 'https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0'
+param AUTH_ISSUER string = ''
 
 // Environment name for azd
 param environmentName string = ''
