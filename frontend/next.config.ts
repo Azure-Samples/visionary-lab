@@ -93,20 +93,13 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // Cache static assets
+        // Cache static assets + security headers
         source: '/(.*)',
         headers: [
           {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
           },
-        ],
-      },
-
-      {
-        // Security headers
-        source: '/(.*)',
-        headers: [
           {
             key: 'X-Content-Type-Options',
             value: 'nosniff',

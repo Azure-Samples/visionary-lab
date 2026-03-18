@@ -1,7 +1,5 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
-from typing import Dict, List, Optional
-from datetime import datetime
-import asyncio
+from typing import List, Optional
 import re
 import logging
 import base64
@@ -145,7 +143,7 @@ async def generate_filename_for_prompt(prompt: str, extension: str = None) -> st
 
         return generated_filename
 
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -319,7 +317,7 @@ async def delete_image(request: ImageDeleteRequest):
 
         return ImageDeleteResponse(
             success=True,
-            message=f"Image deletion endpoint (skeleton)",
+            message="Image deletion endpoint (skeleton)",
             image_id=request.image_id,
         )
     except Exception as e:

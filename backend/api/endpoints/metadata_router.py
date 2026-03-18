@@ -1,6 +1,6 @@
 import asyncio
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, BackgroundTasks
-from typing import Dict, List, Optional, Any
+from typing import Optional
 import logging
 
 from backend.core.cosmos_client import CosmosDBService
@@ -19,7 +19,6 @@ from backend.models.metadata_models import (
     MetadataSyncRequest,
     MetadataSyncResponse,
 )
-from backend.models.gallery import MediaType
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

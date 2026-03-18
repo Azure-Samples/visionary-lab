@@ -1,6 +1,10 @@
 import { fetchGalleryVideos, GalleryItem, MediaType, fetchGalleryImages } from "@/services/api";
 import { sasTokenService } from "@/services/sas-token";
 
+function getOptionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
 export interface VideoMetadata {
   src: string;
   title: string;
@@ -54,7 +58,7 @@ async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMe
     name: item.name,
     src,
     title: title.charAt(0).toUpperCase() + title.slice(1), // Capitalize first letter
-    description: description,
+    description,
     // We'll assign the size later in a structured way
     size: "medium", // Default size, will be overridden
     originalItem: item,
@@ -213,13 +217,13 @@ async function mapGalleryItemToImageMetadata(item: GalleryItem): Promise<ImageMe
       name: item.name,
       src,
       title: title.charAt(0).toUpperCase() + title.slice(1),
-      description: description,
-      width: typeof item.metadata?.width === 'number' ? item.metadata.width : undefined,
-      height: typeof item.metadata?.height === 'number' ? item.metadata.height : undefined,
-      tags: tags,
+      description,
+      width: getOptionalNumber(item.metadata?.width),
+      height: getOptionalNumber(item.metadata?.height),
+      tags,
       size: "medium" as const,
       originalItem: item,
-      analysis: analysis,
+      analysis,
     };
   } catch (error) {
     console.error(`Error mapping gallery item ${item.id}:`, error);

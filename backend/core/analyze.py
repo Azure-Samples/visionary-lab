@@ -3,7 +3,7 @@ import base64
 import json
 import logging
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 import cv2
 import numpy as np

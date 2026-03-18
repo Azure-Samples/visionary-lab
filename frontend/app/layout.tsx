@@ -13,11 +13,9 @@ import { FolderProvider } from "@/context/folder-context";
 import { VideoQueueClient } from "@/components/video-queue-client";
 import { RefreshJobsButton } from "@/components/refresh-jobs-button";
 import { Toaster } from "@/components/ui/sonner";
-import dynamic from "next/dynamic";
 import { AnimatedLayout } from "@/components/animated-layout";
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/auth";
-import { MediaProvider } from "@/context/media-context";
 import Script from "next/script";
 
 type RootLayoutProps = {
@@ -80,8 +78,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             enableSystem
             disableTransitionOnChange
           >
-            <MediaProvider>
-              <VideoQueueProvider>
+            <VideoQueueProvider>
                 <JobsProvider>
                   <ImageSettingsProvider>
                     <FolderProvider>
@@ -124,7 +121,6 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                   </ImageSettingsProvider>
                 </JobsProvider>
               </VideoQueueProvider>
-            </MediaProvider>
           </ThemeProvider>
         </SessionProvider>
         

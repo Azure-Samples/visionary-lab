@@ -31,6 +31,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
+markers = [
+    "integration: tests that call real Azure APIs (use -m integration to run)",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]

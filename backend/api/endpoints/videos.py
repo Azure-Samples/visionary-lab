@@ -3,10 +3,8 @@ import json
 import logging
 import os
 import re
-import time
 from datetime import datetime
 from typing import List, Optional
-from urllib.parse import urlparse
 
 from fastapi import (
     APIRouter,
@@ -34,14 +32,11 @@ from backend.models.videos import (
     VideoAnalyzeRequest,
     VideoAnalyzeResponse,
     VideoGenerationJobResponse,
-    VideoGenerationRequest,
     VideoGenerationWithAnalysisRequest,
     VideoGenerationWithAnalysisResponse,
     VideoPromptEnhancementRequest,
     VideoPromptEnhancementResponse,
-    AudioGenerationSettings,
     CameoReference,
-    CameoUploadRequest,
     RemixVideoRequest,
 )
 from backend.core.cosmos_client import CosmosDBService
@@ -1206,7 +1201,6 @@ async def analyze_video(req: VideoAnalyzeRequest):
         retry_delay = 5  # seconds
 
         temp_file_path = ""
-        last_http_error: Optional[Exception] = None
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
             for attempt in range(max_retries):
@@ -1222,7 +1216,6 @@ async def analyze_video(req: VideoAnalyzeRequest):
                                     temp_file.write(chunk)
                         break  # Success
                 except httpx.HTTPStatusError as e:
-                    last_http_error = e
                     status_code = e.response.status_code
                     if status_code == 404 and attempt < max_retries - 1:
                         logger.warning(
@@ -1231,8 +1224,7 @@ async def analyze_video(req: VideoAnalyzeRequest):
                         await asyncio.sleep(retry_delay)
                         continue
                     raise
-                except Exception as e:
-                    last_http_error = e
+                except Exception:
                     raise
 
         logger.info(f"Video downloaded to temporary file: {temp_file_path}")

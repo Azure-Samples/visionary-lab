@@ -273,6 +273,11 @@ function NewImagePageContent() {
 
   // Function to handle image click - Opens the full-screen modal
   const handleImageClick = (image: ImageMetadata) => {
+    const createCacheBuster = (src: string): string => {
+      const separator = src.includes("?") ? "&" : "?";
+      return `${separator}_t=${Date.now()}`;
+    };
+
     // Create a copy of the image for state update
     const updatedImage = { ...image };
     
@@ -293,7 +298,7 @@ function NewImagePageContent() {
       };
       
       // Add timestamp to URL to prevent caching issues
-      const cacheBuster = `${image.src.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+      const cacheBuster = createCacheBuster(image.src);
       
       // Use the normal image src for all cases (now using SAS tokens)
       tempImg.src = image.src + cacheBuster;

@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional, Dict, Any, Union, Literal
 from enum import Enum
 from backend.models.common import BaseResponse
-from pydantic import validator
+from pydantic import model_validator, validator
 
 # TODO: Implement full image models with all required parameters and fields
 
@@ -283,14 +283,11 @@ class ImageAnalyzeRequest(BaseModel):
         description="Base64-encoded image data to analyze directly. Must not include the 'data:image/...' prefix."
     )
 
-    @validator('image_path', 'base64_image')
-    def validate_at_least_one_source(cls, v, values):
-        # If we're validating base64_image and image_path was empty, base64_image must not be None
-        # Or if we're validating image_path and base64_image is not in values, image_path must not be None
-        if 'image_path' in values and values['image_path'] is None and v is None:
-            raise ValueError(
-                "Either image_path or base64_image must be provided")
-        return v
+    @model_validator(mode="after")
+    def validate_at_least_one_source(self):
+        if self.image_path is None and self.base64_image is None:
+            raise ValueError("Either image_path or base64_image must be provided")
+        return self
 
 
 class ImageAnalyzeCustomRequest(BaseModel):
@@ -308,14 +305,11 @@ class ImageAnalyzeCustomRequest(BaseModel):
         description="Custom instructions for analyzing the image. This will guide what aspects the AI should focus on."
     )
 
-    @validator('image_path', 'base64_image')
-    def validate_at_least_one_source(cls, v, values):
-        # If we're validating base64_image and image_path was empty, base64_image must not be None
-        # Or if we're validating image_path and base64_image is not in values, image_path must not be None
-        if 'image_path' in values and values['image_path'] is None and v is None:
-            raise ValueError(
-                "Either image_path or base64_image must be provided")
-        return v
+    @model_validator(mode="after")
+    def validate_at_least_one_source(self):
+        if self.image_path is None and self.base64_image is None:
+            raise ValueError("Either image_path or base64_image must be provided")
+        return self
 
 
 class ImageAnalyzeResponse(BaseModel):

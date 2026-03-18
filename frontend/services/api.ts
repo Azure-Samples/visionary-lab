@@ -275,6 +275,31 @@ export interface FolderHierarchy {
   };
 }
 
+function resolveFolderPath(request: VideoGenerationRequest): string | undefined {
+  return request.folder_path || request.metadata?.folder;
+}
+
+function resolveAnalyzeVideoFlag(
+  request: VideoGenerationRequest
+): boolean | undefined {
+  if (typeof request.analyze_video === 'boolean') {
+    return request.analyze_video;
+  }
+  if (typeof request.metadata?.analyzeVideo === 'string') {
+    return request.metadata.analyzeVideo === 'true';
+  }
+  return undefined;
+}
+
+function buildBlobPath(
+  containerUrl: string,
+  blobName: string,
+  sasToken?: string
+): string {
+  const token = sasToken ? `?${sasToken}` : '';
+  return `${containerUrl}/${blobName}${token}`;
+}
+
 /**
  * Create a new video generation job
  */
@@ -296,15 +321,13 @@ export async function createVideoGenerationJob(request: VideoGenerationRequest):
   formData.append('width', String(request.width));
 
   // Derive folder_path from either explicit field or metadata.folder
-  const folderPath = request.folder_path || request.metadata?.folder;
+  const folderPath = resolveFolderPath(request);
   if (folderPath) {
     formData.append('folder_path', folderPath);
   }
 
   // Derive analyze_video from explicit field or metadata.analyzeVideo
-  const analyze = typeof request.analyze_video === 'boolean'
-    ? request.analyze_video
-    : (typeof request.metadata?.analyzeVideo === 'string' ? request.metadata?.analyzeVideo === 'true' : undefined);
+  const analyze = resolveAnalyzeVideoFlag(request);
   if (typeof analyze === 'boolean') {
     formData.append('analyze_video', String(analyze));
   }
@@ -926,7 +949,7 @@ export async function analyzeVideo(videoName: string, retries = 3): Promise<Vide
     const videoSasToken = sasTokens.video_sas_token;
     
     // Construct a proper Azure blob storage URL
-    const videoPath = `${videoContainerUrl}/${videoName}${videoSasToken ? `?${videoSasToken}` : ''}`;
+    const videoPath = buildBlobPath(videoContainerUrl, videoName, videoSasToken);
     
     if (API_DEBUG) {
       console.log(`Constructed video path for analysis: ${videoPath}`);

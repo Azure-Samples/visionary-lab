@@ -1,12 +1,10 @@
 import asyncio
 import os
 import logging
-import base64
-import uuid
 import io
 import tempfile
 import requests
-from typing import List, Union, Optional, Dict, Any
+from typing import List, Optional
 from openai import OpenAI, AzureOpenAI
 from PIL import Image
 from backend.core.config import settings

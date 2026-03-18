@@ -25,6 +25,24 @@ const uploadedGenerations = new Set<string>();
 type RefreshCallback = () => void;
 const refreshCallbacks: RefreshCallback[] = [];
 
+function formatVideoCount(count: number): string {
+  return `${count} video${count === 1 ? '' : 's'}`;
+}
+
+function formatAspectRatio(width?: number, height?: number): string {
+  if (!width || !height) {
+    return "unknown";
+  }
+  return `${width}x${height}`;
+}
+
+function formatDuration(seconds?: number): string {
+  if (!seconds) {
+    return "unknown";
+  }
+  return `${seconds}s`;
+}
+
 // Register a callback to be called when uploads complete
 export function registerGalleryRefreshCallback(callback: RefreshCallback) {
   if (!refreshCallbacks.includes(callback)) {
@@ -167,8 +185,8 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                     generationId: generation.id,
                     variantIndex: (index + 1).toString(),
                     totalVariants: updatedJob.generations?.length.toString() || "0",
-                    originalAspectRatio: item.job?.width && item.job?.height ? `${item.job.width}x${item.job.height}` : "unknown",
-                    originalDuration: item.job?.n_seconds ? `${item.job.n_seconds}s` : "unknown",
+                    originalAspectRatio: formatAspectRatio(item.job?.width, item.job?.height),
+                    originalDuration: formatDuration(item.job?.n_seconds),
                     folder: item.job?.metadata?.folder || "root"
                   };
 
@@ -213,7 +231,7 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
               
               if (uploadPromises.length > 0) {
                 // Use a loading toast that transforms into success/error
-                const uploadToastId = toast.loading(`Uploading ${uploadPromises.length} video${uploadPromises.length > 1 ? 's' : ''} to gallery...`);
+                const uploadToastId = toast.loading(`Uploading ${formatVideoCount(uploadPromises.length)} to gallery...`);
                 
                 try {
                   // Wait for all uploads to complete
@@ -226,8 +244,8 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                     const analysisEnabled = queueItem?.analysisSettings?.analyzeVideo;
                     
                     const description = analysisEnabled 
-                      ? `${successCount} video${successCount > 1 ? 's' : ''} uploaded with AI analysis`
-                      : `${successCount} video${successCount > 1 ? 's' : ''} ready in your gallery`;
+                      ? `${formatVideoCount(successCount)} uploaded with AI analysis`
+                      : `${formatVideoCount(successCount)} ready in your gallery`;
                     
                     toast.success(`Videos uploaded successfully`, {
                       id: uploadToastId,
@@ -240,7 +258,8 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   }
                   
                   if (successCount < uploadPromises.length) {
-                    toast.error(`${uploadPromises.length - successCount} video${uploadPromises.length - successCount > 1 ? 's' : ''} failed to upload`, {
+                    const failedCount = uploadPromises.length - successCount;
+                    toast.error(`${formatVideoCount(failedCount)} failed to upload`, {
                       id: uploadToastId
                     });
                   }
@@ -551,9 +570,15 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
     progress?: number
   ) => {
     setQueueItems(prev => 
-      prev.map(item => 
-        item.id === id ? { ...item, status, ...(progress !== undefined ? { progress } : {}) } : item
-      )
+      prev.map(item => {
+        if (item.id !== id) {
+          return item;
+        }
+        if (progress === undefined) {
+          return { ...item, status };
+        }
+        return { ...item, status, progress };
+      })
     );
   };
 

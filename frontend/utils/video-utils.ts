@@ -112,6 +112,26 @@ export function shouldLazyLoadVideo(index: number, isAboveFold: boolean = false)
   return index >= 3 && !isAboveFold;
 }
 
+function extractSasToken(url: string): string | undefined {
+  if (!hasAzureSasToken(url)) {
+    return undefined;
+  }
+
+  const [, token] = url.split('?');
+  return token || undefined;
+}
+
+function buildVideoSourceUrl(
+  baseWithoutExt: string,
+  format: string,
+  sasToken?: string
+): string {
+  if (!sasToken) {
+    return `${baseWithoutExt}.${format}`;
+  }
+  return `${baseWithoutExt}.${format}?${sasToken}`;
+}
+
 /**
  * Generate video source elements for multiple formats
  */
@@ -122,11 +142,11 @@ export function generateVideoSources(baseUrl: string): Array<{ src: string; type
   
   const sources = [];
   const baseWithoutExt = getAzureBlobBaseUrl(baseUrl).replace(/\.[^.]+$/, '');
-  const sasToken = hasAzureSasToken(baseUrl) ? baseUrl.split('?')[1] : '';
+  const sasToken = extractSasToken(baseUrl);
   
   // Try modern formats first
   for (const format of VIDEO_FORMATS.modern) {
-    const src = sasToken ? `${baseWithoutExt}.${format}?${sasToken}` : `${baseWithoutExt}.${format}`;
+    const src = buildVideoSourceUrl(baseWithoutExt, format, sasToken);
     sources.push({
       src,
       type: `video/${format === 'av1' ? 'mp4; codecs="av01"' : format}`,

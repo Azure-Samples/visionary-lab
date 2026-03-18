@@ -2,7 +2,7 @@ import httpx
 import os
 import logging
 import io
-from typing import List, Optional
+from typing import Optional
 
 # Set up logging
 logger = logging.getLogger(__name__)

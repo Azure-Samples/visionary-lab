@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { X, ArrowUp, Settings, Eye, Loader2, Wand2, RectangleHorizontal, Square, RectangleVertical, SignalLow, SignalMedium, SignalHigh, Timer, Copy, FolderTree, Plus, RefreshCw, PlusCircle, Volume2, VolumeX, User, Video } from "lucide-react";
+import { X, ArrowUp, Settings, Eye, Loader2, Wand2, RectangleHorizontal, Square, RectangleVertical, SignalLow, SignalMedium, SignalHigh, Timer, FolderTree, Plus, RefreshCw, PlusCircle } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -119,8 +119,8 @@ export function VideoOverlay({
   });
   
   // Sora 2 NEW: Cameo and Remix settings
-  const [selectedCameo, setSelectedCameo] = useState<string | null>(null);
-  const [remixVideoId, setRemixVideoId] = useState<string | null>(null);
+  const [selectedCameo] = useState<string | null>(null);
+  const [remixVideoId] = useState<string | null>(null);
   
   // Settings states
   const [expanded, setExpanded] = useState(true);
@@ -141,9 +141,6 @@ export function VideoOverlay({
   // NEW: Image-to-Video state (mirroring ImageOverlay)
   const [sourceImages, setSourceImages] = useState<File[]>([]);
   const [isClient, setIsClient] = useState(false);
-  // Derived: are we in image+text mode
-  const isImageToVideo = isClient && sourceImages.length > 0;
-
   // References
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
@@ -195,20 +192,46 @@ export function VideoOverlay({
     return isDarkTheme ? 'hover:bg-white/10' : 'hover:bg-gray-200/50';
   };
 
+  const getToggleThemeColors = () => {
+    if (isDarkTheme) {
+      return {
+        activeBackground: "rgba(255, 255, 255, 0.15)",
+        inactiveBackground: "rgba(0, 0, 0, 0.3)",
+        activeBorder: "1px solid rgba(255, 255, 255, 0.4)",
+        inactiveBorder: "1px solid rgba(255, 255, 255, 0.1)",
+        activeText: "white",
+        inactiveText: "rgba(255, 255, 255, 0.6)",
+      };
+    }
+
+    return {
+      activeBackground: "rgba(209, 213, 219, 0.5)",
+      inactiveBackground: "rgba(255, 255, 255, 0.5)",
+      activeBorder: "1px solid rgba(209, 213, 219, 0.5)",
+      inactiveBorder: "1px solid rgba(229, 231, 235, 0.5)",
+      activeText: "rgb(17, 24, 39)",
+      inactiveText: "rgb(107, 114, 128)",
+    };
+  };
+
   // Get toggle style based on theme and active state
   const getToggleStyle = (isActive: boolean) => {
+    const themeColors = getToggleThemeColors();
     return {
-      backgroundColor: isActive 
-        ? (isDarkTheme ? "rgba(255, 255, 255, 0.15)" : "rgba(209, 213, 219, 0.5)") 
-        : (isDarkTheme ? "rgba(0, 0, 0, 0.3)" : "rgba(255, 255, 255, 0.5)"),
-      border: isActive 
-        ? (isDarkTheme ? "1px solid rgba(255, 255, 255, 0.4)" : "1px solid rgba(209, 213, 219, 0.5)") 
-        : (isDarkTheme ? "1px solid rgba(255, 255, 255, 0.1)" : "1px solid rgba(229, 231, 235, 0.5)"),
-      color: isActive 
-        ? (isDarkTheme ? "white" : "rgb(17, 24, 39)") 
-        : (isDarkTheme ? "rgba(255, 255, 255, 0.6)" : "rgb(107, 114, 128)"),
+      backgroundColor: isActive
+        ? themeColors.activeBackground
+        : themeColors.inactiveBackground,
+      border: isActive ? themeColors.activeBorder : themeColors.inactiveBorder,
+      color: isActive ? themeColors.activeText : themeColors.inactiveText,
       borderRadius: "0.375rem",
     };
+  };
+
+  const getAnalyzeIconClassName = () => {
+    if (!analyzeVideo) {
+      return "";
+    }
+    return isDarkTheme ? "text-white" : "text-gray-900";
   };
 
   // Folder-related functions
@@ -868,7 +891,7 @@ export function VideoOverlay({
                                   minWidth: "90px",
                                 }}
                               >
-                                <Eye className={`h-4 w-4 mr-2 ${analyzeVideo ? (isDarkTheme ? "text-white" : "text-gray-900") : ""}`} />
+                                <Eye className={cn("h-4 w-4 mr-2", getAnalyzeIconClassName())} />
                                 Analyze
                               </ToggleGroupItem>
                             </ToggleGroup>

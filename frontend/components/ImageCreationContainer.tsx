@@ -87,6 +87,14 @@ interface SaveResponse {
   saved_images: SavedImage[];
 }
 
+function formatImageCount(count: number): string {
+  return `${count} image${count === 1 ? "" : "s"}`;
+}
+
+function formatBrandProtectionNote(isApplied: boolean): string {
+  return isApplied ? " (brand protection applied)" : "";
+}
+
 export function ImageCreationContainer({ className = "", onImagesSaved }: ImageCreationContainerProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -175,7 +183,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
       if (newSettings.sourceImages && newSettings.sourceImages.length > 0) {
         // Show single consolidated toast for image editing
         const editingToast = toast.loading("Editing images...", {
-          description: `Processing ${newSettings.sourceImages.length} image${newSettings.sourceImages.length > 1 ? 's' : ''} with your prompt${brandProtectionApplied ? ' (brand protection applied)' : ''}`,
+          description: `Processing ${formatImageCount(newSettings.sourceImages.length)} with your prompt${formatBrandProtectionNote(brandProtectionApplied)}`,
         });
         
         // Call the image edit API with the protected prompt
@@ -192,13 +200,13 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         // Update the loading toast to success
         toast.success("Image editing completed", {
           id: editingToast,
-          description: `Successfully edited ${newSettings.variations} image${newSettings.variations > 1 ? 's' : ''}`
+          description: `Successfully edited ${formatImageCount(newSettings.variations)}`
         });
       } else {
         // If we are saving to gallery, use unified endpoint; otherwise generate preview only
         if (newSettings.saveImages) {
           const savingToast = toast.loading("Generating and saving images...", {
-            description: `Creating ${newSettings.variations} image${newSettings.variations > 1 ? 's' : ''}${brandProtectionApplied ? ' (brand protection applied)' : ''}`,
+            description: `Creating ${formatImageCount(newSettings.variations)}${formatBrandProtectionNote(brandProtectionApplied)}`,
           });
           
           // Call unified endpoint to generate + analyze + save
@@ -231,7 +239,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         } else {
           // Generate preview only
           const generatingToast = toast.loading("Generating images...", {
-            description: `Creating ${newSettings.variations} image${newSettings.variations > 1 ? 's' : ''} with your prompt${brandProtectionApplied ? ' (brand protection applied)' : ''}`,
+            description: `Creating ${formatImageCount(newSettings.variations)} with your prompt${formatBrandProtectionNote(brandProtectionApplied)}`,
           });
           response = await generateImages(
             generationPrompt,
@@ -245,7 +253,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           );
           toast.success("Image generation completed", {
             id: generatingToast,
-            description: `Successfully generated ${newSettings.variations} image${newSettings.variations > 1 ? 's' : ''}`
+            description: `Successfully generated ${formatImageCount(newSettings.variations)}`
           });
         }
       }

@@ -13,7 +13,7 @@ import requests
 from fastapi import HTTPException, UploadFile
 from PIL import Image
 
-from backend.core import dalle_client, llm_client, image_sas_token
+from backend.core import llm_client, image_sas_token
 from backend.core.analyze import ImageAnalyzer
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.config import settings
@@ -84,10 +84,6 @@ class ImagePipelineService:
             # Run sync SDK call in thread pool to not block event loop
             response = await asyncio.to_thread(client.generate_image, **params)
             token_usage = self._extract_token_usage(response)
-            
-            # Extract deployment metadata for tracking
-            deployment_name = response.get("_deployment_name")
-            model_used = response.get("_model", request.model)
 
             return ImageGenerationResponse(
                 success=True,
@@ -154,10 +150,6 @@ class ImagePipelineService:
             # Run sync SDK call in thread pool to not block event loop
             response = await asyncio.to_thread(client.edit_image, **params)
             token_usage = self._extract_token_usage(response)
-            
-            # Extract deployment metadata for tracking
-            deployment_name = response.get("_deployment_name")
-            model_used = response.get("_model", request.model)
 
             return ImageGenerationResponse(
                 success=True,

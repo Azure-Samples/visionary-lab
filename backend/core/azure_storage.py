@@ -2,11 +2,10 @@ import os
 import uuid
 import logging
 import threading
-from typing import Dict, BinaryIO, Optional, Union, List, Tuple
+from typing import Dict, Optional, List, Tuple
 from fastapi import UploadFile
 from azure.storage.blob import BlobServiceClient, ContentSettings
-from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
-from datetime import datetime
+from azure.core.exceptions import ResourceNotFoundError
 
 from backend.core.config import settings
 
@@ -53,66 +52,30 @@ class AzureBlobStorageService:
                 AzureBlobStorageService._cors_configured = True
 
     def _configure_cors(self) -> None:
-        """
-        Configure CORS settings on the Azure Storage account to allow direct access
-        from frontend domains using environment-based configuration
-        """
+        """Configure CORS on the Azure Storage account for frontend access."""
         try:
             from azure.storage.blob import CorsRule
 
-            # Parse origins from environment configuration
             origins_str = settings.CORS_ALLOWED_ORIGINS.strip()
-            if origins_str == "*":
-                allowed_origins = ["*"]
-            else:
-                # Split by comma and clean up
-                allowed_origins = [origin.strip() for origin in origins_str.split(",") if origin.strip()]
+            allowed_origins = ["*"] if origins_str == "*" else [o.strip() for o in origins_str.split(",") if o.strip()]
 
-            logger.info(f"Configuring CORS with origins: {allowed_origins}")
-
-            # First, clear any existing CORS rules to avoid conflicts
-            try:
-                logger.info("Clearing existing CORS rules...")
-                self.blob_service_client.set_service_properties(cors=[])
-                logger.info("Existing CORS rules cleared successfully")
-            except Exception as clear_error:
-                logger.warning(f"Could not clear existing CORS rules: {clear_error}")
-
-            # Define CORS rules with environment-based origins
             cors_rules = [
                 CorsRule(
                     allowed_origins=allowed_origins,
-                    allowed_methods=[
-                        "GET",
-                        "HEAD",
-                        "OPTIONS"
-                    ],
-                    allowed_headers=[
-                        "*"
-                    ],
-                    exposed_headers=[
-                        "*"
-                    ],
+                    allowed_methods=["GET", "HEAD", "OPTIONS"],
+                    allowed_headers=["*"],
+                    exposed_headers=["*"],
                     max_age_in_seconds=3600
                 )
             ]
 
-            logger.info(f"Setting CORS rules with {len(allowed_origins)} origins...")
-
-            # Set CORS rules
             self.blob_service_client.set_service_properties(cors=cors_rules)
-
-            logger.info("Successfully configured CORS for Azure Blob Storage")
-
+            logger.info(f"Configured CORS with origins: {allowed_origins}")
         except Exception as e:
             logger.warning(f"Could not configure CORS for Azure Blob Storage: {e}")
-            # Print detailed error only once for debugging
-            logger.debug(f"CORS configuration error details: {e}")
-            # Don't fail if CORS configuration fails, as it might be due to permissions
 
     def list_blobs(self, container_name: str, prefix: Optional[str] = None,
-                   limit: int = 100, marker: Optional[str] = None,
-                   delimiter: Optional[str] = None) -> Dict:
+                   limit: int = 100, marker: Optional[str] = None) -> Dict:
         """
         List blobs in a container with pagination support
 
@@ -142,21 +105,8 @@ class AzureBlobStorageService:
             list_params = {
                 "name_starts_with": prefix,
                 "results_per_page": limit,
-                # Important: explicitly request metadata
                 "include": ['metadata']
             }
-
-            # Only add delimiter if it's supported in this version of the SDK
-            # Some versions of the Azure Storage SDK might not support this parameter
-            try:
-                import inspect
-                # Check if the method accepts the delimiter parameter
-                sig = inspect.signature(container_client.list_blobs)
-                if 'delimiter' in sig.parameters:
-                    list_params["delimiter"] = delimiter
-            except:
-                # If there's any error checking, we'll just skip the delimiter
-                pass
 
             blob_items = container_client.list_blobs(
                 **list_params).by_page(marker)
@@ -197,25 +147,17 @@ class AzureBlobStorageService:
             # Get the continuation token for the next page
             continuation_token = blob_items.continuation_token
 
-            # If delimiter is provided and supported, also extract prefixes (folder names)
-            prefixes = []
-            if hasattr(blobs_page, 'prefix') and blobs_page.prefix:
-                prefixes = [p for p in blobs_page.prefix]
-
             return {
                 "blobs": blob_list,
                 "continuation_token": continuation_token,
                 "container": container_name,
-                "prefixes": prefixes
             }
 
         except ResourceNotFoundError:
-            # Return empty list if container doesn't exist
             return {
                 "blobs": [],
                 "continuation_token": None,
                 "container": container_name,
-                "prefixes": []
             }
 
     def _ensure_container_exists(self, container_name: str) -> None:
@@ -258,61 +200,18 @@ class AzureBlobStorageService:
 
         return folder_path
 
-    def _preprocess_metadata_value(self, value: str) -> str:
-        """
-        DEPRECATED: Preprocess metadata value to comply with Azure Blob Storage requirements.
-
-        This function is no longer used since we store all metadata in Cosmos DB.
-        Kept for backwards compatibility only.
-
-        Args:
-            value: Metadata value to preprocess
-
-        Returns:
-            Processed string compatible with Azure Blob Storage
-        """
+    @staticmethod
+    def _preprocess_metadata_value(value: str) -> str:
+        """Sanitize a metadata value to ASCII-only for Azure blob headers."""
         if value is None:
             return ""
-
-        # Convert to string if not already
-        str_value = str(value)
-
-        # Replace newlines and tabs with spaces
-        str_value = str_value.replace('\n', ' ').replace(
-            '\r', ' ').replace('\t', ' ')
-
-        # Collapse multiple spaces into a single space
         import re
-        str_value = re.sub(r'\s+', ' ', str_value)
-
-        # Replace all non-ASCII characters and potential problematic characters
-        # Azure metadata must be valid HTTP headers (US-ASCII characters only)
-        sanitized_value = ""
-        for char in str_value:
-            # Only keep ASCII printable characters (32-126)
-            if 32 <= ord(char) <= 126:
-                # Avoid characters that could cause issues in HTTP headers
-                if char not in '<>{}[]?#%':
-                    sanitized_value += char
-                else:
-                    sanitized_value += '_'
-            else:
-                sanitized_value += '_'
-
-        # Trim leading/trailing whitespace and ensure not empty
-        sanitized_value = sanitized_value.strip()
-        if not sanitized_value:
-            return "_"
-
-        # Final check - only ASCII allowed
-        try:
-            sanitized_value.encode('ascii')
-        except UnicodeEncodeError:
-            # Fallback if somehow still not ASCII
-            sanitized_value = sanitized_value.encode(
-                'ascii', 'replace').decode('ascii')
-
-        return sanitized_value
+        str_value = re.sub(r'\s+', ' ', str(value).replace('\n', ' ').replace('\r', ' ').replace('\t', ' '))
+        sanitized = ''.join(
+            c if 32 <= ord(c) <= 126 and c not in '<>{}[]?#%' else '_'
+            for c in str_value
+        ).strip()
+        return sanitized or "_"
 
     async def upload_asset(self, file: UploadFile, asset_type: str = "image",
                            metadata: Optional[Dict[str, str]] = None,
@@ -418,73 +317,8 @@ class AzureBlobStorageService:
                 return_data["height"] = height
 
             return return_data
-        except Exception as e:
+        except Exception:
             raise
-
-    def get_asset_metadata(self, blob_name: str, container_name: str) -> Optional[Dict[str, str]]:
-        """
-        DEPRECATED: Get metadata for an asset from blob storage
-
-        This function is deprecated since we now store all metadata in Cosmos DB.
-        Use CosmosDBService.get_asset_metadata() instead.
-
-        Args:
-            blob_name: Name of the blob
-            container_name: Name of the container
-
-        Returns:
-            Dictionary of metadata or None if not found
-        """
-        try:
-            container_client = self.blob_service_client.get_container_client(
-                container_name)
-            blob_client = container_client.get_blob_client(blob_name)
-
-            # Get blob properties which includes metadata
-            properties = blob_client.get_blob_properties()
-            # Return empty dict instead of None for consistency
-            return properties.metadata or {}
-        except ResourceNotFoundError:
-            return None
-
-    def update_asset_metadata(self, blob_name: str, container_name: str, metadata: Dict[str, str]) -> bool:
-        """
-        DEPRECATED: Update metadata for an existing blob
-
-        This function is deprecated since we now store all metadata in Cosmos DB.
-        Use CosmosDBService.update_asset_metadata() instead.
-
-        Args:
-            blob_name: Name of the blob
-            container_name: Name of the container
-            metadata: New metadata to set (completely replaces existing metadata)
-
-        Returns:
-            True if updated successfully, False otherwise
-        """
-        try:
-            container_client = self.blob_service_client.get_container_client(
-                container_name)
-            blob_client = container_client.get_blob_client(blob_name)
-
-            # Convert all values to strings compatible with Azure's Latin-1 requirement
-            metadata_str = {}
-            for k, v in metadata.items():
-                # Skip None values
-                if v is None:
-                    continue
-
-                # Process the value to make it Azure-compatible
-                processed_value = self._preprocess_metadata_value(v)
-                metadata_str[k] = processed_value
-
-            # Set metadata (replaces all existing metadata)
-            blob_client.set_blob_metadata(metadata=metadata_str)
-            return True
-        except ResourceNotFoundError:
-            return False
-        except Exception as e:
-            return False
 
     def _get_content_type(self, extension: str, asset_type: str) -> str:
         """
@@ -627,5 +461,5 @@ class AzureBlobStorageService:
 
             # Convert to sorted list
             return sorted(list(folders))
-        except Exception as e:
+        except Exception:
             return []

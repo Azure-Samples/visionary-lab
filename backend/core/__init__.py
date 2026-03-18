@@ -1,9 +1,8 @@
 import logging
-from openai import AzureOpenAI, AsyncAzureOpenAI, OpenAI
+from openai import AzureOpenAI, AsyncAzureOpenAI
 from .config import settings
 from .sora import Sora
 from .gpt_image import GPTImageClient
-import json
 from datetime import datetime, timedelta, timezone
 from azure.storage.blob import generate_container_sas, ContainerSasPermissions
 
@@ -27,7 +26,7 @@ except Exception as e:
 # Initialize GPT-Image client (using default model)
 try:
     # Using OpenAI API directly for GPT-Image
-    dalle_client = GPTImageClient(
+    image_client = GPTImageClient(
         api_key=settings.OPENAI_API_KEY,
         organization_id=settings.OPENAI_ORG_ID if settings.OPENAI_ORG_ID else None,
         model=settings.DEFAULT_IMAGE_MODEL
@@ -35,7 +34,7 @@ try:
     logger.info(f"Initialized GPT-Image client using OpenAI API with default model: {settings.DEFAULT_IMAGE_MODEL}")
 except Exception as e:
     logger.error(f"Failed to initialize GPT-Image client: {str(e)}")
-    dalle_client = None
+    image_client = None
 
 # Initialize LLM client (sync)
 try:
@@ -64,30 +63,21 @@ except Exception as e:
     logger.error(f"Failed to initialize async LLM client: {str(e)}")
     async_llm_client = None
 
-# Generate a blob SAS tokens for the video and image container, valid for 4 hours
-# TODO: Potentially add as a method to the AzureBlobStorage class
-video_sas_token = None
-try:
-    video_sas_token = generate_container_sas(
-        account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
-        container_name=settings.AZURE_BLOB_VIDEO_CONTAINER,
-        account_key=settings.AZURE_STORAGE_ACCOUNT_KEY,
-        permission=ContainerSasPermissions(read=True, list=True),
-        expiry=datetime.now(timezone.utc) + timedelta(hours=4),
-    )
-    logger.info("Generated SAS token for video container.")
-except Exception as e:
-    logger.error(f"Failed to generate SAS token for video container: {str(e)}")
+def _generate_sas(container_name: str) -> str | None:
+    """Generate a 4-hour read/list SAS token for a blob container."""
+    try:
+        token = generate_container_sas(
+            account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
+            container_name=container_name,
+            account_key=settings.AZURE_STORAGE_ACCOUNT_KEY,
+            permission=ContainerSasPermissions(read=True, list=True),
+            expiry=datetime.now(timezone.utc) + timedelta(hours=4),
+        )
+        logger.info(f"Generated SAS token for {container_name} container.")
+        return token
+    except Exception as e:
+        logger.error(f"Failed to generate SAS token for {container_name}: {e}")
+        return None
 
-image_sas_token = None
-try:
-    image_sas_token = generate_container_sas(
-        account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
-        container_name=settings.AZURE_BLOB_IMAGE_CONTAINER,
-        account_key=settings.AZURE_STORAGE_ACCOUNT_KEY,
-        permission=ContainerSasPermissions(read=True, list=True),
-        expiry=datetime.now(timezone.utc) + timedelta(hours=4),
-    )
-    logger.info("Generated SAS token for image container.")
-except Exception as e:
-    logger.error(f"Failed to generate SAS token for image container: {str(e)}")
+video_sas_token = _generate_sas(settings.AZURE_BLOB_VIDEO_CONTAINER)
+image_sas_token = _generate_sas(settings.AZURE_BLOB_IMAGE_CONTAINER)

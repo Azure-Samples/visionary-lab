@@ -467,6 +467,22 @@ export default function ImageCanvas({ image, onProceed }: ImageCanvasProps) {
     setShowMask(prev => !prev);
   }, []);
 
+  const getCursorClass = (tool: DrawingTool): string => {
+    if (tool === 'brush') return 'cursor-brush';
+    if (tool === 'eraser') return 'cursor-eraser';
+    return 'cursor-default';
+  };
+
+  const getCursorStyle = (tool: DrawingTool, size: number): string => {
+    if (tool === 'brush') {
+      return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='${size / 4}' fill='%23ffffff' stroke='%23000000' stroke-width='1'/%3E%3C/svg%3E") 12 12, crosshair`;
+    }
+    if (tool === 'eraser') {
+      return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='6' width='12' height='12' fill='%23ffffff' stroke='%23000000' stroke-width='1'/%3E%3C/svg%3E") 12 12, crosshair`;
+    }
+    return 'default';
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col space-y-2">
@@ -588,15 +604,11 @@ export default function ImageCanvas({ image, onProceed }: ImageCanvasProps) {
                 width={dimensions.width}
                 height={dimensions.height}
                 className={`absolute top-0 left-0 max-w-full ${showMask ? 'opacity-80' : 'opacity-0'} pointer-events-auto z-10 rounded-lg ${
-                  currentTool === 'brush' ? 'cursor-brush' : currentTool === 'eraser' ? 'cursor-eraser' : 'cursor-default'
+                  getCursorClass(currentTool)
                 }`}
                 style={{ 
                   mixBlendMode: 'screen',
-                  cursor: currentTool === 'brush' 
-                    ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='${brushSize/4}' fill='%23ffffff' stroke='%23000000' stroke-width='1'/%3E%3C/svg%3E") 12 12, crosshair` 
-                    : currentTool === 'eraser'
-                    ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='6' width='12' height='12' fill='%23ffffff' stroke='%23000000' stroke-width='1'/%3E%3C/svg%3E") 12 12, crosshair`
-                    : 'default'
+                  cursor: getCursorStyle(currentTool, brushSize),
                 }}
                 onMouseDown={startDrawing}
                 onMouseMove={draw}

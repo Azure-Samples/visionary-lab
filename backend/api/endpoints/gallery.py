@@ -7,14 +7,12 @@ from fastapi import (
     File,
     Form,
     Body,
-    BackgroundTasks,
 )
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 from fastapi.responses import StreamingResponse
 import asyncio
 import io
 import re
-import os
 import uuid
 import logging
 from datetime import datetime, timedelta, timezone
@@ -29,9 +27,6 @@ from backend.models.gallery import (
     MediaType,
     AssetUploadResponse,
     AssetDeleteResponse,
-    AssetUrlResponse,
-    AssetMetadataResponse,
-    MetadataUpdateRequest,
     SasTokenResponse,
 )
 from backend.models.metadata_models import AssetMetadataCreateRequest
@@ -39,6 +34,91 @@ from backend.models.metadata_models import AssetMetadataCreateRequest
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+BASE_CUSTOM_METADATA_KEYS = {"width", "height", "prompt", "description", "analysis"}
+VIDEO_CUSTOM_METADATA_KEYS = BASE_CUSTOM_METADATA_KEYS | {"duration", "fps", "resolution"}
+
+
+def _parse_tags(tags: Optional[str]) -> Optional[list[str]]:
+    if not tags:
+        return None
+
+    return [tag.strip() for tag in tags.split(",") if tag.strip()]
+
+
+def _extract_custom_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    custom_metadata = metadata.get("custom_metadata")
+    if isinstance(custom_metadata, dict):
+        return custom_metadata
+    return {}
+
+
+def _filter_meaningful_values(values: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value
+        for key, value in values.items()
+        if value is not None and value != "" and value != "auto"
+    }
+
+
+def _filter_non_null_values(values: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def _build_core_generation_metadata(
+    metadata: Dict[str, Any], include_transparency: bool = False
+) -> Dict[str, Any]:
+    values = {
+        "prompt": metadata.get("prompt"),
+        "model": metadata.get("model"),
+        "description": metadata.get("description"),
+        "quality": metadata.get("quality"),
+        "background": metadata.get("background"),
+        "output_format": metadata.get("output_format"),
+        "generation_id": metadata.get("generation_id"),
+    }
+    if include_transparency:
+        values["has_transparency"] = metadata.get("has_transparency")
+    return _filter_meaningful_values(values)
+
+
+def _build_dimensions_metadata(
+    metadata: Dict[str, Any], custom_metadata: Dict[str, Any]
+) -> Dict[str, Any]:
+    return _filter_non_null_values(
+        {
+            "width": custom_metadata.get("width") or metadata.get("width"),
+            "height": custom_metadata.get("height") or metadata.get("height"),
+            "created_at": metadata.get("created_at"),
+        }
+    )
+
+
+def _build_video_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    return _filter_non_null_values(
+        {
+            "duration": metadata.get("duration"),
+            "resolution": metadata.get("resolution"),
+            "fps": metadata.get("fps"),
+        }
+    )
+
+
+def _build_analysis_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    analysis_metadata = {"has_analysis": metadata.get("has_analysis", False)}
+    if metadata.get("analysis"):
+        analysis_metadata["analysis"] = metadata.get("analysis")
+    return analysis_metadata
+
+
+def _build_additional_custom_metadata(
+    custom_metadata: Dict[str, Any], reserved_keys: set[str]
+) -> Dict[str, Any]:
+    return {
+        key: value
+        for key, value in custom_metadata.items()
+        if key not in reserved_keys and value is not None and value != ""
+    }
 
 
 def get_cosmos_service() -> Optional[CosmosDBService]:
@@ -80,9 +160,7 @@ async def get_gallery_images(
             )
 
         # Parse tags if provided
-        tag_list = None
-        if tags:
-            tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
+        tag_list = _parse_tags(tags)
 
         # Query Cosmos DB for images only
         result = await asyncio.to_thread(
@@ -98,8 +176,7 @@ async def get_gallery_images(
 
         gallery_items = []
         for metadata in result["items"]:
-            # Extract technical metadata from custom_metadata if available
-            custom_meta = metadata.get("custom_metadata", {})
+            custom_meta = _extract_custom_metadata(metadata)
 
             gallery_items.append(
                 GalleryItem(
@@ -113,33 +190,14 @@ async def get_gallery_images(
                     creation_time=metadata["created_at"],
                     last_modified=metadata["updated_at"],
                     metadata={
-                        # Core generation metadata from CosmosDB (only include meaningful values)
-                        **{k: v for k, v in {
-                            "prompt": metadata.get("prompt"),
-                            "model": metadata.get("model"),
-                            "description": metadata.get("description"),
-                            "quality": metadata.get("quality"),
-                            "background": metadata.get("background"),
-                            "output_format": metadata.get("output_format"),
-                            "has_transparency": metadata.get("has_transparency"),
-                            "generation_id": metadata.get("generation_id"),
-                        }.items() if v is not None and v != "" and v != "auto"},
-
-                        # Technical metadata (ensure integers, only include if valid)
-                        **{k: v for k, v in {
-                            "width": custom_meta.get("width") or metadata.get("width"),
-                            "height": custom_meta.get("height") or metadata.get("height"),
-                            "created_at": metadata.get("created_at"),
-                        }.items() if v is not None},
-
-                        # Analysis structure (nested only - no legacy support)
-                        **({"analysis": metadata.get("analysis")} if metadata.get("analysis") else {}),
-                        "has_analysis": metadata.get("has_analysis", False),
-
-                        # Additional custom fields (exclude None values and reserved keys)
-                        **{k: v for k, v in custom_meta.items()
-                           if k not in ["width", "height", "prompt", "description", "analysis"]
-                           and v is not None and v != ""}
+                        **_build_core_generation_metadata(
+                            metadata, include_transparency=True
+                        ),
+                        **_build_dimensions_metadata(metadata, custom_meta),
+                        **_build_analysis_metadata(metadata),
+                        **_build_additional_custom_metadata(
+                            custom_meta, BASE_CUSTOM_METADATA_KEYS
+                        ),
                     },
                     folder_path=metadata.get("folder_path", ""),
                 )
@@ -179,9 +237,7 @@ async def get_gallery_videos(
     """Get gallery videos from Cosmos DB metadata ONLY"""
     try:
         # Parse tags if provided
-        tag_list = None
-        if tags:
-            tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
+        tag_list = _parse_tags(tags)
 
         # Query Cosmos DB for videos only
         result = await asyncio.to_thread(
@@ -197,8 +253,7 @@ async def get_gallery_videos(
 
         gallery_items = []
         for metadata in result["items"]:
-            # Extract technical metadata from custom_metadata if available
-            custom_meta = metadata.get("custom_metadata", {})
+            custom_meta = _extract_custom_metadata(metadata)
 
             gallery_items.append(
                 GalleryItem(
@@ -212,39 +267,13 @@ async def get_gallery_videos(
                     creation_time=metadata["created_at"],
                     last_modified=metadata["updated_at"],
                     metadata={
-                        # Core generation metadata from CosmosDB (only include meaningful values)
-                        **{k: v for k, v in {
-                            "prompt": metadata.get("prompt"),
-                            "model": metadata.get("model"),
-                            "description": metadata.get("description"),
-                            "quality": metadata.get("quality"),
-                            "background": metadata.get("background"),
-                            "output_format": metadata.get("output_format"),
-                            "generation_id": metadata.get("generation_id"),
-                        }.items() if v is not None and v != "" and v != "auto"},
-
-                        # Video-specific metadata (only include if not None)
-                        **{k: v for k, v in {
-                            "duration": metadata.get("duration"),
-                            "resolution": metadata.get("resolution"),
-                            "fps": metadata.get("fps"),
-                        }.items() if v is not None},
-
-                        # Technical metadata (ensure integers, only include if valid)
-                        **{k: v for k, v in {
-                            "width": custom_meta.get("width") or metadata.get("width"),
-                            "height": custom_meta.get("height") or metadata.get("height"),
-                            "created_at": metadata.get("created_at"),
-                        }.items() if v is not None},
-
-                        # Analysis structure (nested only - no legacy support)
-                        **({"analysis": metadata.get("analysis")} if metadata.get("analysis") else {}),
-                        "has_analysis": metadata.get("has_analysis", False),
-
-                        # Additional custom fields (exclude None values and reserved keys)
-                        **{k: v for k, v in custom_meta.items()
-                           if k not in ["width", "height", "prompt", "description", "analysis", "duration", "fps", "resolution"]
-                           and v is not None and v != ""}
+                        **_build_core_generation_metadata(metadata),
+                        **_build_video_metadata(metadata),
+                        **_build_dimensions_metadata(metadata, custom_meta),
+                        **_build_analysis_metadata(metadata),
+                        **_build_additional_custom_metadata(
+                            custom_meta, VIDEO_CUSTOM_METADATA_KEYS
+                        ),
                     },
                     folder_path=metadata.get("folder_path", ""),
                 )
@@ -323,8 +352,7 @@ async def _get_gallery_items_from_cosmos(
 
         gallery_items = []
         for metadata in result["items"]:
-            # Extract technical metadata from custom_metadata if available
-            custom_meta = metadata.get("custom_metadata", {})
+            custom_meta = _extract_custom_metadata(metadata)
 
             # Convert CosmosDB metadata to GalleryItem (CosmosDB is single source of truth)
             gallery_items.append(
@@ -339,40 +367,15 @@ async def _get_gallery_items_from_cosmos(
                     creation_time=metadata["created_at"],
                     last_modified=metadata["updated_at"],
                     metadata={
-                        # Core generation metadata from CosmosDB (only meaningful values)
-                        **{k: v for k, v in {
-                            "prompt": metadata.get("prompt"),
-                            "model": metadata.get("model"),
-                            "description": metadata.get("description"),
-                            "quality": metadata.get("quality"),
-                            "background": metadata.get("background"),
-                            "output_format": metadata.get("output_format"),
-                            "has_transparency": metadata.get("has_transparency"),
-                            "generation_id": metadata.get("generation_id"),
-                        }.items() if v is not None and v != "" and v != "auto"},
-
-                        # Technical metadata (ensure proper types)
-                        **{k: v for k, v in {
-                            "width": custom_meta.get("width") or metadata.get("width"),
-                            "height": custom_meta.get("height") or metadata.get("height"),
-                            "created_at": metadata.get("created_at"),
-                        }.items() if v is not None},
-
-                        # Video-specific metadata
-                        **{k: v for k, v in {
-                            "duration": metadata.get("duration"),
-                            "fps": metadata.get("fps"),
-                            "resolution": metadata.get("resolution"),
-                        }.items() if v is not None},
-
-                        # Analysis structure (nested only)
-                        **({"analysis": metadata.get("analysis")} if metadata.get("analysis") else {}),
-                        "has_analysis": metadata.get("has_analysis", False),
-
-                        # Additional custom fields (exclude reserved keys and None values)
-                        **{k: v for k, v in custom_meta.items()
-                           if k not in ["width", "height", "prompt", "description", "analysis", "duration", "fps", "resolution"]
-                           and v is not None and v != ""}
+                        **_build_core_generation_metadata(
+                            metadata, include_transparency=True
+                        ),
+                        **_build_dimensions_metadata(metadata, custom_meta),
+                        **_build_video_metadata(metadata),
+                        **_build_analysis_metadata(metadata),
+                        **_build_additional_custom_metadata(
+                            custom_meta, VIDEO_CUSTOM_METADATA_KEYS
+                        ),
                     },
                     folder_path=metadata.get("folder_path", ""),
                 )
@@ -720,12 +723,12 @@ async def health_check(
     # Check AI Services
     try:
         # Test if AI clients are properly initialized
-        from backend.core import sora_client, dalle_client, llm_client
+        from backend.core import sora_client, image_client, llm_client
 
         ai_services = {}
         if sora_client:
             ai_services["sora"] = "available"
-        if dalle_client:
+        if image_client:
             ai_services["dalle/gpt_image"] = "available"
         if llm_client:
             ai_services["llm"] = "available"
@@ -771,11 +774,9 @@ async def metadata_service_status(
 
             # Test search capabilities
             try:
-                search_result = await asyncio.to_thread(
-                    cosmos_service.search_assets, "test", limit=1
-                )
+                await asyncio.to_thread(cosmos_service.search_assets, "test", limit=1)
                 search_available = True
-            except:
+            except Exception:
                 search_available = False
 
             status["metadata_service"] = {

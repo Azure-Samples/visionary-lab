@@ -104,14 +104,19 @@ function Carousel({
     }
   }, [api, onSelect])
 
+  const resolvedOrientation = (() => {
+    if (orientation) return orientation
+    if (opts?.axis === "y") return "vertical"
+    return "horizontal"
+  })()
+
   return (
     <CarouselContext.Provider
       value={{
         carouselRef,
         api: api,
         opts,
-        orientation:
-          orientation || (opts?.axis === "y" ? "vertical" : "horizontal"),
+        orientation: resolvedOrientation,
         scrollPrev,
         scrollNext,
         canScrollPrev,

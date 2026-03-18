@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Settings, Wand2, Loader2, ArrowUp, Images, FolderTree, Plus, Check, RefreshCw, Layers, FileType, PlusCircle, BarChart4, Eye, Maximize, AlertTriangle, SlidersHorizontal } from "lucide-react";
+import { X, Wand2, Loader2, ArrowUp, Images, FolderTree, Plus, Check, RefreshCw, PlusCircle, Eye, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
@@ -24,7 +24,6 @@ import { toast } from "sonner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Input } from "@/components/ui/input";
 import { useImageSettings } from "@/context/image-settings-context";
-import { useTheme } from "next-themes";
 import { useFolderContext } from "@/context/folder-context";
 
 interface ImageOverlayProps {
@@ -68,8 +67,6 @@ export function ImageOverlay({
   const imageSettings = useImageSettings();
   const [aiAnalysisEnabled, setAiAnalysisEnabled] = useState(true);
   const [variations, setVariations] = useState("1");
-  const [expanded, setExpanded] = useState(true);
-  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [isWizardEnhancing, setIsWizardEnhancing] = useState(false);
   const [folder, setFolder] = useState(selectedFolder || "root");
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -81,28 +78,25 @@ export function ImageOverlay({
   const [quality, setQuality] = useState("auto");
   const [inputFidelity, setInputFidelity] = useState("low");
   const [sourceImages, setSourceImages] = useState<File[]>([]);
-  const [isClient, setIsClient] = useState(false);
   
   // Reference to the textarea element
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Add theme context
-  const { theme, resolvedTheme } = useTheme();
-  const [isDarkTheme, setIsDarkTheme] = useState(false);
   const { refreshFolders } = useFolderContext();
-  
-  // Move theme detection to useEffect to prevent hydration mismatch
+
+  // Stable object URLs for source images — revoked on cleanup to prevent memory leaks
+  const imageUrls = useMemo(() => {
+    const urls = sourceImages.map(img => URL.createObjectURL(img));
+    return urls;
+  }, [sourceImages]);
+
   useEffect(() => {
-    // Only run on client-side
-    setIsClient(true);
-    setIsDarkTheme(
-      resolvedTheme === 'dark' || 
-      theme === 'dark' || 
-      (!theme && !resolvedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
-    );
-  }, [theme, resolvedTheme]);
+    return () => {
+      imageUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [imageUrls]);
 
   // Update folder when selectedFolder prop changes
   useEffect(() => {
@@ -136,45 +130,6 @@ export function ImageOverlay({
       setOutputFormat("png");
     }
   }, [background, outputFormat]);
-
-  // Helper function to get model display name for the trigger
-  const getModelDisplayName = (modelValue: string) => {
-    const modelNames: Record<string, string> = {
-      "gpt-image-1": "GPT-Image-1",
-      "gpt-image-1.5": "GPT-Image-1.5",
-      "gpt-image-1-mini": "GPT-Image-1 Mini"
-    };
-    return modelNames[modelValue] || modelValue;
-  };
-
-  // Get overlay background color based on theme
-  const getOverlayBgColor = () => {
-    return isDarkTheme 
-      ? 'backdrop-blur-md bg-black/70 border-white/10' 
-      : 'backdrop-blur-md bg-white/90 border-black/10 shadow-lg';
-  };
-  
-  // Get input and control background color based on theme
-  const getControlBgColor = () => {
-    return isDarkTheme
-      ? 'bg-black/30 border-0 text-white focus:ring-white/20'
-      : 'bg-white/50 border-gray-200 text-gray-900 focus:ring-gray-200';
-  };
-  
-  // Get text color based on theme
-  const getTextColor = () => {
-    return isDarkTheme ? 'text-white' : 'text-gray-900';
-  };
-  
-  // Get muted text color based on theme
-  const getMutedTextColor = () => {
-    return isDarkTheme ? 'text-white/70' : 'text-gray-500';
-  };
-
-  // Get hover background color based on theme
-  const getHoverBgColor = () => {
-    return isDarkTheme ? 'hover:bg-white/10' : 'hover:bg-gray-200/50';
-  };
 
   const handleSubmit = () => {
     if (prompt.trim() === "") {
@@ -383,34 +338,43 @@ export function ImageOverlay({
     }
   };
 
+  const getSubmitButtonLabel = (): string => {
+    if (isGenerating) {
+      return "Processing...";
+    }
+    if (sourceImages.length > 0) {
+      return "Edit Images";
+    }
+    return "Generate";
+  };
+
   return (
     <div className="sticky bottom-0 left-0 right-0 flex items-end justify-center p-6 z-20 pointer-events-none">
       <div className={cn(
-        "w-full transition-all duration-300 ease-in-out pointer-events-auto",
-        expanded ? "mb-6" : "mb-2"
+        "w-full transition-all duration-300 ease-in-out pointer-events-auto mb-6"
       )}
       style={{
-        maxWidth: isClient && sourceImages.length > 0 ? '58rem' : '56rem' // 4xl = 56rem, so adding just 2rem
+        maxWidth: sourceImages.length > 0 ? '58rem' : '56rem'
       }}>
         <div className={cn(
           "rounded-xl p-4 shadow-lg border",
-          getOverlayBgColor()
+          "backdrop-blur-md bg-white/90 dark:bg-black/70 border-black/10 dark:border-white/10 shadow-lg dark:shadow-none"
         )}>
           <div className="flex flex-col space-y-4">
             {/* Image thumbnails row */}
-            {isClient && sourceImages.length > 0 && (
+            {sourceImages.length > 0 && (
               <div className="flex flex-wrap gap-2 items-center">
                 {sourceImages.map((img, index) => (
                   <div key={index} className="relative">
                     <div className="relative h-12 w-12">
                       <Image 
-                        src={URL.createObjectURL(img)} 
+                        src={imageUrls[index]} 
                         alt={`Image ${index + 1}`}
                         fill
                         className={cn(
                           "rounded-md border object-cover transition-all duration-200",
                           index === 0 && sourceImages.length > 1 
-                            ? "border-sky-300 ring-2 ring-sky-300/50 shadow-lg shadow-sky-300/25 animate-pulse" 
+                            ? "border-sky-300 ring-2 ring-sky-300/50 shadow-lg shadow-sky-300/25 motion-safe:animate-pulse" 
                             : "border-gray-500/30"
                         )}
                         sizes="48px"
@@ -427,7 +391,7 @@ export function ImageOverlay({
                       onClick={() => handleRemoveImage(index)}
                       className={cn(
                         "absolute -top-2 -right-2 rounded-full p-0.5 hover:bg-black",
-                        isDarkTheme ? "bg-black/70 text-white" : "bg-white/90 text-gray-700"
+                        "bg-white/90 text-gray-700 dark:bg-black/70 dark:text-white"
                       )}
                       disabled={isGenerating}
                       aria-label="Remove image"
@@ -446,8 +410,8 @@ export function ImageOverlay({
                     onClick={handleClearAllImages}
                     className={cn(
                       "text-xs",
-                      getMutedTextColor(),
-                      getHoverBgColor()
+                      "text-gray-500 dark:text-white/70",
+                      "hover:bg-gray-200/50 dark:hover:bg-white/10"
                     )}
                     disabled={isGenerating}
                   >
@@ -458,8 +422,8 @@ export function ImageOverlay({
             )}
             
             {/* Warning for mini model with edit mode */}
-            {isClient && sourceImages.length > 0 && model === "gpt-image-1-mini" && (
-              <Alert variant="destructive" className="animate-in fade-in-0 slide-in-from-top-2 duration-300">
+            {sourceImages.length > 0 && model === "gpt-image-1-mini" && (
+              <Alert variant="destructive" className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-2 duration-300">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
                   GPT-Image-1 Mini does not support image editing. Please switch to GPT-Image-1 or GPT-Image-1.5, or remove source images to use text-to-image generation.
@@ -469,36 +433,8 @@ export function ImageOverlay({
             
             {/* Input row with buttons */}
             <div className="flex items-start gap-3">
-              <TooltipProvider>
-                <Tooltip delayDuration={300}>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setExpanded(!expanded)}
-                      aria-label="Toggle options"
-                      className={cn(
-                        "mt-1",
-                        getMutedTextColor(),
-                        getHoverBgColor()
-                      )}
-                      disabled={isGenerating}
-                    >
-                      {expanded ? (
-                        <X className="h-5 w-5" />
-                      ) : (
-                        <Settings className="h-5 w-5" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="font-medium">
-                    <p>{expanded ? "Hide settings" : "Show settings"}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              
-              <TooltipProvider>
-                <Tooltip delayDuration={300}>
+             <TooltipProvider>
+              <Tooltip delayDuration={300}>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
@@ -511,8 +447,8 @@ export function ImageOverlay({
                       aria-label="Upload images"
                       className={cn(
                         "mt-1",
-                        getMutedTextColor(),
-                        getHoverBgColor()
+                        "text-gray-500 dark:text-white/70",
+                        "hover:bg-gray-200/50 dark:hover:bg-white/10"
                       )}
                       disabled={isGenerating}
                     >
@@ -523,7 +459,6 @@ export function ImageOverlay({
                     <p>Upload images to edit (max 5)</p>
                   </TooltipContent>
                 </Tooltip>
-              </TooltipProvider>
               
               <input
                 type="file"
@@ -548,8 +483,8 @@ export function ImageOverlay({
                   placeholder={sourceImages.length > 0 ? "Describe how to edit these images..." : "Describe your image..."}
                   className={cn(
                     "border border-gray-500/30 min-h-[40px] max-h-[200px] resize-none px-3 py-2 overflow-y-auto",
-                    getControlBgColor(),
-                    getTextColor()
+                    "bg-white/50 border-gray-200 text-gray-900 focus:ring-gray-200",
+                    "dark:bg-black/30 dark:border-0 dark:text-white dark:focus:ring-white/20"
                   )}
                   disabled={isGenerating}
                   onKeyDown={(e) => {
@@ -573,8 +508,7 @@ export function ImageOverlay({
               </div>
               
               <div className="flex items-start gap-2 mt-1">
-                <TooltipProvider>
-                  <Tooltip delayDuration={300}>
+                <Tooltip delayDuration={300}>
                     <TooltipTrigger asChild>
                       <Button
                         variant="outline"
@@ -583,14 +517,13 @@ export function ImageOverlay({
                         aria-label="Enhance prompt"
                         className={cn(
                           "border-0 min-w-9 h-9",
-                          isDarkTheme 
-                            ? "bg-white/10 hover:bg-white/20 text-white" 
-                            : "bg-gray-100 hover:bg-gray-200 text-gray-900"
+                          "bg-gray-100 hover:bg-gray-200 text-gray-900",
+                          "dark:bg-white/10 dark:hover:bg-white/20 dark:text-white"
                         )}
                         disabled={isGenerating || isWizardEnhancing || !prompt.trim()}
                       >
                         {isWizardEnhancing ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
                         ) : (
                           <Wand2 className="h-4 w-4" />
                         )}
@@ -600,282 +533,145 @@ export function ImageOverlay({
                       <p>Enhance your prompt with AI</p>
                     </TooltipContent>
                   </Tooltip>
-                </TooltipProvider>
                 
                 <Button
                   variant="outline"
                   onClick={handleSubmit}
                   className={cn(
                     "border-0",
-                    isDarkTheme 
-                      ? "bg-white/10 hover:bg-white/20 text-white" 
-                      : "bg-gray-100 hover:bg-gray-200 text-gray-900"
+                    "bg-gray-100 hover:bg-gray-200 text-gray-900",
+                    "dark:bg-white/10 dark:hover:bg-white/20 dark:text-white"
                   )}
                   disabled={isGenerating || !prompt.trim() || (sourceImages.length > 0 && model === "gpt-image-1-mini")}
                 >
                   {isGenerating ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
                   ) : (
                     <ArrowUp className="h-4 w-4 mr-2" />
                   )}
-                  {isGenerating ? "Processing..." : sourceImages.length > 0 ? "Edit Images" : "Generate"}
+                  {getSubmitButtonLabel()}
                 </Button>
               </div>
+             </TooltipProvider>
             </div>
 
-            {expanded && (
-              <div className="flex flex-wrap items-center gap-3 pt-1">
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
                 <TooltipProvider>
-                  <div className="flex flex-wrap items-center gap-3 transition-all duration-200 ease-in-out opacity-100 translate-y-0 w-full">
-                    {/* Model Selection Dropdown */}
-                    <Tooltip delayDuration={300}>
-                      <TooltipTrigger asChild>
-                        <div className="relative">
-                          <Select
-                            value={model}
-                            onValueChange={setModel}
-                            disabled={isGenerating}
-                          >
-                            <SelectTrigger className="w-[180px] h-8">
-                              <div className="flex items-center">
-                                <Wand2 className="h-4 w-4 mr-2" />
-                                <span className="truncate">{getModelDisplayName(model)}</span>
-                              </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="gpt-image-1">
-                                <div className="flex flex-col items-start">
-                                  <span className="font-medium">GPT-Image-1</span>
-                                  <span className="text-xs text-muted-foreground">Standard quality</span>
-                                </div>
-                              </SelectItem>
-                              <SelectItem value="gpt-image-1.5">
-                                <div className="flex flex-col items-start">
-                                  <span className="font-medium">GPT-Image-1.5</span>
-                                  <span className="text-xs text-muted-foreground">Enhanced, 4x faster</span>
-                                </div>
-                              </SelectItem>
-                              <SelectItem value="gpt-image-1-mini">
-                                <div className="flex flex-col items-start">
-                                  <span className="font-medium">GPT-Image-1 Mini</span>
-                                  <span className="text-xs text-muted-foreground">Economical</span>
-                                </div>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="font-medium">
-                        <p>Select image generation model</p>
-                      </TooltipContent>
-                    </Tooltip>
-
-                    <Tooltip delayDuration={300}>
-                      <TooltipTrigger asChild>
-                        <div className="relative">
-                          <Select
-                            value={imageSize}
-                            onValueChange={setImageSize}
-                            disabled={isGenerating}
-                          >
-                            <SelectTrigger className="w-[145px] h-8">
-                              <div className="flex items-center">
-                                <Maximize className="h-4 w-4 mr-2" />
-                                <SelectValue placeholder="1024x1024" />
-                              </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="auto">Auto</SelectItem>
-                              <SelectItem value="1024x1024">1024x1024</SelectItem>
-                              <SelectItem value="1536x1024">1536x1024</SelectItem>
-                              <SelectItem value="1024x1536">1024x1536</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="font-medium">
-                        <p>Select output image dimensions</p>
-                      </TooltipContent>
-                    </Tooltip>
-
-                    {/* Background Option Dropdown */}
-                    <Tooltip delayDuration={300}>
-                      <TooltipTrigger asChild>
-                        <div className="relative">
-                          <Select
-                            value={background}
-                            onValueChange={setBackground}
-                            disabled={isGenerating}
-                          >
-                            <SelectTrigger className="w-[140px] h-8">
-                              <div className="flex items-center">
-                                <Layers className="h-4 w-4 mr-2" />
-                                <SelectValue placeholder="Background" />
-                              </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="auto">Auto</SelectItem>
-                              <SelectItem value="transparent">Transparent</SelectItem>
-                              <SelectItem value="opaque">Opaque</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="font-medium">
-                        <p>Choose background transparency type</p>
-                      </TooltipContent>
-                    </Tooltip>
-
-                    {/* Output Format Dropdown */}
-                    <Tooltip delayDuration={300}>
-                      <TooltipTrigger asChild>
-                        <div className="relative">
-                          <Select
-                            value={outputFormat}
-                            onValueChange={setOutputFormat}
-                            disabled={isGenerating}
-                          >
-                            <SelectTrigger className="w-[100px] h-8">
-                              <div className="flex items-center">
-                                <FileType className="h-4 w-4 mr-2" />
-                                <SelectValue placeholder="Format" />
-                              </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="png">PNG</SelectItem>
-                              <SelectItem value="jpeg" disabled={background === "transparent"}>
-                                JPEG {background === "transparent" && <span className="text-xs text-muted-foreground ml-1">(requires opaque bg)</span>}
-                              </SelectItem>
-                              <SelectItem value="webp">WebP</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="font-medium">
-                        <p>Select image file format</p>
-                      </TooltipContent>
-                    </Tooltip>
-
-                    {/* Quality Dropdown - New */}
-                    <Tooltip delayDuration={300}>
-                      <TooltipTrigger asChild>
-                        <div className="relative">
-                          <Select
-                            value={quality}
-                            onValueChange={setQuality}
-                            disabled={isGenerating}
-                          >
-                            <SelectTrigger className="w-[120px] h-8">
-                              <div className="flex items-center">
-                                <BarChart4 className="h-4 w-4 mr-2" />
-                                <SelectValue placeholder="Quality" />
-                              </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="auto">Auto</SelectItem>
-                              <SelectItem value="low">Low</SelectItem>
-                              <SelectItem value="medium">Medium</SelectItem>
-                              <SelectItem value="high">High</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="font-medium">
-                        <p>Select image quality</p>
-                      </TooltipContent>
-                    </Tooltip>
-
-                    {/* Input Fidelity Dropdown - Only show when editing images */}
-                    {isClient && sourceImages.length > 0 && (
-                      <Tooltip delayDuration={300}>
-                        <TooltipTrigger asChild>
-                          <div className="relative animate-in fade-in-0 slide-in-from-left-2 duration-300">
-                            <Select
-                              value={inputFidelity}
-                              onValueChange={setInputFidelity}
-                              disabled={isGenerating}
-                            >
-                              <SelectTrigger className="w-[100px] h-8">
-                                <div className="flex items-center">
-                                  <Layers className="h-4 w-4 mr-2" />
-                                  <SelectValue placeholder="Fidelity" />
-                                </div>
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="low">Low</SelectItem>
-                                <SelectItem value="high">High</SelectItem>
-                              </SelectContent>
-                            </Select>
+                  <div className="flex flex-wrap items-center gap-1.5 w-full">
+                    {/* Model */}
+                    <Select value={model} onValueChange={setModel} disabled={isGenerating}>
+                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                        <span>{
+                          { "gpt-image-1": "GPT-Image-1", "gpt-image-1.5": "GPT-Image-1.5", "gpt-image-1-mini": "GPT-Image-1 Mini" }[model] ?? model
+                        }</span>
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        <SelectItem value="gpt-image-1" className="py-2">
+                          <div className="flex flex-col">
+                            <span>GPT-Image-1</span>
+                            <span className="text-xs text-muted-foreground">Standard quality</span>
                           </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="font-medium">
-                          <p>Input fidelity for image editing - High provides better reproduction of the highlighted image with blue frame</p>
-                        </TooltipContent>
-                      </Tooltip>
+                        </SelectItem>
+                        <SelectItem value="gpt-image-1.5" className="py-2">
+                          <div className="flex flex-col">
+                            <span>GPT-Image-1.5</span>
+                            <span className="text-xs text-muted-foreground">Enhanced, 4x faster</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="gpt-image-1-mini" className="py-2">
+                          <div className="flex flex-col">
+                            <span>GPT-Image-1 Mini</span>
+                            <span className="text-xs text-muted-foreground">Economical</span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <span className="text-muted-foreground/40">·</span>
+
+                    {/* Size */}
+                    <Select value={imageSize} onValueChange={setImageSize} disabled={isGenerating}>
+                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        <SelectItem value="auto">Auto</SelectItem>
+                        <SelectItem value="1024x1024">1024 × 1024</SelectItem>
+                        <SelectItem value="1536x1024">1536 × 1024</SelectItem>
+                        <SelectItem value="1024x1536">1024 × 1536</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Background */}
+                    <Select value={background} onValueChange={setBackground} disabled={isGenerating}>
+                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        <SelectItem value="auto">Auto</SelectItem>
+                        <SelectItem value="transparent">Transparent</SelectItem>
+                        <SelectItem value="opaque">Opaque</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Format */}
+                    <Select value={outputFormat} onValueChange={setOutputFormat} disabled={isGenerating}>
+                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        <SelectItem value="png">PNG</SelectItem>
+                        <SelectItem value="jpeg" disabled={background === "transparent"}>JPEG</SelectItem>
+                        <SelectItem value="webp">WebP</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Quality */}
+                    <Select value={quality} onValueChange={setQuality} disabled={isGenerating}>
+                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        <SelectItem value="auto">Auto</SelectItem>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Fidelity — only when editing images */}
+                    {sourceImages.length > 0 && (
+                      <Select value={inputFidelity} onValueChange={setInputFidelity} disabled={isGenerating}>
+                        <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted motion-safe:animate-in motion-safe:fade-in-0 duration-200">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          <SelectItem value="low">Low fidelity</SelectItem>
+                          <SelectItem value="high">High fidelity</SelectItem>
+                        </SelectContent>
+                      </Select>
                     )}
 
-                    <Tooltip delayDuration={300}>
-                      <TooltipTrigger asChild>
-                        <div className="relative">
-                          <Select
-                            value={variations}
-                            onValueChange={setVariations}
-                            disabled={isGenerating}
-                          >
-                            <SelectTrigger className="w-[80px] h-8">
-                              <div className="flex items-center">
-                                <Images className="h-4 w-4 mr-2" />
-                                <SelectValue placeholder="1" />
-                              </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1</SelectItem>
-                              <SelectItem value="2">2</SelectItem>
-                              <SelectItem value="3">3</SelectItem>
-                              <SelectItem value="4">4</SelectItem>
-                              <SelectItem value="5">5</SelectItem>
-                              <SelectItem value="6">6</SelectItem>
-                              <SelectItem value="7">7</SelectItem>
-                              <SelectItem value="8">8</SelectItem>
-                              <SelectItem value="9">9</SelectItem>
-                              <SelectItem value="10">10</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="font-medium">
-                        <p>Number of image variations to generate</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    <span className="text-muted-foreground/40">·</span>
 
-                    {/* Advanced Settings Toggle Button */}
-                    <Tooltip delayDuration={300}>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-                          className={cn(
-                            "h-8 w-8 rounded-md",
-                            showAdvancedSettings && "bg-primary/10"
-                          )}
-                          disabled={isGenerating}
-                        >
-                          <SlidersHorizontal className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="font-medium">
-                        <p>Toggle advanced settings</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    {/* Variations */}
+                    <Select value={variations} onValueChange={setVariations} disabled={isGenerating}>
+                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                        <Images className="h-3 w-3 opacity-60" />
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        {Array.from({ length: 10 }, (_, i) => (
+                          <SelectItem key={i + 1} value={String(i + 1)}>{i + 1}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-                    {/* Advanced Settings - Folder & Analysis */}
-                    {showAdvancedSettings && (
-                      <>
-                        {/* Folder Select Dropdown */}
+                    {/* Folder & Analysis */}
+                         {/* Folder Select Dropdown */}
                         <Tooltip delayDuration={300}>
                           <TooltipTrigger asChild>
-                            <div className="relative animate-in fade-in-0 slide-in-from-left-2 duration-300">
+                            <div className="relative motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-2 duration-300">
                           <Select
                             value={folder}
                             onValueChange={setFolder}
@@ -914,7 +710,7 @@ export function ImageOverlay({
                                     disabled={!newFolderName.trim() || isCreatingFolderLoading}
                                   >
                                     {isCreatingFolderLoading ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                      <Loader2 className="h-3 w-3 motion-safe:animate-spin" />
                                     ) : (
                                       <Check className="h-3 w-3" />
                                     )}
@@ -931,7 +727,7 @@ export function ImageOverlay({
                                       onClick={handleRefreshFolders}
                                       disabled={isRefreshingFolders}
                                     >
-                                      <RefreshCw className={`h-3 w-3 ${isRefreshingFolders ? 'animate-spin' : ''}`} />
+                                      <RefreshCw className={`h-3 w-3 ${isRefreshingFolders ? 'motion-safe:animate-spin' : ''}`} />
                                     </Button>
                                     <Button
                                       size="icon"
@@ -984,29 +780,13 @@ export function ImageOverlay({
                             value="analyze" 
                             aria-label="Toggle analysis"
                             className={cn(
-                              "rounded-md",
-                              isDarkTheme ? "bg-black/30 border-0 text-white" : "bg-white/50 border-gray-200 text-gray-900"
+                              "rounded-md w-10 h-8 p-2 flex items-center justify-center transition-colors duration-200",
+                              aiAnalysisEnabled
+                                ? "bg-gray-300/50 border border-gray-300/50 text-gray-900 dark:bg-white/15 dark:border-white/30 dark:text-white"
+                                : "bg-white/50 border border-gray-200/50 text-gray-500 dark:bg-black/30 dark:border-white/10 dark:text-white/60"
                             )}
-                            style={{
-                              backgroundColor: aiAnalysisEnabled 
-                                ? (isDarkTheme ? "rgba(255, 255, 255, 0.15)" : "rgba(209, 213, 219, 0.5)") 
-                                : (isDarkTheme ? "rgba(0, 0, 0, 0.3)" : "rgba(255, 255, 255, 0.5)"),
-                              border: aiAnalysisEnabled 
-                                ? (isDarkTheme ? "1px solid rgba(255, 255, 255, 0.3)" : "1px solid rgba(209, 213, 219, 0.5)") 
-                                : (isDarkTheme ? "1px solid rgba(255, 255, 255, 0.1)" : "1px solid rgba(229, 231, 235, 0.5)"),
-                              color: aiAnalysisEnabled 
-                                ? (isDarkTheme ? "white" : "rgb(17, 24, 39)") 
-                                : (isDarkTheme ? "rgba(255, 255, 255, 0.6)" : "rgb(107, 114, 128)"),
-                              padding: "0.5rem",
-                              minWidth: "auto",
-                              width: "40px",
-                              height: "32px",
-                              display: "flex",
-                              justifyContent: "center",
-                              alignItems: "center"
-                            }}
                           >
-                            <Eye className={`h-4 w-4 ${aiAnalysisEnabled ? (isDarkTheme ? "text-white" : "text-gray-900") : ""}`} />
+                            <Eye className="h-4 w-4" />
                           </ToggleGroupItem>
                         </ToggleGroup>
                       </TooltipTrigger>
@@ -1014,12 +794,9 @@ export function ImageOverlay({
                         <p>Analyze images for automatic tagging and summary</p>
                       </TooltipContent>
                     </Tooltip>
-                      </>
-                    )}
                   </div>
                 </TooltipProvider>
               </div>
-            )}
           </div>
         </div>
       </div>

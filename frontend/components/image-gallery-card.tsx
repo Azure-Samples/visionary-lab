@@ -49,6 +49,26 @@ interface ImageGalleryCardProps {
   onMove?: (imageId: string) => void;
 }
 
+function determineCardSize(
+  width?: number,
+  height?: number,
+  index?: number
+): "small" | "medium" | "large" {
+  if (width && height) {
+    const ratio = width / height;
+    if (ratio > 1.3) return "large";
+    if (ratio < 0.8) return "small";
+    return "medium";
+  }
+
+  if (index !== undefined) {
+    if (index % 5 === 0) return "large";
+    if (index % 3 === 0) return "small";
+  }
+
+  return "medium";
+}
+
 export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: ImageGalleryCardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -61,30 +81,18 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
   const [folders, setFolders] = useState<string[]>([]);
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [parsedTags, setParsedTags] = useState<string[]>([]);
+  const hasTransparency = image.originalItem?.metadata?.has_transparency === "true";
 
-  // Determine image size based on aspect ratio and index
-  const determineSize = (width?: number, height?: number, index?: number) => {
-    // If we have dimensions, use them to calculate aspect ratio
-    if (width && height) {
-      const ratio = width / height;
-      
-      // Landscape images (wider than they are tall)
-      if (ratio > 1.3) return "large";
-      
-      // Portrait images (taller than they are wide)
-      if (ratio < 0.8) return "small";
-      
-      // Square-ish images
-      return "medium";
+  const getImageClassName = (): string => {
+    const classes = ["object-cover", "transition-all", "duration-200"];
+    classes.push(loading ? "opacity-0" : "opacity-100");
+    if (error) {
+      classes.push("hidden");
     }
-    
-    // Fallback: Use index to create visual variety
-    if (index !== undefined) {
-      if (index % 5 === 0) return "large"; // Every 5th image is large
-      if (index % 3 === 0) return "small"; // Every 3rd image is small
+    if (hasTransparency) {
+      classes.push("z-10");
     }
-    
-    return "medium";
+    return classes.join(" ");
   };
 
   // Get aspect ratio based on size
@@ -106,7 +114,7 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
 
   // Set initial size based on metadata or index
   useEffect(() => {
-    const initialSize = determineSize(image.width, image.height, index);
+    const initialSize = determineCardSize(image.width, image.height, index);
     setCardSize(initialSize);
     
     // If we have dimensions from metadata, set aspect ratio right away
@@ -139,7 +147,7 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
         setAspectRatio(ratio);
         
         // Update size based on actual dimensions
-        const newSize = determineSize(naturalWidth, naturalHeight);
+        const newSize = determineCardSize(naturalWidth, naturalHeight);
         setCardSize(newSize);
       }
     }
@@ -329,7 +337,7 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
             )}
             
             {/* Checkerboard background for transparent images */}
-            {image.originalItem?.metadata?.has_transparency === "true" && (
+            {hasTransparency && (
               <div 
                 className="absolute inset-0" 
                 style={{ 
@@ -347,7 +355,7 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
               alt={image.title || image.name}
               fill
               loadingType="gallery"
-              className={`object-cover transition-all duration-200 ${loading ? 'opacity-0' : 'opacity-100'} ${error ? 'hidden' : ''} ${image.originalItem?.metadata?.has_transparency === "true" ? 'z-10' : ''}`}
+              className={getImageClassName()}
               onLoad={handleImageLoad}
               onError={handleImageError}
               priority={index < 8}

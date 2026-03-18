@@ -18,7 +18,7 @@ export function VideoGenerationProgress({
   const { status, progress, prompt } = queueItem;
   
   // Get appropriate status icon
-  const StatusIcon = () => {
+  function StatusIcon() {
     switch (status) {
       case 'pending':
         return <Clock className="h-5 w-5 text-yellow-500" />;
@@ -31,10 +31,10 @@ export function VideoGenerationProgress({
       default:
         return null;
     }
-  };
+  }
 
   // Get status message
-  const getStatusMessage = () => {
+  function getStatusMessage(): string {
     switch (status) {
       case 'pending':
         return 'Waiting in queue...';
@@ -47,10 +47,14 @@ export function VideoGenerationProgress({
       default:
         return '';
     }
-  };
+  }
 
   // Status-specific styles and text
-  const getStatusDetails = () => {
+  function getStatusDetails(): {
+    label: string;
+    description: string;
+    color: string;
+  } {
     switch (status) {
       case 'pending':
         return {
@@ -83,9 +87,11 @@ export function VideoGenerationProgress({
           color: 'bg-muted',
         };
     }
-  };
+  }
 
   const statusDetails = getStatusDetails();
+  const progressValue =
+    status === 'completed' || status === 'failed' ? 100 : progress;
 
   return (
     <div className="border rounded-lg p-4 mb-4 bg-card">
@@ -101,7 +107,7 @@ export function VideoGenerationProgress({
           
           {/* Progress bar */}
           <Progress 
-            value={status === 'completed' ? 100 : status === 'failed' ? 100 : progress} 
+            value={progressValue}
             className={status === 'failed' ? 'bg-destructive/30' : ''}
             indicatorClassName={statusDetails.color}
           />

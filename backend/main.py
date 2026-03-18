@@ -2,13 +2,13 @@
 from .core.logging_config import setup_logging
 setup_logging()
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-import os
-import uvicorn
-from .core.config import settings
-from .api.endpoints import images, metadata_router, videos, gallery, env
+from fastapi import FastAPI  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+import os  # noqa: E402
+import uvicorn  # noqa: E402
+from .core.config import settings  # noqa: E402
+from .api.endpoints import images, metadata_router, videos, gallery, env  # noqa: E402
 
 # Create directories if they don't exist
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -32,21 +32,11 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include routers
-app.include_router(
-    images.router, prefix=f"{settings.API_V1_STR}/images", tags=["images"]
-)
-app.include_router(
-    videos.router, prefix=f"{settings.API_V1_STR}/videos", tags=["videos"]
-)
-app.include_router(
-    gallery.router, prefix=f"{settings.API_V1_STR}/gallery", tags=["gallery"]
-)
-app.include_router(
-    metadata_router.router, prefix=f"{settings.API_V1_STR}/metadata", tags=["metadata"]
-)
+app.include_router(images.router, prefix=f"{settings.API_V1_STR}/images", tags=["images"])
+app.include_router(videos.router, prefix=f"{settings.API_V1_STR}/videos", tags=["videos"])
+app.include_router(gallery.router, prefix=f"{settings.API_V1_STR}/gallery", tags=["gallery"])
+app.include_router(metadata_router.router, prefix=f"{settings.API_V1_STR}/metadata", tags=["metadata"])
 app.include_router(env.router, prefix=f"{settings.API_V1_STR}", tags=["env"])
-# app.include_router(organizer.router, prefix=f"{settings.API_V1_STR}/organizer", tags=["organizer"])
-# app.include_router(sora.router, prefix=f"{settings.API_V1_STR}/sora", tags=["sora"])
 
 
 @app.get("/")
@@ -59,6 +49,5 @@ def health_check():
     return {"status": "ok"}
 
 
-# This allows the file to be run directly with `python backend/main.py`
 if __name__ == "__main__":
     uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
