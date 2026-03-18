@@ -195,7 +195,7 @@ module imageGen1MiniDeployment './modules/aiFoundryModelDeployment.bicep' = if (
   ]
 }
 
-module soraDeployment './modules/aiFoundryModelDeployment.bicep' = {
+module soraDeployment './modules/aiFoundryModelDeployment.bicep' = if (SORA_DEPLOYMENT != '') {
   name: 'soraDeployment'
   params: {
     aiFoundryName: aiFoundryName
