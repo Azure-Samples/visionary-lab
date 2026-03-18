@@ -19,7 +19,7 @@ export async function editImage(formData: FormData): Promise<ImageGenerationResp
 
   const n = Number(formData.get('n') ?? '1');
   const size = String(formData.get('size') ?? 'auto');
-  const model = String(formData.get('model') ?? 'gpt-image-1');
+  const model = String(formData.get('model') ?? 'gpt-image-1.5');
   const quality = String(formData.get('quality') ?? 'auto');
   const inputFidelity = String(formData.get('input_fidelity') ?? 'low');
 
@@ -99,7 +99,7 @@ export async function saveGeneratedImage(
       options.save_all || false,
       options.folder_path || '',
       options.output_format || 'png',
-      options.model || 'gpt-image-1',
+      options.model || 'gpt-image-1.5',
       options.background || 'auto',
       options.size || '1024x1024',
       options.analyze ?? true // default to true to match older behavior

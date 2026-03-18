@@ -26,7 +26,7 @@ export function ImageUploader({ onImageSelected, disabled = false }: ImageUpload
         return;
       }
       
-      // Check file size (25MB max for gpt-image-1)
+      // Check file size (25MB max for gpt-image-1.5)
       if (file.size > 25 * 1024 * 1024) {
         toast.error("File too large", {
           description: "Image must be less than 25MB"

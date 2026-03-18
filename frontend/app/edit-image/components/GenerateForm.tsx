@@ -27,7 +27,7 @@ export default function GenerateForm({
 }: GenerateFormProps) {
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [model] = useState('gpt-image-1');
+  const [model] = useState('gpt-image-1.5');
   const [quality, setQuality] = useState('auto');
   const [size, setSize] = useState('auto');
   const [outputFormat, setOutputFormat] = useState('png');

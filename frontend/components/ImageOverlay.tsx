@@ -60,7 +60,7 @@ export function ImageOverlay({
   onFolderCreated
 }: ImageOverlayProps) {
   const [prompt, setPrompt] = useState("");
-  const [model, setModel] = useState("gpt-image-1");
+  const [model, setModel] = useState("gpt-image-1.5");
   const [imageSize, setImageSize] = useState("1024x1024");
   const [saveImages] = useState(true);
   const [mode] = useState("prod");
@@ -562,16 +562,10 @@ export function ImageOverlay({
                     <Select value={model} onValueChange={setModel} disabled={isGenerating}>
                       <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <span>{
-                          { "gpt-image-1": "GPT-Image-1", "gpt-image-1.5": "GPT-Image-1.5", "gpt-image-1-mini": "GPT-Image-1 Mini" }[model] ?? model
+                          { "gpt-image-1.5": "GPT-Image-1.5", "gpt-image-1-mini": "GPT-Image-1 Mini", "flux-kontext-pro": "FLUX Kontext Pro" }[model] ?? model
                         }</span>
                       </SelectTrigger>
                       <SelectContent align="start">
-                        <SelectItem value="gpt-image-1" className="py-2">
-                          <div className="flex flex-col">
-                            <span>GPT-Image-1</span>
-                            <span className="text-xs text-muted-foreground">Standard quality</span>
-                          </div>
-                        </SelectItem>
                         <SelectItem value="gpt-image-1.5" className="py-2">
                           <div className="flex flex-col">
                             <span>GPT-Image-1.5</span>
@@ -582,6 +576,12 @@ export function ImageOverlay({
                           <div className="flex flex-col">
                             <span>GPT-Image-1 Mini</span>
                             <span className="text-xs text-muted-foreground">Economical</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="flux-kontext-pro" className="py-2">
+                          <div className="flex flex-col">
+                            <span>FLUX Kontext Pro</span>
+                            <span className="text-xs text-muted-foreground">FLUX.1-Kontext-pro</span>
                           </div>
                         </SelectItem>
                       </SelectContent>
