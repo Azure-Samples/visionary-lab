@@ -34,22 +34,27 @@ param aiFoundryLocation string = 'swedencentral'
 // Model deployment names
 @description('Name of the LLM deployment')
 param LLM_DEPLOYMENT string = 'gpt-4o'
-@description('Name of the image generation deployment (gpt-image-1)')
-param IMAGEGEN_DEPLOYMENT string = 'gpt-image-1'
+@description('Name of the image generation deployment')
+param IMAGEGEN_DEPLOYMENT string = ''
 @description('Name of the gpt-image-1.5 deployment')
 param IMAGEGEN_15_DEPLOYMENT string = ''
 @description('Name of the gpt-image-1-mini deployment')
 param IMAGEGEN_1_MINI_DEPLOYMENT string = ''
 @description('Name of the Sora deployment')
-param SORA_DEPLOYMENT string = 'sora'
+param SORA_DEPLOYMENT string = ''
 
-// Model types and versions
+// Model types and versions (for Bicep-managed deployments)
 param llmModelType string = 'gpt-4o'
 param llmModelVersion string = '2024-11-20'
+// Image/video models may be deployed via CLI when Bicep doesn't support the format
+@description('Set to true to deploy image gen models via Bicep (requires OpenAI-format models)')
+param deployImageGenModels bool = false
 param imageGenModelType string = 'gpt-image-1'
 param imageGenModelVersion string = '2024-04-01'
 param imageGen15ModelVersion string = '2024-04-01'
 param imageGen1MiniModelVersion string = '2024-04-01'
+@description('Set to true to deploy Sora via Bicep')
+param deploySoraModel bool = false
 param soraModelVersion string = '2025-05-02'
 
 // Docker images for the backend and frontend container apps
@@ -153,7 +158,7 @@ module llmDeployment './modules/aiFoundryModelDeployment.bicep' = {
   ]
 }
 
-module imageGenDeployment './modules/aiFoundryModelDeployment.bicep' = if (IMAGEGEN_DEPLOYMENT != '') {
+module imageGenDeployment './modules/aiFoundryModelDeployment.bicep' = if (deployImageGenModels && IMAGEGEN_DEPLOYMENT != '') {
   name: 'imageGenDeployment'
   params: {
     aiFoundryName: aiFoundryName
@@ -167,7 +172,7 @@ module imageGenDeployment './modules/aiFoundryModelDeployment.bicep' = if (IMAGE
   ]
 }
 
-module imageGen15Deployment './modules/aiFoundryModelDeployment.bicep' = if (IMAGEGEN_15_DEPLOYMENT != '') {
+module imageGen15Deployment './modules/aiFoundryModelDeployment.bicep' = if (deployImageGenModels && IMAGEGEN_15_DEPLOYMENT != '') {
   name: 'imageGen15Deployment'
   params: {
     aiFoundryName: aiFoundryName
@@ -181,7 +186,7 @@ module imageGen15Deployment './modules/aiFoundryModelDeployment.bicep' = if (IMA
   ]
 }
 
-module imageGen1MiniDeployment './modules/aiFoundryModelDeployment.bicep' = if (IMAGEGEN_1_MINI_DEPLOYMENT != '') {
+module imageGen1MiniDeployment './modules/aiFoundryModelDeployment.bicep' = if (deployImageGenModels && IMAGEGEN_1_MINI_DEPLOYMENT != '') {
   name: 'imageGen1MiniDeployment'
   params: {
     aiFoundryName: aiFoundryName
@@ -195,7 +200,7 @@ module imageGen1MiniDeployment './modules/aiFoundryModelDeployment.bicep' = if (
   ]
 }
 
-module soraDeployment './modules/aiFoundryModelDeployment.bicep' = if (SORA_DEPLOYMENT != '') {
+module soraDeployment './modules/aiFoundryModelDeployment.bicep' = if (deploySoraModel && SORA_DEPLOYMENT != '') {
   name: 'soraDeployment'
   params: {
     aiFoundryName: aiFoundryName
