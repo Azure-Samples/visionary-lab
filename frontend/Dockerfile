@@ -1,13 +1,13 @@
 # Production Docker image for Next.js application
-# Use Node.js 19 as the base image
-FROM node:19-alpine AS base
+# Use an active Node.js LTS runtime supported by Next.js 15.
+FROM node:22-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
 WORKDIR /app
 
 # Add package manager to the path
-ENV PATH /app/node_modules/.bin:$PATH
+ENV PATH=/app/node_modules/.bin:$PATH
 
 # Install dependencies needed for node-gyp
 RUN apk add --no-cache libc6-compat
@@ -15,8 +15,9 @@ RUN apk add --no-cache libc6-compat
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install dependencies with strict CI mode
-RUN npm ci
+# Install dependencies with strict CI mode through the approved package mirror.
+ARG NPM_CONFIG_REGISTRY=https://packagefeedproxy.microsoft.io/npm/
+RUN npm ci --registry=${NPM_CONFIG_REGISTRY}
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -25,7 +26,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Set environment variables for telemetry
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Set placeholder values for environment variables that will be replaced at runtime
 ENV NEXT_PUBLIC_API_PROTOCOL=__NEXT_PUBLIC_API_PROTOCOL__
@@ -40,8 +41,8 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs

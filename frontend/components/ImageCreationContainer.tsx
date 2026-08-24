@@ -1,21 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { ImageOverlay } from "./ImageOverlay";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ImageOverlay } from "./ImageOverlay";
+import { useImageJobs } from "@/context/image-jobs-context";
 import { cn } from "@/utils/utils";
-import { 
-  generateImages, 
-  saveGeneratedImages, 
-  analyzeImageFromBase64, 
-  fetchFolders, 
+import {
   editImage,
+  fetchFolders,
+  PipelineAction,
   protectImagePrompt,
-  generateImagesWithAnalysis,
+  saveGeneratedImages,
+  type ImagePipelineRequest,
 } from "@/services/api";
 
 interface ImageCreationContainerProps {
   className?: string;
+  initialFolder?: string;
   onImagesSaved?: (count?: number) => void;
 }
 
@@ -23,104 +24,44 @@ interface ImageGenerationSettings {
   prompt: string;
   model: string;
   imageSize: string;
-  saveImages: boolean;
-  mode: string;
   brandsProtection: string;
-  brandProtectionModel: string;
   variations: number;
   folder: string;
   background: string;
   outputFormat: string;
   quality: string;
   inputFidelity: string;
+  analyze: boolean;
   sourceImages?: File[];
   brandsList?: string[];
-}
-
-interface ImageData {
-  b64_json?: string;
-  url?: string;
-}
-
-interface AnalysisResult {
-  description: string;
-  products: string;
-  tags: string[];
-  feedback: string;
-}
-
-interface ImageAnalysis {
-  index: number;
-  analysis?: AnalysisResult;
-  error?: string;
-}
-
-interface BrandProtection {
-  originalPrompt: string;
-  protectedPrompt: string;
-  mode: string;
-  brands: string[];
-}
-
-interface GenerationResponse {
-  imgen_model_response?: {
-    data: ImageData[];
-    [key: string]: unknown;
-  };
-  brandProtection?: BrandProtection;
-  metadata?: Record<string, string>;
-  analysisResults?: ImageAnalysis[];
-  [key: string]: unknown;
-}
-
-interface SavedImage {
-  url: string;
-  blob_name: string;
-  metadata: Record<string, string>;
-}
-
-// Used in type definitions
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-interface SaveResponse {
-  total_saved: number;
-  saved_images: SavedImage[];
 }
 
 function formatImageCount(count: number): string {
   return `${count} image${count === 1 ? "" : "s"}`;
 }
 
-function formatBrandProtectionNote(isApplied: boolean): string {
-  return isApplied ? " (brand protection applied)" : "";
+function createIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `image-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function ImageCreationContainer({ className = "", onImagesSaved }: ImageCreationContainerProps) {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [originalPrompt, setOriginalPrompt] = useState<string | null>(null);
-  // This state is updated but not directly used in JSX - it's used in handleSaveImages
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [generationResponseData, setGenerationResponseData] = useState<GenerationResponse | null>(null);
+export function ImageCreationContainer({
+  className = "",
+  initialFolder = "root",
+  onImagesSaved,
+}: ImageCreationContainerProps) {
+  const { submitJob } = useImageJobs();
+  const [isEditing, setIsEditing] = useState(false);
   const [folders, setFolders] = useState<string[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<string>("root");
-  const [settings, setSettings] = useState<ImageGenerationSettings>({
-    prompt: "",
-    imageSize: "1024x1024",
-    saveImages: true,
-    mode: "prod",
-    brandsProtection: "off",
-    brandProtectionModel: "GPT-4o",
-    variations: 1,
-    folder: "root",
-    background: "auto",
-    outputFormat: "png",
-    quality: "auto",
-    sourceImages: [] as File[],
-    brandsList: [] as string[],
-  });
+  const [selectedFolder, setSelectedFolder] = useState(initialFolder || "root");
+  const editInFlightRef = useRef(false);
 
-  // Fetch available folders when component mounts
+  useEffect(() => {
+    setSelectedFolder(initialFolder || "root");
+  }, [initialFolder]);
+
   useEffect(() => {
     const loadFolders = async () => {
       try {
@@ -130,344 +71,200 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         console.error("Error loading folders:", error);
       }
     };
-    
-    loadFolders();
+    void loadFolders();
   }, []);
 
-  const handleGenerate = async (newSettings: ImageGenerationSettings) => {
-    try {
-      setIsGenerating(true);
-      setSettings({ 
-        ...newSettings, 
-        sourceImages: newSettings.sourceImages || [],
-        brandsList: newSettings.brandsList || []
-      });
-      setSelectedFolder(newSettings.folder);
-      const normalizedFolder = newSettings.folder === 'root' ? '' : newSettings.folder;
-      
-      // Store the original prompt
-      const originalPrompt = newSettings.prompt;
-      
-      // Apply brand protection if enabled
-      let generationPrompt = originalPrompt;
-      let brandProtectionApplied = false;
-      if (newSettings.brandsProtection !== "off" && newSettings.brandsList && newSettings.brandsList.length > 0) {
-        try {
-          // Call the brand protection API
-          generationPrompt = await protectImagePrompt(
-            originalPrompt,
-            newSettings.brandsList,
-            newSettings.brandsProtection
-          );
-          
-          // Log the difference if in debug mode
-          if (generationPrompt !== originalPrompt) {
-            
-            brandProtectionApplied = true;
-          }
-        } catch (error) {
-          console.error('Error applying brand protection:', error);
-          toast.error("Brand protection failed", {
-            description: "Using original prompt instead"
-          });
-          // Fallback to original prompt on error
-          generationPrompt = originalPrompt;
-        }
-      }
-      
-      let successfulAnalysis: ImageAnalysis[] | undefined = undefined; // Declare outside the if block
-      let response: GenerationResponse;
-      
-      // If source images are provided, use the edit endpoint
-      if (newSettings.sourceImages && newSettings.sourceImages.length > 0) {
-        // Show single consolidated toast for image editing
-        const editingToast = toast.loading("Editing images...", {
-          description: `Processing ${formatImageCount(newSettings.sourceImages.length)} with your prompt${formatBrandProtectionNote(brandProtectionApplied)}`,
-        });
-        
-        // Call the image edit API with the protected prompt
-        response = await editImage(
-          newSettings.sourceImages,
-          generationPrompt, // Use protected prompt for generation
-          newSettings.variations, // Number of variations from dropdown
-          newSettings.imageSize, // Use selected size
-          newSettings.quality, // Quality parameter
-          newSettings.inputFidelity, // Input fidelity parameter
-          newSettings.model // Model parameter
-        );
-        
-        // Update the loading toast to success
-        toast.success("Image editing completed", {
-          id: editingToast,
-          description: `Successfully edited ${formatImageCount(newSettings.variations)}`
-        });
-      } else {
-        // If we are saving to gallery, use unified endpoint; otherwise generate preview only
-        if (newSettings.saveImages) {
-          const savingToast = toast.loading("Generating and saving images...", {
-            description: `Creating ${formatImageCount(newSettings.variations)}${formatBrandProtectionNote(brandProtectionApplied)}`,
-          });
-          
-          // Call unified endpoint to generate + analyze + save
-          const saveResp = await generateImagesWithAnalysis({
-            prompt: generationPrompt,
-            n: newSettings.variations,
-            size: newSettings.imageSize,
-            quality: newSettings.quality,
-            output_format: newSettings.outputFormat,
-            background: newSettings.background,
-            folder_path: normalizedFolder,
-            model: newSettings.model,
-            analyze: true,
-            save_all: true,
-          });
-
-          toast.success(`${saveResp.total_saved} images saved${saveResp.analyzed ? ' with AI analysis' : ''}`, {
-            id: savingToast,
-            description: newSettings.folder && newSettings.folder !== 'root' ? `Saved to folder: ${newSettings.folder}` : 'Saved to root folder',
-          });
-
-          // Trigger gallery refresh callback
-          if (onImagesSaved) {
-            onImagesSaved(saveResp.total_saved);
-          }
-
-          // Short-circuit further processing for unified path
-          setIsGenerating(false);
-          return;
-        } else {
-          // Generate preview only
-          const generatingToast = toast.loading("Generating images...", {
-            description: `Creating ${formatImageCount(newSettings.variations)} with your prompt${formatBrandProtectionNote(brandProtectionApplied)}`,
-          });
-          response = await generateImages(
-            generationPrompt,
-            newSettings.variations,
-            newSettings.imageSize,
-            "b64_json",
-            newSettings.background,
-            newSettings.outputFormat,
-            newSettings.quality,
-            newSettings.model
-          );
-          toast.success("Image generation completed", {
-            id: generatingToast,
-            description: `Successfully generated ${formatImageCount(newSettings.variations)}`
-          });
-        }
-      }
-      
-      // Store the brand protection info in the response for later use when saving
-      response.brandProtection = {
-        originalPrompt,
-        protectedPrompt: generationPrompt,
-        mode: newSettings.brandsProtection,
-        brands: newSettings.brandsList
-      };
-      
-      setGenerationResponseData(response);
-
-      if (newSettings.sourceImages && newSettings.sourceImages.length > 0 && newSettings.saveImages) {
-        await handleSaveImages(
-          response,
-          originalPrompt,
-          true,
-          normalizedFolder,
-          newSettings.outputFormat,
-          newSettings.background,
-          newSettings.imageSize,
-          newSettings.model
-        );
-      }
-      
-      // If we generated preview only (not using unified), we can analyze before saving
-      if (!newSettings.saveImages && newSettings.brandProtectionModel === "GPT-4o") {
-        // Check if we have base64 image data available (from generation)
-        const hasBase64Images = response?.imgen_model_response?.data?.some(
-          (item: ImageData) => item.b64_json
-        );
-        
-        if (hasBase64Images) {
-          // Process each image and collect analysis results (silently)
-          const analysisPromises = response.imgen_model_response.data.map(
-            async (imageData: ImageData, idx: number) => {
-              if (imageData.b64_json) {
-                try {
-                  const result = await analyzeImageFromBase64(imageData.b64_json);
-                  return {
-                    index: idx,
-                    analysis: result
-                  };
-                } catch (error) {
-                  console.error(`Failed to analyze image ${idx+1}:`, error);
-                  return {
-                    index: idx,
-                    error: error instanceof Error ? error.message : String(error)
-                  };
-                }
-              }
-              return null;
-            }
-          );
-          
-          const analysisResults = await Promise.all(analysisPromises);
-          successfulAnalysis = analysisResults.filter(r => r && r.analysis); // Assign here
-          
-          // Store analysis results to use when saving (no toast needed)
-          if (successfulAnalysis.length > 0) {
-            setGenerationResponseData((prev: GenerationResponse | null) => ({
-              ...(prev || {}),
-              analysisResults: successfulAnalysis
-            }));
-          }
-        }
-      }
-      
-      // If we used unified endpoint we already saved; otherwise optional save flow remains available elsewhere
-      
-    } catch (error) {
-      console.error('Error in image operation:', error);
-      const hasSourceImages = newSettings.sourceImages && newSettings.sourceImages.length > 0;
-      toast.error(hasSourceImages ? "Image editing failed" : "Image generation failed", {
-        description: error instanceof Error ? error.message : "Unknown error occurred"
-      });
-    } finally {
-      setIsGenerating(false);
+  const protectPrompt = async (settings: ImageGenerationSettings): Promise<{
+    prompt: string;
+    applied: boolean;
+  }> => {
+    const brands = settings.brandsList ?? [];
+    if (settings.brandsProtection === "off" || brands.length === 0) {
+      return { prompt: settings.prompt, applied: false };
     }
-  };
-  
-  const handleSaveImages = async (
-    generationResponse: GenerationResponse, 
-    prompt: string, 
-    _shouldAnalyze: boolean = false, 
-    folder: string = "",
-    outputFormat: string = "png",
-    background: string = "auto",
-    imageSize: string,
-    model: string = "gpt-image-1.5",
-    preAnalysisResults?: ImageAnalysis[] 
-  ) => {
+
     try {
-      setIsUploading(true);
-      
-      // Show consolidated saving toast
-      const savingToast = toast.loading("Saving images...", {
-        description: `Uploading to ${folder || 'root folder'}${preAnalysisResults && preAnalysisResults.length > 0 ? ' with AI analysis' : ''}...`
-      });
-      
-      // Add brand protection metadata if available
-      const hasBrandProtection = generationResponse?.brandProtection && 
-                                generationResponse.brandProtection.mode !== "off" &&
-                                generationResponse.brandProtection.brands && 
-                                generationResponse.brandProtection.brands.length > 0;
-      
-      // Create a copy of generationResponse with additional metadata
-      const enhancedResponse = { ...generationResponse };
-      
-      // Add brand protection metadata to the response before saving
-      if (hasBrandProtection) {
-        try {
-          enhancedResponse.metadata = {
-            ...(enhancedResponse.metadata || {}),
-            brand_protection_mode: generationResponse.brandProtection!.mode,
-            protected_brands: generationResponse.brandProtection!.brands.join(', '),
-            protected_prompt: generationResponse.brandProtection!.protectedPrompt
-          };
-        } catch (error) {
-          console.error("Error adding brand protection metadata:", error);
-        }
-      }
-      
-      // Determine if we should analyze images (for now, let's make it configurable)
-      const shouldAnalyze = _shouldAnalyze; // Use the parameter passed to the function
-      
-      // Call the save images API with analysis if needed
-      const saveResponse = await saveGeneratedImages(
-        enhancedResponse, // Use enhanced response with metadata
-        generationResponse?.brandProtection?.originalPrompt || prompt, // Use original prompt (not protected) for saving metadata
-        true, // Save all generated images
-        folder, // Folder path
-        outputFormat, // Output format
-        model, // Model from parameter
-        background, // Background setting
-        imageSize, // Pass imageSize here
-        shouldAnalyze // Analyze images in the backend if we have pre-analysis results
+      const prompt = await protectImagePrompt(
+        settings.prompt,
+        brands,
+        settings.brandsProtection,
       );
-      
-      // Update the loading toast to success with analysis info
-      const analysisInfo = saveResponse.analyzed && saveResponse.analysis_results 
-        ? ` and analyzed ${saveResponse.analysis_results.filter(r => r.success).length} images`
-        : '';
-      
-      toast.success(`${saveResponse.total_saved} images saved${analysisInfo}`, {
-        id: savingToast,
-        description: folder 
-          ? `Successfully saved to folder: ${folder}` 
-          : "Successfully saved to root folder"
-      });
-      
-      // Analysis is now handled in the backend - no more roundtrips needed!
-      // The analysis results are already stored in Cosmos DB
-      
-      // Call the callback to refresh the gallery
-      if (onImagesSaved) {
-        onImagesSaved(saveResponse.total_saved);
-      }
-      
+      return { prompt, applied: prompt !== settings.prompt };
     } catch (error) {
-      console.error('Error saving images:', error);
-      toast.error("Failed to save images", {
-        description: error instanceof Error ? error.message : "Unknown error occurred"
+      console.error("Error applying brand protection:", error);
+      toast.warning("Brand protection could not be applied", {
+        description: "The original prompt will be used.",
       });
-    } finally {
-      setIsUploading(false);
-      setIsAnalyzing(false);
+      return { prompt: settings.prompt, applied: false };
     }
   };
 
-  const handlePromptChange = (newPrompt: string, isEnhanced: boolean) => {
-    // Store the original prompt if this is an enhanced version
-    if (isEnhanced && !originalPrompt) {
-      setOriginalPrompt(settings.prompt);
-    }
-    
-    setSettings(prev => ({
-      ...prev,
-      prompt: newPrompt
-    }));
-  };
-
-  // Handle folder creation or updates from the ImageOverlay component
-  const handleFolderCreated = (newFolder: string | string[]) => {
-    // Update folders list with deduplication
-    setFolders(prevFolders => {
-      // Handle both single folder and array of folders
-      const foldersToAdd = Array.isArray(newFolder) ? newFolder : [newFolder];
-      
-      // Create a new set with all folders (automatically deduplicates)
-      const uniqueFolders = new Set([...prevFolders, ...foldersToAdd]);
-      
-      // Convert back to array and sort alphabetically
-      return Array.from(uniqueFolders).sort((a, b) => a.localeCompare(b));
+  const runExistingEditFlow = async (
+    settings: ImageGenerationSettings,
+    generationPrompt: string,
+    brandProtectionApplied: boolean,
+  ) => {
+    const sourceImages = settings.sourceImages ?? [];
+    const normalizedFolder = settings.folder === "root" ? "" : settings.folder;
+    const toastId = toast.loading("Editing images…", {
+      description: `Processing ${formatImageCount(sourceImages.length)}`,
     });
-    
-    // Update selected folder (only if a single folder was added)
-    if (!Array.isArray(newFolder)) {
-      setSelectedFolder(newFolder);
+
+    try {
+      const response = await editImage(
+        sourceImages,
+        generationPrompt,
+        settings.variations,
+        settings.imageSize,
+        settings.quality,
+        settings.inputFidelity,
+        settings.model,
+      );
+
+      const existingMetadata =
+        response.metadata &&
+        typeof response.metadata === "object" &&
+        !Array.isArray(response.metadata)
+          ? (response.metadata as Record<string, unknown>)
+          : {};
+      const responseToSave = brandProtectionApplied
+        ? {
+            ...response,
+            metadata: {
+              ...existingMetadata,
+              brand_protection_mode: settings.brandsProtection,
+              protected_brands: (settings.brandsList ?? []).join(", "),
+              protected_prompt: generationPrompt,
+            },
+          }
+        : response;
+
+      const saveResponse = await saveGeneratedImages(
+        responseToSave,
+        settings.prompt,
+        true,
+        normalizedFolder,
+        settings.outputFormat,
+        settings.model,
+        settings.background,
+        settings.imageSize,
+        settings.analyze,
+      );
+
+      toast.success(`${formatImageCount(saveResponse.total_saved)} ready`, {
+        id: toastId,
+        description: normalizedFolder
+          ? `Saved to ${normalizedFolder}`
+          : "Saved to the root gallery",
+      });
+      onImagesSaved?.(saveResponse.total_saved);
+    } catch (error) {
+      toast.error("Image editing failed", {
+        id: toastId,
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+      });
+      throw error;
     }
+  };
+
+  const handleGenerate = async (settings: ImageGenerationSettings) => {
+    const hasSourceImages = (settings.sourceImages?.length ?? 0) > 0;
+    if (hasSourceImages && editInFlightRef.current) return;
+    if (hasSourceImages) {
+      editInFlightRef.current = true;
+      setIsEditing(true);
+    }
+
+    try {
+      const normalizedFolder = settings.folder === "root" ? "" : settings.folder;
+      const protectedPrompt = await protectPrompt(settings);
+
+      if (hasSourceImages) {
+        await runExistingEditFlow(
+          settings,
+          protectedPrompt.prompt,
+          protectedPrompt.applied,
+        );
+        return;
+      }
+
+      const metadata: Record<string, unknown> = {
+        original_prompt: settings.prompt,
+      };
+      if (protectedPrompt.applied) {
+        metadata.brand_protection_mode = settings.brandsProtection;
+        metadata.protected_brands = settings.brandsList ?? [];
+        metadata.protected_prompt = protectedPrompt.prompt;
+      }
+
+      const request: ImagePipelineRequest = {
+        action: PipelineAction.GENERATE,
+        prompt: protectedPrompt.prompt,
+        model: settings.model,
+        n: settings.variations,
+        size: settings.imageSize,
+        response_format: "b64_json",
+        quality: settings.quality,
+        output_format: settings.outputFormat,
+        background: settings.background,
+        save_options: {
+          enabled: true,
+          save_all: true,
+          folder_path: normalizedFolder,
+          output_format: settings.outputFormat,
+          background: settings.background,
+          metadata,
+        },
+        analysis_options: {
+          enabled: settings.analyze,
+        },
+        metadata,
+      };
+
+      const submissionId = createIdempotencyKey();
+
+      const job = await submitJob(
+        request,
+        submissionId,
+        submissionId,
+      );
+      toast.success("Image generation started", {
+        description: `${formatImageCount(job.requested_images)} queued. You can start another generation now.`,
+      });
+    } catch (error) {
+      console.error("Error starting image operation:", error);
+      if (!hasSourceImages) {
+        toast.error("Could not start image generation", {
+          description: error instanceof Error ? error.message : "Unknown error occurred",
+        });
+      }
+    } finally {
+      if (hasSourceImages) {
+        editInFlightRef.current = false;
+        setIsEditing(false);
+      }
+    }
+  };
+
+  const handleFolderCreated = (newFolder: string | string[]) => {
+    setFolders((current) => {
+      const additions = Array.isArray(newFolder) ? newFolder : [newFolder];
+      return Array.from(new Set([...current, ...additions])).sort((a, b) =>
+        a.localeCompare(b),
+      );
+    });
+    if (!Array.isArray(newFolder)) setSelectedFolder(newFolder);
   };
 
   return (
-    <div className={cn("relative w-full h-full", className)}>
-      {/* The ImageOverlay component will be positioned absolutely */}
-      <ImageOverlay 
-        onGenerate={handleGenerate} 
-        isGenerating={isGenerating || isUploading || isAnalyzing}
-        onPromptChange={handlePromptChange}
+    <div className={cn("relative h-full w-full", className)}>
+      <ImageOverlay
+        onGenerate={handleGenerate}
+        isSubmitting={isEditing}
         folders={folders}
         selectedFolder={selectedFolder}
         onFolderCreated={handleFolderCreated}
       />
     </div>
   );
-} 
+}

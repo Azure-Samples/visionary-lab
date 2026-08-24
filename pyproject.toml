@@ -5,8 +5,10 @@ description = "Create and manage creative content"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "aiohttp>=3.9.0",
     "azure-identity>=1.21.0",
     "azure-storage-blob>=12.25.1",
+    "azure-storage-queue>=12.12.0",
     "fastapi[standard]>=0.115.12",
     "httpx>=0.27.0",
     "ipykernel>=6.29.5",
@@ -18,8 +20,7 @@ dependencies = [
     "python-dotenv>=1.1.0",
     "python-multipart>=0.0.20",
     "uvicorn>=0.34.0",
-    "azure-cosmos==4.9.0",
-    "azure-identity"
+    "azure-cosmos==4.9.0"
 ]
 
 

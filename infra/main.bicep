@@ -14,14 +14,40 @@ param location string = resourceGroup().location
 param containerAppEnvName string = 'cae-${environmentName}'
 @description('Name of the Container App')
 param containerAppNameBackend string = 'ca-backend-${environmentName}'
+@description('Name of the image-generation worker Container App')
+param containerAppNameImageWorker string = 'ca-image-worker-${environmentName}'
 param containerAppNameFrontend string = 'ca-frontend-${environmentName}'
 param logAnalyticsWorkspaceName string = 'log-${environmentName}'
 
 @description('Unique name for the Storage Account (3-24 lowercase letters and numbers)')
 param storageAccountName string = 'st${toLower(uniqueString(resourceGroup().id, environmentName))}'
 
+@description('Name of the Storage Queue used for durable image-generation jobs')
+param imageGenerationQueueName string = 'image-generation-jobs'
+
+@description('Name of the poison queue used after terminal worker failures')
+param imageGenerationPoisonQueueName string = 'image-generation-jobs-poison'
+
+@description('Optional explicit browser origins for Blob CORS; defaults to the deployed frontend origins')
+param storageBlobCorsAllowedOrigins array = []
+
+@minValue(1)
+@description('Maximum number of image-worker replicas processing generation jobs')
+param imageWorkerMaxReplicas int = 10
+
+@minValue(1)
+@description('Concurrent image-generation jobs processed by each worker replica')
+param imageWorkerConcurrency int = 2
+
+@minValue(1)
+@description('Queued image-generation messages per worker replica')
+param imageGenerationQueueScaleTargetLength int = 2
+
 @description('Unique name for the Container Registry (5-50 lowercase letters and numbers)')
 param containerRegistryName string = 'cr${toLower(uniqueString(resourceGroup().id, environmentName))}'
+
+@description('User-assigned identity name used by the worker to pull from ACR')
+param imageWorkerRegistryIdentityName string = 'id-image-worker-acr-${environmentName}'
 
 // AI Foundry parameters
 @description('Name of the AI Foundry resource')
@@ -112,6 +138,30 @@ module storageContainerMod './modules/storageAccountContainer.bicep' = {
   ]
 }
 
+module storageQueueMod './modules/storageAccountQueue.bicep' = {
+  name: 'storageQueueMod'
+  params: {
+    storageAccountName: storageAccountName
+    queueName: imageGenerationQueueName
+    deployNew: true
+  }
+  dependsOn: [
+    storageAccountMod
+  ]
+}
+
+module storagePoisonQueueMod './modules/storageAccountQueue.bicep' = {
+  name: 'storagePoisonQueueMod'
+  params: {
+    storageAccountName: storageAccountName
+    queueName: imageGenerationPoisonQueueName
+    deployNew: true
+  }
+  dependsOn: [
+    storageAccountMod
+  ]
+}
+
 // ─── Azure Container Registry ───
 module containerRegistryMod './modules/containerRegistry.bicep' = {
   name: 'containerRegistryMod'
@@ -120,6 +170,24 @@ module containerRegistryMod './modules/containerRegistry.bicep' = {
     containerRegistryName: containerRegistryName
     deployNew: true
   }
+}
+
+// A user-assigned pull identity avoids the create-time chicken-and-egg problem
+// of authenticating a brand-new Container App to ACR with its system identity.
+resource imageWorkerRegistryIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: imageWorkerRegistryIdentityName
+  location: location
+}
+
+module containerRegistryWorkerRoleAssignmentMod './modules/containerRegistryRoleAssignment.bicep' = {
+  name: 'containerRegistryWorkerRoleAssignmentMod'
+  params: {
+    containerRegistryName: containerRegistryName
+    principalId: imageWorkerRegistryIdentity.properties.principalId
+  }
+  dependsOn: [
+    containerRegistryMod
+  ]
 }
 
 // ─── Azure Cosmos DB ───
@@ -151,7 +219,15 @@ module vnetMod './modules/virtualNetwork.bicep' = {
 module blobDnsZoneMod './modules/privateDnsZone.bicep' = {
   name: 'blobDnsZoneMod'
   params: {
-    zoneName: 'privatelink.blob.core.windows.net'
+    zoneName: 'privatelink.blob.${environment().suffixes.storage}'
+    vnetId: vnetMod.outputs.vnetId
+  }
+}
+
+module queueDnsZoneMod './modules/privateDnsZone.bicep' = {
+  name: 'queueDnsZoneMod'
+  params: {
+    zoneName: 'privatelink.queue.${environment().suffixes.storage}'
     vnetId: vnetMod.outputs.vnetId
   }
 }
@@ -174,6 +250,18 @@ module storagePrivateEndpointMod './modules/privateEndpoint.bicep' = {
     privateLinkServiceId: storageAccountMod.outputs.storageAccountId
     groupIds: ['blob']
     privateDnsZoneId: blobDnsZoneMod.outputs.privateDnsZoneId
+  }
+}
+
+module storageQueuePrivateEndpointMod './modules/privateEndpoint.bicep' = {
+  name: 'storageQueuePrivateEndpointMod'
+  params: {
+    location: location
+    privateEndpointName: 'pe-storage-queue-${environmentName}'
+    subnetId: vnetMod.outputs.privateEndpointsSubnetId
+    privateLinkServiceId: storageAccountMod.outputs.storageAccountId
+    groupIds: ['queue']
+    privateDnsZoneId: queueDnsZoneMod.outputs.privateDnsZoneId
   }
 }
 
@@ -293,6 +381,29 @@ module containerAppEnvMod './modules/containerAppEnv.bicep' = {
   }
 }
 
+var deployedFrontendOrigins = concat(
+  [
+    'https://${containerAppNameFrontend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}'
+  ],
+  frontendCustomDomain != '' ? [
+    'https://${frontendCustomDomain}'
+  ] : []
+)
+var effectiveBlobCorsAllowedOrigins = length(storageBlobCorsAllowedOrigins) > 0
+  ? storageBlobCorsAllowedOrigins
+  : deployedFrontendOrigins
+
+module storageBlobServiceMod './modules/storageBlobService.bicep' = {
+  name: 'storageBlobServiceMod'
+  params: {
+    storageAccountName: storageAccountName
+    allowedOrigins: effectiveBlobCorsAllowedOrigins
+  }
+  dependsOn: [
+    storageAccountMod
+  ]
+}
+
 // ─── Container App: Backend ───
 module containerAppBackend './modules/containerApp.bicep' = {
   name: 'containerAppBackend'
@@ -302,9 +413,18 @@ module containerAppBackend './modules/containerApp.bicep' = {
     containerAppEnvId: containerAppEnvMod.outputs.containerAppEnvId
     targetPort: 80
     deployNew: true
+    enableIngress: true
+    externalIngress: false
     AZURE_BLOB_SERVICE_URL: storageAccountMod.outputs.storageAccountPrimaryEndpoint
     AZURE_STORAGE_ACCOUNT_NAME: storageAccountName
     AZURE_BLOB_IMAGE_CONTAINER: 'images'
+    AZURE_STORAGE_QUEUE_URL: storageAccountMod.outputs.storageAccountQueueEndpoint
+    AZURE_STORAGE_QUEUE_NAME: imageGenerationQueueName
+    AZURE_STORAGE_POISON_QUEUE_NAME: imageGenerationPoisonQueueName
+    CORS_ALLOWED_ORIGINS: join(effectiveBlobCorsAllowedOrigins, ',')
+    IMAGE_JOB_ROLE: 'api'
+    IMAGE_JOB_MODE: 'azure'
+    enableQueueScaleRule: false
     CDN_BLOB_URL: 'https://${frontDoorMod.outputs.frontDoorEndpointHostName}'
     DOCKER_IMAGE: DOCKER_IMAGE_BACKEND
     AZURE_CONTAINER_REGISTRY_ENDPOINT: containerRegistryMod.outputs.containerRegistryLoginServer
@@ -321,6 +441,63 @@ module containerAppBackend './modules/containerApp.bicep' = {
     COSMOS_CONTAINER_NAME: cosmosDbMod.outputs.containerName
     azdServiceName: 'backend'
   }
+  dependsOn: [
+    storageBlobServiceMod
+    storageQueueMod
+    storagePoisonQueueMod
+    storageQueuePrivateEndpointMod
+  ]
+}
+
+// ─── Container App: Image-generation worker ───
+// The worker uses the backend image but has no HTTP surface. KEDA starts replicas
+// only when durable queue messages are available.
+module containerAppImageWorker './modules/containerApp.bicep' = {
+  name: 'containerAppImageWorker'
+  params: {
+    location: location
+    containerAppName: containerAppNameImageWorker
+    containerAppEnvId: containerAppEnvMod.outputs.containerAppEnvId
+    deployNew: true
+    enableIngress: false
+    enableHttpProbe: false
+    containerCpu: 2
+    containerMemory: '4Gi'
+    minReplicas: 0
+    maxReplicas: imageWorkerMaxReplicas
+    enableQueueScaleRule: true
+    queueScaleTargetLength: imageGenerationQueueScaleTargetLength
+    IMAGE_JOB_ROLE: 'worker'
+    IMAGE_JOB_MODE: 'azure'
+    IMAGE_JOB_CONCURRENCY: imageWorkerConcurrency
+    AZURE_BLOB_SERVICE_URL: storageAccountMod.outputs.storageAccountPrimaryEndpoint
+    AZURE_STORAGE_ACCOUNT_NAME: storageAccountName
+    AZURE_BLOB_IMAGE_CONTAINER: 'images'
+    AZURE_STORAGE_QUEUE_URL: storageAccountMod.outputs.storageAccountQueueEndpoint
+    AZURE_STORAGE_QUEUE_NAME: imageGenerationQueueName
+    AZURE_STORAGE_POISON_QUEUE_NAME: imageGenerationPoisonQueueName
+    CORS_ALLOWED_ORIGINS: join(effectiveBlobCorsAllowedOrigins, ',')
+    CDN_BLOB_URL: 'https://${frontDoorMod.outputs.frontDoorEndpointHostName}'
+    DOCKER_IMAGE: DOCKER_IMAGE_BACKEND
+    AZURE_CONTAINER_REGISTRY_ENDPOINT: containerRegistryMod.outputs.containerRegistryLoginServer
+    registryIdentityResourceId: imageWorkerRegistryIdentity.id
+    AI_FOUNDRY_ENDPOINT: aiFoundryMod.outputs.aiFoundryEndpoint
+    LLM_DEPLOYMENT: LLM_DEPLOYMENT
+    IMAGEGEN_DEPLOYMENT: IMAGEGEN_DEPLOYMENT
+    IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
+    IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
+    FLUX_KONTEXT_DEPLOYMENT: FLUX_KONTEXT_DEPLOYMENT
+    COSMOS_ENDPOINT: cosmosDbMod.outputs.cosmosAccountEndpoint
+    COSMOS_DATABASE_NAME: cosmosDbMod.outputs.databaseName
+    COSMOS_CONTAINER_NAME: cosmosDbMod.outputs.containerName
+  }
+  dependsOn: [
+    containerRegistryWorkerRoleAssignmentMod
+    storageBlobServiceMod
+    storageQueueMod
+    storagePoisonQueueMod
+    storageQueuePrivateEndpointMod
+  ]
 }
 
 // ─── Container App: Frontend ───
@@ -387,15 +564,48 @@ module storageRoleAssignmentMod './modules/storageRoleAssignment.bicep' = {
   }
 }
 
+module cosmosWorkerRoleAssignmentMod './modules/cosmosRoleAssignment.bicep' = {
+  name: 'cosmosWorkerRoleAssignmentMod'
+  params: {
+    cosmosAccountName: cosmosAccountNamePrefixed
+    containerAppPrincipalId: containerAppImageWorker.outputs.containerAppPrincipalId
+    dataContributorRoleId: cosmosDbMod.outputs.dataContributorRoleId
+  }
+}
+
+module aiFoundryWorkerRoleAssignmentMod './modules/aiFoundryRoleAssignment.bicep' = {
+  name: 'aiFoundryWorkerRoleAssignmentMod'
+  params: {
+    aiFoundryId: aiFoundryMod.outputs.aiFoundryId
+    aiFoundryName: aiFoundryName
+    containerAppPrincipalId: containerAppImageWorker.outputs.containerAppPrincipalId
+  }
+}
+
+module storageWorkerRoleAssignmentMod './modules/storageRoleAssignment.bicep' = {
+  name: 'storageWorkerRoleAssignmentMod'
+  params: {
+    storageAccountName: storageAccountName
+    containerAppPrincipalId: containerAppImageWorker.outputs.containerAppPrincipalId
+  }
+}
+
 // ─── Outputs ───
 output AZURE_LOCATION string = location
 output AZURE_CONTAINER_ENVIRONMENT_NAME string = containerAppEnvMod.outputs.containerAppEnvId
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistryMod.outputs.containerRegistryLoginServer
-output BACKEND_URI string = 'https://${containerAppBackend.outputs.containerAppFqdn}'
+output BACKEND_CONTAINER_APP_NAME string = containerAppNameBackend
+output BACKEND_URI string = frontendCustomDomain != ''
+  ? 'https://${frontendCustomDomain}/api/backend'
+  : 'https://${containerAppFrontend.outputs.containerAppFqdn}/api/backend'
 output BACKEND_INTERNAL_URI string = 'https://${containerAppBackend.outputs.containerAppFqdn}'
+output IMAGE_WORKER_CONTAINER_APP_NAME string = containerAppNameImageWorker
 output FRONTEND_URI string = 'https://${containerAppFrontend.outputs.containerAppFqdn}'
 output AZURE_STORAGE_ACCOUNT_NAME string = storageAccountName
 output AZURE_BLOB_SERVICE_URL string = storageAccountMod.outputs.storageAccountPrimaryEndpoint
+output AZURE_STORAGE_QUEUE_URL string = storageAccountMod.outputs.storageAccountQueueEndpoint
+output AZURE_STORAGE_QUEUE_NAME string = imageGenerationQueueName
+output AZURE_STORAGE_POISON_QUEUE_NAME string = imageGenerationPoisonQueueName
 output AI_FOUNDRY_ENDPOINT string = aiFoundryMod.outputs.aiFoundryEndpoint
 output AI_FOUNDRY_NAME string = aiFoundryName
 output COSMOS_DB_ENDPOINT string = cosmosDbMod.outputs.cosmosAccountEndpoint

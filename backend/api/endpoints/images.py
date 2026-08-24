@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from typing import List, Optional
+import asyncio
 import re
 import logging
 import base64
@@ -37,7 +38,7 @@ from backend.models.images import (
     PipelineSaveOptions,
     PipelineAnalysisOptions,
 )
-from backend.core import async_llm_client, get_image_sas_token, llm_client
+from backend.core import get_container_sas_token, get_core_clients
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.analyze import ImageAnalyzer
 from backend.core.config import settings
@@ -59,15 +60,31 @@ logger = logging.getLogger(__name__)
 pipeline_service = ImagePipelineService()
 
 
+async def get_ai_clients():
+    return await asyncio.to_thread(get_core_clients)
+
+
+async def get_azure_storage_service():
+    service = AzureBlobStorageService()
+    try:
+        yield service
+    finally:
+        await service.close()
+
+
 def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
+    service = None
     try:
         if settings.AZURE_COSMOS_DB_ENDPOINT:
-            return CosmosDBService()
-        return None
+            service = CosmosDBService()
     except Exception as e:
         logger.warning(f"Cosmos DB service unavailable: {e}")
-        return None
+    try:
+        yield service
+    finally:
+        if service is not None:
+            service.close()
 
 
 def normalize_filename(filename: str) -> str:
@@ -188,7 +205,7 @@ async def edit_image_upload(
 async def save_generated_images(
     request: ImageSaveRequest,
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
@@ -212,7 +229,7 @@ async def process_image_pipeline(
     ),
     mask: Optional[UploadFile] = File(None),
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
@@ -247,7 +264,7 @@ async def process_image_pipeline(
 async def generate_image_with_analysis(
     req: ImageGenerateWithAnalysisRequest,
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
@@ -353,9 +370,10 @@ async def analyze_image(req: ImageAnalyzeRequest):
             else:
                 # check if the path contains a SAS token
                 if "?" not in file_path:
-                    image_sas_token = get_image_sas_token()
-                    if image_sas_token:
-                        file_path += f"?{image_sas_token}"
+                    image_sas_token, _ = await get_container_sas_token(
+                        settings.AZURE_BLOB_IMAGE_CONTAINER
+                    )
+                    file_path += f"?{image_sas_token}"
 
             # Download the image from the URL (async)
             async with httpx.AsyncClient() as client:
@@ -440,7 +458,12 @@ async def analyze_image(req: ImageAnalyzeRequest):
         image_base64 = re.sub(r"^data:image/.+;base64,", "", image_base64)
 
         # analyze the image using the LLM (async)
-        image_analyzer = ImageAnalyzer(llm_client, settings.LLM_DEPLOYMENT, async_llm_client)
+        clients = await get_ai_clients()
+        image_analyzer = ImageAnalyzer(
+            clients.llm_client,
+            settings.LLM_DEPLOYMENT,
+            clients.async_llm_client,
+        )
         insights = await image_analyzer.async_image_chat(
             image_base64, analyze_image_system_message)
 
@@ -490,9 +513,10 @@ async def analyze_image_custom(req: ImageAnalyzeCustomRequest):
             else:
                 # check if the path contains a SAS token
                 if "?" not in file_path:
-                    image_sas_token = get_image_sas_token()
-                    if image_sas_token:
-                        file_path += f"?{image_sas_token}"
+                    image_sas_token, _ = await get_container_sas_token(
+                        settings.AZURE_BLOB_IMAGE_CONTAINER
+                    )
+                    file_path += f"?{image_sas_token}"
 
             # Download the image from the URL (async)
             async with httpx.AsyncClient() as client:
@@ -602,7 +626,12 @@ Return the result as a valid JSON object:
 """
 
         # analyze the image using the LLM with custom prompt (async)
-        image_analyzer = ImageAnalyzer(llm_client, settings.LLM_DEPLOYMENT, async_llm_client)
+        clients = await get_ai_clients()
+        image_analyzer = ImageAnalyzer(
+            clients.llm_client,
+            settings.LLM_DEPLOYMENT,
+            clients.async_llm_client,
+        )
         insights = await image_analyzer.async_image_chat(image_base64, custom_system_message)
 
         description = insights.get("description")
@@ -629,7 +658,8 @@ async def enhance_image_prompt(req: ImagePromptEnhancementRequest):
         system_message = img_prompt_enhance_msg
 
         # Ensure LLM client is available
-        if async_llm_client is None:
+        clients = await get_ai_clients()
+        if clients.async_llm_client is None:
             raise HTTPException(
                 status_code=503,
                 detail="LLM service is currently unavailable. Please check your environment configuration.",
@@ -641,7 +671,7 @@ async def enhance_image_prompt(req: ImagePromptEnhancementRequest):
             {"role": "system", "content": system_message},
             {"role": "user", "content": original_prompt},
         ]
-        response = await async_llm_client.chat.completions.create(
+        response = await clients.async_llm_client.chat.completions.create(
             messages=messages,
             model=settings.LLM_DEPLOYMENT,
             response_format={"type": "json_object"},
@@ -676,7 +706,8 @@ async def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
             )
 
         # Ensure LLM client is available
-        if async_llm_client is None:
+        clients = await get_ai_clients()
+        if clients.async_llm_client is None:
             raise HTTPException(
                 status_code=503,
                 detail="LLM service is currently unavailable. Please check your environment configuration.",
@@ -688,7 +719,7 @@ async def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
             {"role": "system", "content": system_message},
             {"role": "user", "content": original_prompt},
         ]
-        response = await async_llm_client.chat.completions.create(
+        response = await clients.async_llm_client.chat.completions.create(
             messages=messages,
             model=settings.LLM_DEPLOYMENT,
             response_format={"type": "json_object"},
@@ -717,7 +748,8 @@ async def generate_image_filename(req: ImageFilenameGenerateRequest):
 
     try:
         # Ensure LLM client is available
-        if async_llm_client is None:
+        clients = await get_ai_clients()
+        if clients.async_llm_client is None:
             raise HTTPException(
                 status_code=503,
                 detail="LLM service is currently unavailable. Please check your environment configuration.",
@@ -733,7 +765,7 @@ async def generate_image_filename(req: ImageFilenameGenerateRequest):
             {"role": "system", "content": filename_system_message},
             {"role": "user", "content": req.prompt},
         ]
-        response = await async_llm_client.chat.completions.create(
+        response = await clients.async_llm_client.chat.completions.create(
             messages=messages,
             model=settings.LLM_DEPLOYMENT,
             response_format={"type": "json_object"},

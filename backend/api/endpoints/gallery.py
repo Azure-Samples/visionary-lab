@@ -15,10 +15,9 @@ import io
 import re
 import uuid
 import logging
-from datetime import datetime, timedelta, timezone
-from azure.identity import DefaultAzureCredential
-from azure.storage.blob import BlobServiceClient, generate_container_sas, ContainerSasPermissions
+from datetime import datetime
 
+from backend.core import get_container_sas_token
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.cosmos_client import CosmosDBService
 from backend.core.config import settings
@@ -75,6 +74,7 @@ def _build_core_generation_metadata(
         "quality": metadata.get("quality"),
         "background": metadata.get("background"),
         "output_format": metadata.get("output_format"),
+        "generation_id": metadata.get("generation_id"),
     }
     if include_transparency:
         values["has_transparency"] = metadata.get("has_transparency")
@@ -112,13 +112,25 @@ def _build_additional_custom_metadata(
 
 def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
+    service = None
     try:
         if settings.AZURE_COSMOS_DB_ENDPOINT:
-            return CosmosDBService()
-        return None
+            service = CosmosDBService()
     except Exception as e:
         logger.warning(f"Cosmos DB service unavailable: {e}")
-        return None
+    try:
+        yield service
+    finally:
+        if service is not None:
+            service.close()
+
+
+async def get_azure_storage_service():
+    service = AzureBlobStorageService()
+    try:
+        yield service
+    finally:
+        await service.close()
 
 
 @router.get("/images", response_model=GalleryResponse)
@@ -313,7 +325,7 @@ async def upload_asset(
     metadata: Optional[str] = Form(None),
     folder_path: Optional[str] = Form(None),
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
@@ -415,7 +427,7 @@ async def delete_asset(
         ..., description="Asset type"
     ),
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
@@ -443,8 +455,8 @@ async def delete_asset(
                     f"Failed to delete Cosmos DB metadata: {cosmos_error}")
 
         # Delete from Azure Blob Storage
-        success = await asyncio.to_thread(
-            azure_storage_service.delete_asset, blob_name, container_name
+        success = await azure_storage_service.delete_asset_async(
+            blob_name, container_name
         )
 
         if not success:
@@ -475,14 +487,14 @@ async def get_asset_content(
     media_type: MediaType,
     blob_name: str,
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
 ):
     """Stream asset content directly from Azure Blob Storage"""
     try:
         container_name = settings.AZURE_BLOB_IMAGE_CONTAINER
-        content, content_type = await asyncio.to_thread(
-            azure_storage_service.get_asset_content, blob_name, container_name
+        content, content_type = await azure_storage_service.download_asset_async(
+            blob_name, container_name
         )
 
         if not content:
@@ -504,24 +516,8 @@ async def get_asset_content(
 async def get_sas_tokens():
     """Generate and return SAS tokens for frontend direct access to blob storage"""
     try:
-        credential = DefaultAzureCredential()
-        account_url = f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
-        blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
-
-        start_time = datetime.now(timezone.utc)
-        expiry_time = start_time + timedelta(hours=1)
-        user_delegation_key = blob_service_client.get_user_delegation_key(
-            key_start_time=start_time,
-            key_expiry_time=expiry_time,
-        )
-
-        image_token = generate_container_sas(
-            account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
-            container_name=settings.AZURE_BLOB_IMAGE_CONTAINER,
-            user_delegation_key=user_delegation_key,
-            permission=ContainerSasPermissions(read=True),
-            expiry=expiry_time,
-            start=start_time,
+        image_token, expiry_time = await get_container_sas_token(
+            settings.AZURE_BLOB_IMAGE_CONTAINER
         )
         base_url = settings.CDN_BLOB_URL or f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
         return {
@@ -539,7 +535,7 @@ async def get_sas_tokens():
 async def health_check(
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
 ):
     """
@@ -553,12 +549,14 @@ async def health_check(
 
     # Check Azure Blob Storage
     try:
-        # Try to list containers to test connectivity
         containers = [settings.AZURE_BLOB_IMAGE_CONTAINER]
         for container in containers:
-            await asyncio.to_thread(
-                azure_storage_service._ensure_container_exists, container
+            await azure_storage_service._ensure_async_storage_ready()
+            container_client = (
+                azure_storage_service._get_async_blob_service_client()
+                .get_container_client(container)
             )
+            await container_client.get_container_properties()
 
         health_status["services"]["azure_blob_storage"] = {
             "status": "healthy",

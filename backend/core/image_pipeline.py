@@ -1,19 +1,21 @@
 import asyncio
 import base64
+import binascii
 import io
+import inspect
 import logging
-import os
 import re
-import tempfile
 import uuid
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
-import requests
+import httpx
 from fastapi import HTTPException, UploadFile
 from PIL import Image
 
-from backend.core import get_image_sas_token, llm_client
+from backend.core import get_core_clients
 from backend.core.analyze import ImageAnalyzer
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.config import settings
@@ -35,12 +37,20 @@ from backend.models.images import (
 
 logger = logging.getLogger(__name__)
 
+ProgressCallback = Callable[[str, Dict[str, object]], Awaitable[None]]
+
 
 class ImagePipelineService:
     """Service that centralises the image generation/edit/save pipeline logic."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_concurrent_io: Optional[int] = None) -> None:
         self._image_analyzer: Optional[ImageAnalyzer] = None
+        self._image_clients: Dict[str, Any] = {}
+        self._image_client_lock = asyncio.Lock()
+        configured_concurrency = max_concurrent_io or getattr(
+            settings, "IMAGE_JOB_CONCURRENCY", 4
+        )
+        self._max_concurrent_io = max(1, configured_concurrency)
 
     # ------------------------------------------------------------------
     # Generation / Edit helpers
@@ -48,14 +58,7 @@ class ImagePipelineService:
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResponse:
         """Generate images via the configured DALL-E/GPT-image client."""
         try:
-            # Import here to avoid circular dependencies
-            from backend.core.gpt_image import GPTImageClient
-            
-            # Create a model-specific client
-            client = GPTImageClient(
-                provider=settings.MODEL_PROVIDER,
-                model=request.model
-            )
+            client = await self._get_image_client(request.model)
             
             params: Dict[str, object] = {
                 "prompt": request.prompt,
@@ -80,8 +83,7 @@ class ImagePipelineService:
             if request.user:
                 params["user"] = request.user
 
-            # Run sync SDK call in thread pool to not block event loop
-            response = await asyncio.to_thread(client.generate_image, **params)
+            response = await client.generate_image(**params)
             token_usage = self._extract_token_usage(response)
 
             return ImageGenerationResponse(
@@ -90,9 +92,11 @@ class ImagePipelineService:
                 imgen_model_response=response,
                 token_usage=token_usage,
             )
+        except HTTPException:
+            raise
         except Exception as exc:  # pragma: no cover - delegated to HTTP response
             logger.error("Error generating image: %s", exc, exc_info=True)
-            raise HTTPException(status_code=500, detail=str(exc))
+            raise self._provider_http_exception(exc) from exc
 
     async def edit(self, request: ImageEditRequest) -> ImageGenerationResponse:
         """Edit images via the configured client using JSON payload data."""
@@ -104,25 +108,38 @@ class ImagePipelineService:
                     detail="gpt-image-1-mini does not support image editing. Please use gpt-image-1 or gpt-image-1.5 for image editing operations."
                 )
             
-            # Import here to avoid circular dependencies
-            from backend.core.gpt_image import GPTImageClient
-            
-            # Create a model-specific client
-            client = GPTImageClient(
-                provider=settings.MODEL_PROVIDER,
-                model=request.model
+            raw_images = (
+                request.image if isinstance(request.image, list) else [request.image]
             )
-            
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=10.0), follow_redirects=True
+            ) as http_client:
+                prepared_images = await asyncio.gather(
+                    *(
+                        self._prepare_edit_source(source, idx, http_client)
+                        for idx, source in enumerate(raw_images)
+                    )
+                )
+                prepared_mask = (
+                    await self._prepare_edit_source(request.mask, 0, http_client)
+                    if request.mask
+                    else None
+                )
+
             params: Dict[str, object] = {
                 "prompt": request.prompt,
                 "model": request.model,
                 "n": request.n,
                 "size": request.size,
-                "image": request.image,
+                "image": (
+                    prepared_images
+                    if len(prepared_images) > 1
+                    else prepared_images[0]
+                ),
             }
 
-            if request.mask:
-                params["mask"] = request.mask
+            if prepared_mask:
+                params["mask"] = prepared_mask
 
             # Add model-specific parameters
             if request.quality:
@@ -146,8 +163,8 @@ class ImagePipelineService:
                         "Using multiple reference images requires organization verification"
                     )
 
-            # Run sync SDK call in thread pool to not block event loop
-            response = await asyncio.to_thread(client.edit_image, **params)
+            client = await self._get_image_client(request.model)
+            response = await client.edit_image(**params)
             token_usage = self._extract_token_usage(response)
 
             return ImageGenerationResponse(
@@ -156,9 +173,11 @@ class ImagePipelineService:
                 imgen_model_response=response,
                 token_usage=token_usage,
             )
+        except HTTPException:
+            raise
         except Exception as exc:  # pragma: no cover - delegated to HTTP response
             logger.error("Error editing image: %s", exc, exc_info=True)
-            raise HTTPException(status_code=500, detail=str(exc))
+            raise self._provider_http_exception(exc) from exc
 
     async def edit_with_uploads(
         self,
@@ -187,12 +206,15 @@ class ImagePipelineService:
                 status_code=400,
                 detail="input_fidelity must be either 'low' or 'high'",
             )
-
-        max_file_size_mb = settings.GPT_IMAGE_MAX_FILE_SIZE_MB
-        temp_files: List[Tuple[int, str]] = []
+        if not images:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one source image is required",
+            )
 
         try:
-            image_file_paths: List[str] = []
+            max_file_size_mb = settings.GPT_IMAGE_MAX_FILE_SIZE_MB
+            image_files: List[Tuple[str, bytes, str]] = []
             for idx, upload in enumerate(images):
                 contents = await upload.read()
                 file_size_mb = len(contents) / (1024 * 1024)
@@ -203,30 +225,30 @@ class ImagePipelineService:
                             f"Image {idx + 1} exceeds maximum size of {max_file_size_mb}MB"
                         ),
                     )
-
                 ext = self._determine_extension(upload.content_type, contents)
-                temp_fd, temp_path = tempfile.mkstemp(suffix=f".{ext}")
-                temp_files.append((temp_fd, temp_path))
-
-                with os.fdopen(temp_fd, "wb") as file_obj:
-                    file_obj.write(contents)
-
-                image_file_paths.append(temp_path)
-                logger.info(
-                    "Saved image %s to %s with format %s", idx + 1, temp_path, ext
+                filename = upload.filename or f"source_{idx + 1}.{ext}"
+                content_type = upload.content_type or f"image/{ext}"
+                image_files.append((filename, contents, content_type))
+                logger.debug(
+                    "Prepared uploaded image %s with format %s", idx + 1, ext
                 )
 
-            mask_path: Optional[str] = None
+            mask_file: Optional[Tuple[str, bytes, str]] = None
             if mask:
                 mask_contents = await mask.read()
+                mask_size_mb = len(mask_contents) / (1024 * 1024)
+                if mask_size_mb > max_file_size_mb:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Mask exceeds maximum size of {max_file_size_mb}MB",
+                    )
                 mask_ext = self._determine_extension(
                     mask.content_type, mask_contents)
-                mask_fd, mask_path = tempfile.mkstemp(suffix=f".{mask_ext}")
-                temp_files.append((mask_fd, mask_path))
-                with os.fdopen(mask_fd, "wb") as mask_file:
-                    mask_file.write(mask_contents)
-                logger.info("Saved mask to %s with format %s",
-                            mask_path, mask_ext)
+                mask_file = (
+                    mask.filename or f"mask.{mask_ext}",
+                    mask_contents,
+                    mask.content_type or f"image/{mask_ext}",
+                )
 
             params: Dict[str, object] = {
                 "prompt": prompt,
@@ -237,12 +259,16 @@ class ImagePipelineService:
 
             # Add quality and input_fidelity for all gpt-image models
             params["quality"] = quality
+            if output_format != "png":
+                params["output_format"] = output_format
             if input_fidelity != "low":
                 params["input_fidelity"] = input_fidelity
 
-            response = await self._invoke_edit_with_files(
-                image_file_paths, mask_path, params, model
-            )
+            params["image"] = image_files if len(image_files) > 1 else image_files[0]
+            if mask_file:
+                params["mask"] = mask_file
+
+            response = await self._invoke_edit(params, model)
             token_usage = self._extract_token_usage(response)
 
             return ImageGenerationResponse(
@@ -255,9 +281,7 @@ class ImagePipelineService:
             raise
         except Exception as exc:  # pragma: no cover - delegated to HTTP response
             logger.error("Error editing image upload: %s", exc, exc_info=True)
-            raise HTTPException(status_code=500, detail=str(exc))
-        finally:
-            self._cleanup_temp_files(temp_files)
+            raise self._provider_http_exception(exc) from exc
 
     async def save(
         self,
@@ -265,6 +289,7 @@ class ImagePipelineService:
         *,
         azure_storage_service: AzureBlobStorageService,
         cosmos_service: Optional[CosmosDBService] = None,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> ImageSaveResponse:
         """Persist generated images and optionally run analysis."""
 
@@ -290,43 +315,141 @@ class ImagePipelineService:
             images_data = [images_data[0]]
 
         combined_metadata = self._build_base_metadata(request)
-        saved_images: List[Dict[str, object]] = []
-        
+        image_job_id = (
+            str(request.metadata["image_job_id"])
+            if request.metadata and request.metadata.get("image_job_id")
+            else None
+        )
+
         # Extract deployment metadata for tracking
         deployment_name = request.generation_response.imgen_model_response.get("_deployment_name")
         model_used = request.generation_response.imgen_model_response.get("_model")
 
-        for idx, img_data in enumerate(images_data):
-            # Run sync file preparation in thread pool to avoid blocking
-            img_file, filename, has_transparency = await asyncio.to_thread(
-                self._prepare_image_file, img_data, request.prompt, idx
+        await self._emit_progress(
+            progress_callback,
+            "saving",
+            {"status": "started", "total": len(images_data), "completed": 0},
+        )
+        semaphore = asyncio.Semaphore(self._max_concurrent_io)
+        completed_saves = 0
+        failed_saves = 0
+
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=10.0), follow_redirects=True
+        ) as http_client:
+
+            async def save_one(
+                idx: int, img_data: Dict[str, object]
+            ) -> Tuple[int, Dict[str, object] | None, Exception | None]:
+                nonlocal completed_saves, failed_saves
+                async with semaphore:
+                    try:
+                        img_file, filename, has_transparency = (
+                            await self._prepare_image_file_async(
+                                img_data, request.prompt, idx, http_client
+                            )
+                        )
+                        if image_job_id:
+                            extension = filename.rsplit(".", 1)[-1]
+                            filename = self._generate_job_filename(
+                                image_job_id, extension, idx
+                            )
+
+                        image_metadata = combined_metadata.copy()
+                        image_metadata["image_index"] = str(idx + 1)
+                        image_metadata["total_images"] = str(len(images_data))
+
+                        upload = UploadFile(filename=filename, file=img_file)
+                        try:
+                            result = await azure_storage_service.upload_asset(
+                                upload,
+                                metadata=None,
+                                folder_path=request.folder_path,
+                                overwrite_existing=image_job_id is not None,
+                            )
+
+                            if cosmos_service:
+                                try:
+                                    await self._create_or_update_metadata(
+                                        cosmos_service,
+                                        result,
+                                        request,
+                                        has_transparency,
+                                        image_metadata,
+                                        deployment_name,
+                                        model_used,
+                                    )
+                                except Exception:
+                                    # The Cosmos-backed gallery is the durable
+                                    # source of truth. Do not leave invisible
+                                    # orphan blobs when its metadata write fails.
+                                    await azure_storage_service.delete_asset_async(
+                                        str(result["blob_name"]),
+                                        str(result["container"]),
+                                    )
+                                    raise
+                        finally:
+                            await upload.close()
+
+                        result["original_index"] = idx + 1
+                        completed_saves += 1
+                        await self._emit_progress(
+                            progress_callback,
+                            "saving",
+                            {
+                                "status": "in_progress",
+                                "completed": completed_saves,
+                                "failed": failed_saves,
+                                "total": len(images_data),
+                                "image_index": idx + 1,
+                                "asset": result,
+                            },
+                        )
+                        return idx, result, None
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        failed_saves += 1
+                        await self._emit_progress(
+                            progress_callback,
+                            "saving",
+                            {
+                                "status": "in_progress",
+                                "completed": completed_saves,
+                                "failed": failed_saves,
+                                "total": len(images_data),
+                                "image_index": idx + 1,
+                                "error": str(exc),
+                            },
+                        )
+                        return idx, None, exc
+
+            save_results = await asyncio.gather(
+                *(save_one(idx, img_data) for idx, img_data in enumerate(images_data))
             )
-            image_metadata = combined_metadata.copy()
-            image_metadata["image_index"] = str(idx + 1)
-            image_metadata["total_images"] = str(len(images_data))
 
-            upload = UploadFile(filename=filename, file=img_file)
-            result = await azure_storage_service.upload_asset(
-                upload,
-                metadata=None,
-                folder_path=request.folder_path,
-            )
-
-            if cosmos_service:
-                # Run sync cosmos DB call in thread pool to avoid blocking
-                await asyncio.to_thread(
-                    self._create_or_update_metadata,
-                    cosmos_service,
-                    result,
-                    request,
-                    has_transparency,
-                    image_metadata,
-                    deployment_name,
-                    model_used,
-                )
-
-            saved_images.append(result)
-            await upload.close()
+        saved_images = [
+            result
+            for _, result, _ in sorted(save_results, key=lambda item: item[0])
+            if result is not None
+        ]
+        errors = [
+            error
+            for _, _, error in sorted(save_results, key=lambda item: item[0])
+            if error is not None
+        ]
+        if not saved_images and errors:
+            raise errors[0]
+        await self._emit_progress(
+            progress_callback,
+            "saving",
+            {
+                "status": "completed",
+                "completed": len(saved_images),
+                "failed": len(errors),
+                "total": len(images_data),
+            },
+        )
 
         analysis_results: List[Dict[str, object]] = []
         analyzed = False
@@ -341,6 +464,8 @@ class ImagePipelineService:
                 saved_images,
                 cosmos_service,
                 request,
+                azure_storage_service=azure_storage_service,
+                progress_callback=progress_callback,
             )
 
         return ImageSaveResponse(
@@ -361,6 +486,7 @@ class ImagePipelineService:
         cosmos_service: Optional[CosmosDBService] = None,
         source_images: Optional[List[UploadFile]] = None,
         mask: Optional[UploadFile] = None,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> ImagePipelineResponse:
         """Execute the requested pipeline flow end-to-end."""
 
@@ -375,6 +501,11 @@ class ImagePipelineService:
         )
 
         try:
+            await self._emit_progress(
+                progress_callback,
+                "editing" if action_step == "edit" else "generating",
+                {"status": "started", "total": pipeline_request.n, "completed": 0},
+            )
             if action_step == "edit":
                 if source_images:
                     generation_response = await self.edit_with_uploads(
@@ -413,6 +544,15 @@ class ImagePipelineService:
                         message="Image edit completed",
                     )
                 )
+                await self._emit_progress(
+                    progress_callback,
+                    "editing",
+                    {
+                        "status": "completed",
+                        "completed": pipeline_request.n,
+                        "total": pipeline_request.n,
+                    },
+                )
             else:
                 generation_request = ImageGenerationRequest(
                     prompt=pipeline_request.prompt,
@@ -435,7 +575,21 @@ class ImagePipelineService:
                         message="Image generation completed",
                     )
                 )
+                await self._emit_progress(
+                    progress_callback,
+                    "generating",
+                    {
+                        "status": "completed",
+                        "completed": pipeline_request.n,
+                        "total": pipeline_request.n,
+                    },
+                )
         except HTTPException as exc:
+            await self._emit_progress(
+                progress_callback,
+                "editing" if action_step == "edit" else "generating",
+                {"status": "failed", "error": str(exc.detail)},
+            )
             steps.append(
                 PipelineStepResult(
                     step=action_step,
@@ -445,6 +599,11 @@ class ImagePipelineService:
             )
             raise
         except Exception as exc:  # pragma: no cover - delegated to HTTP response
+            await self._emit_progress(
+                progress_callback,
+                "editing" if action_step == "edit" else "generating",
+                {"status": "failed", "error": str(exc)},
+            )
             steps.append(
                 PipelineStepResult(
                     step=action_step,
@@ -483,6 +642,7 @@ class ImagePipelineService:
                     save_request,
                     azure_storage_service=azure_storage_service,
                     cosmos_service=cosmos_service,
+                    progress_callback=progress_callback,
                 )
                 steps.append(
                     PipelineStepResult(
@@ -492,6 +652,11 @@ class ImagePipelineService:
                     )
                 )
             except HTTPException as exc:
+                await self._emit_progress(
+                    progress_callback,
+                    "saving",
+                    {"status": "failed", "error": str(exc.detail)},
+                )
                 steps.append(
                     PipelineStepResult(
                         step="save",
@@ -500,6 +665,20 @@ class ImagePipelineService:
                     )
                 )
                 raise
+            except Exception as exc:  # pragma: no cover - delegated to HTTP response
+                await self._emit_progress(
+                    progress_callback,
+                    "saving",
+                    {"status": "failed", "error": str(exc)},
+                )
+                steps.append(
+                    PipelineStepResult(
+                        step="save",
+                        success=False,
+                        message=str(exc),
+                    )
+                )
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
 
         elif pipeline_request.analysis_options.enabled:
             steps.append(
@@ -526,6 +705,13 @@ class ImagePipelineService:
     # ------------------------------------------------------------------
     # Internal utilities
     # ------------------------------------------------------------------
+    @staticmethod
+    def _provider_http_exception(exc: Exception) -> HTTPException:
+        status_code = getattr(exc, "status_code", 500)
+        if not isinstance(status_code, int) or not 400 <= status_code <= 599:
+            status_code = 500
+        return HTTPException(status_code=status_code, detail=str(exc))
+
     @staticmethod
     def _extract_token_usage(response: Dict[str, object]) -> Optional[TokenUsage]:
         if "usage" not in response:
@@ -560,63 +746,132 @@ class ImagePipelineService:
             ext = "jpeg"
         return ext
 
-    async def _invoke_edit_with_files(
-        self,
-        image_paths: List[str],
-        mask_path: Optional[str],
-        params: Dict[str, object],
-        model: str,
+    async def _invoke_edit(
+        self, params: Dict[str, object], model: str
     ) -> Dict[str, object]:
-        # Import here to avoid circular dependencies
-        from backend.core.gpt_image import GPTImageClient
-        
-        # Create a model-specific client
-        client = GPTImageClient(
-            provider=settings.MODEL_PROVIDER,
-            model=model
-        )
-        
-        # Run sync SDK call in thread pool to not block event loop
-        # We use a helper function that handles file opening/closing in the thread
-        def _sync_edit_with_files():
-            if len(image_paths) == 1:
-                with open(image_paths[0], "rb") as image_file:
-                    params["image"] = image_file
-                    if mask_path:
-                        with open(mask_path, "rb") as mask_file:
-                            params["mask"] = mask_file
-                            return client.edit_image(**params)
-                    return client.edit_image(**params)
+        client = await self._get_image_client(model)
+        return await client.edit_image(**params)
 
-            open_files: List[io.BufferedReader] = []
+    async def _get_image_client(self, model: str):
+        client = self._image_clients.get(model)
+        if client is not None:
+            return client
+        async with self._image_client_lock:
+            client = self._image_clients.get(model)
+            if client is None:
+                from backend.core.gpt_image import GPTImageClient
+
+                client = GPTImageClient(
+                    provider=settings.MODEL_PROVIDER,
+                    model=model,
+                )
+                self._image_clients[model] = client
+            return client
+
+    async def close(self) -> None:
+        clients = list(self._image_clients.values())
+        self._image_clients.clear()
+        if clients:
+            await asyncio.gather(
+                *(client.close() for client in clients),
+                return_exceptions=True,
+            )
+
+    async def _prepare_edit_source(
+        self,
+        source: object,
+        idx: int,
+        http_client: httpx.AsyncClient,
+    ) -> Tuple[str, bytes, str]:
+        value = str(source)
+        if value.startswith(("http://", "https://")):
+            response = await http_client.get(value)
             try:
-                image_files = []
-                for path in image_paths:
-                    file_obj = open(path, "rb")
-                    open_files.append(file_obj)
-                    image_files.append(file_obj)
-                params["image"] = image_files
-
-                if mask_path:
-                    mask_file = open(mask_path, "rb")
-                    open_files.append(mask_file)
-                    params["mask"] = mask_file
-
-                return client.edit_image(**params)
-            finally:
-                for file_obj in open_files:
-                    file_obj.close()
-
-        return await asyncio.to_thread(_sync_edit_with_files)
-
-    @staticmethod
-    def _cleanup_temp_files(temp_files: List[Tuple[int, str]]) -> None:
-        for _, path in temp_files:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unable to download source image: HTTP {exc.response.status_code}",
+                ) from exc
+            contents = response.content
+            content_type = response.headers.get("content-type", "image/png").split(";", 1)[0]
+            extension = self._determine_extension(content_type, contents)
+            source_name = Path(urlparse(value).path).name
+            filename = (
+                source_name
+                if Path(source_name).suffix.lower() in {".jpeg", ".jpg", ".png", ".webp"}
+                else f"source_{idx + 1}.{extension}"
+            )
+        elif value.startswith("data:image/"):
             try:
-                if os.path.exists(path):
-                    os.remove(path)
-            except Exception as exc:
-                logger.warning("Failed to remove temp file %s: %s", path, exc)
+                header, encoded = value.split(",", 1)
+                contents = base64.b64decode(encoded, validate=True)
+                content_type = header.split(";", 1)[0].removeprefix("data:")
+            except (ValueError, binascii.Error) as exc:
+                raise HTTPException(
+                    status_code=400, detail="Invalid base64 image data URI"
+                ) from exc
+            extension = self._determine_extension(content_type, contents)
+            filename = f"source_{idx + 1}.{extension}"
+        else:
+            path = Path(value)
+            try:
+                is_local_file = len(value) < 4096 and path.is_file()
+            except OSError:
+                is_local_file = False
+            if is_local_file:
+                contents = await asyncio.to_thread(path.read_bytes)
+                extension = self._determine_extension(None, contents)
+                filename = path.name
+                content_type = f"image/{extension}"
+            else:
+                try:
+                    contents = base64.b64decode("".join(value.split()), validate=True)
+                except (ValueError, binascii.Error) as exc:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Image must be an accessible URL, local path, or valid base64 data",
+                    ) from exc
+                extension = self._determine_extension(None, contents)
+                filename = f"source_{idx + 1}.{extension}"
+                content_type = f"image/{extension}"
+
+        max_bytes = settings.GPT_IMAGE_MAX_FILE_SIZE_MB * 1024 * 1024
+        if len(contents) > max_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Image {idx + 1} exceeds maximum size of "
+                    f"{settings.GPT_IMAGE_MAX_FILE_SIZE_MB}MB"
+                ),
+            )
+        return filename, contents, content_type
+
+    async def _prepare_image_file_async(
+        self,
+        img_data: Dict[str, object],
+        prompt: Optional[str],
+        idx: int,
+        http_client: httpx.AsyncClient,
+    ) -> Tuple[io.BytesIO, str, Optional[bool]]:
+        if "url" not in img_data:
+            return await asyncio.to_thread(
+                self._prepare_image_file, img_data, prompt, idx
+            )
+
+        response = await http_client.get(str(img_data["url"]))
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to download generated image: HTTP {exc.response.status_code}",
+            ) from exc
+
+        content_type = response.headers.get("content-type")
+        extension = self._determine_extension(content_type, response.content)
+        filename = self._generate_filename(prompt, extension, idx)
+        return io.BytesIO(response.content), filename, None
 
     def _prepare_image_file(
         self,
@@ -645,18 +900,11 @@ class ImagePipelineService:
                 img_file.seek(0)
 
             filename = self._generate_filename(prompt, img_format.lower(), idx)
-        elif "url" in img_data:
-            response = requests.get(img_data["url"])
-            if response.status_code != 200:
-                logger.error(
-                    "Failed to download image from URL: %s", response.status_code
-                )
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to download image from URL",
-                )
-            img_file = io.BytesIO(response.content)
-            filename = self._generate_filename(prompt, "png", idx)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Generated image is missing both b64_json and url",
+            )
 
         img_file.seek(0)
         return img_file, filename, has_transparency
@@ -678,7 +926,7 @@ class ImagePipelineService:
                     metadata[str(key)] = value
         return metadata
 
-    def _create_or_update_metadata(
+    async def _create_or_update_metadata(
         self,
         cosmos_service: CosmosDBService,
         upload_result: Dict[str, object],
@@ -688,155 +936,193 @@ class ImagePipelineService:
         deployment_name: Optional[str] = None,
         model_used: Optional[str] = None,
     ) -> None:
-        try:
-            asset_id = str(upload_result["blob_name"]).split(".")[
-                0].split("/")[-1]
-            width_val = upload_result.get("width")
-            height_val = upload_result.get("height")
-            width = int(width_val) if width_val else None
-            height = int(height_val) if height_val else None
+        asset_id = str(upload_result["blob_name"]).split(".")[0].split("/")[-1]
+        width_val = upload_result.get("width")
+        height_val = upload_result.get("height")
+        width = int(width_val) if width_val else None
+        height = int(height_val) if height_val else None
 
-            cosmos_metadata: Dict[str, object] = {
-                "id": asset_id,
-                "media_type": "image",
-                "blob_name": upload_result["blob_name"],
-                "container": upload_result["container"],
-                "url": upload_result["url"],
-                "filename": upload_result["original_filename"],
-                "size": upload_result.get("size"),
-                "content_type": upload_result.get("content_type"),
-                "folder_path": upload_result.get("folder_path"),
-                "prompt": request.prompt,
-                "model": model_used or request.model,
-            }
-            
-            # Add deployment name for cost attribution
-            if deployment_name:
-                cosmos_metadata["deployment_name"] = deployment_name
+        cosmos_metadata: Dict[str, object] = {
+            "id": asset_id,
+            "media_type": "image",
+            "blob_name": upload_result["blob_name"],
+            "container": upload_result["container"],
+            "url": upload_result["url"],
+            "filename": upload_result["original_filename"],
+            "size": upload_result.get("size"),
+            "content_type": upload_result.get("content_type"),
+            "folder_path": upload_result.get("folder_path"),
+            "prompt": request.prompt,
+            "model": model_used or request.model,
+        }
 
-            quality = getattr(request, "quality", None)
-            if quality and quality != "auto":
-                cosmos_metadata["quality"] = quality
+        image_job_id = (
+            request.metadata.get("image_job_id") if request.metadata else None
+        )
+        if image_job_id:
+            cosmos_metadata["generation_id"] = str(image_job_id)
 
-            background = getattr(request, "background", None)
-            if background and background != "auto":
-                cosmos_metadata["background"] = background
+        if deployment_name:
+            cosmos_metadata["deployment_name"] = deployment_name
 
-            output_format = getattr(request, "output_format", None)
-            if output_format:
-                cosmos_metadata["output_format"] = output_format
+        quality = getattr(request, "quality", None)
+        if quality and quality != "auto":
+            cosmos_metadata["quality"] = quality
 
-            if has_transparency is not None:
-                cosmos_metadata["has_transparency"] = has_transparency
+        background = getattr(request, "background", None)
+        if background and background != "auto":
+            cosmos_metadata["background"] = background
 
-            if width is not None:
-                cosmos_metadata["width"] = width
-            if height is not None:
-                cosmos_metadata["height"] = height
+        output_format = getattr(request, "output_format", None)
+        if output_format:
+            cosmos_metadata["output_format"] = output_format
 
-            custom_meta = {
-                key: value
-                for key, value in image_metadata.items()
-                if value is not None
-            }
-            if custom_meta:
-                cosmos_metadata["custom_metadata"] = custom_meta
+        if has_transparency is not None:
+            cosmos_metadata["has_transparency"] = has_transparency
 
-            cosmos_metadata = {
-                key: value for key, value in cosmos_metadata.items() if value is not None
-            }
+        if width is not None:
+            cosmos_metadata["width"] = width
+        if height is not None:
+            cosmos_metadata["height"] = height
 
-            cosmos_service.create_asset_metadata(cosmos_metadata)
-            logger.info(
-                "Created Cosmos DB metadata for image: %s", asset_id
-            )
-        except Exception as exc:
-            logger.warning("Failed to create Cosmos DB metadata: %s", exc)
+        custom_meta = {
+            key: value for key, value in image_metadata.items() if value is not None
+        }
+        if custom_meta:
+            cosmos_metadata["custom_metadata"] = custom_meta
+
+        cosmos_metadata = {
+            key: value for key, value in cosmos_metadata.items() if value is not None
+        }
+
+        await self._call_service_method(
+            cosmos_service,
+            "upsert_asset_metadata",
+            cosmos_metadata,
+        )
+        logger.info("Upserted Cosmos DB metadata for image: %s", asset_id)
 
     async def _run_analysis_on_saved_images(
         self,
         saved_images: List[Dict[str, object]],
         cosmos_service: CosmosDBService,
         request: ImageSaveRequest,
+        azure_storage_service: AzureBlobStorageService,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> List[Dict[str, object]]:
         logger.info(
             "Starting analysis for %s saved images", len(saved_images)
         )
-        analyzer = self._get_analyzer()
-        analysis_results: List[Dict[str, object]] = []
+        analyzer = await self._get_analyzer()
+        semaphore = asyncio.Semaphore(self._max_concurrent_io)
+        completed_analyses = 0
+        await self._emit_progress(
+            progress_callback,
+            "analyzing",
+            {"status": "started", "completed": 0, "total": len(saved_images)},
+        )
 
-        for saved_image in saved_images:
-            try:
-                image_url = str(saved_image["url"])
-                blob_name = str(saved_image["blob_name"])
-                if "?" not in image_url:
-                    image_sas_token = get_image_sas_token()
-                    if image_sas_token:
-                        image_url = f"{image_url}?{image_sas_token}"
+        async def analyze_one(
+            idx: int, saved_image: Dict[str, object]
+        ) -> Tuple[int, Dict[str, object]]:
+            nonlocal completed_analyses
+            async with semaphore:
+                try:
+                    blob_name = str(saved_image["blob_name"])
+                    container_name = str(saved_image["container"])
+                    image_content, _ = await azure_storage_service.download_asset_async(
+                        blob_name,
+                        container_name,
+                    )
+                    image_base64 = base64.b64encode(image_content).decode("utf-8")
+                    custom_prompt = None
+                    if request.metadata and request.metadata.get("analysis_prompt"):
+                        custom_prompt = str(request.metadata["analysis_prompt"])
 
-                # Run sync HTTP request in thread pool
-                response = await asyncio.to_thread(
-                    requests.get, image_url, timeout=30
-                )
-                if response.status_code != 200:
-                    raise Exception(
-                        f"Failed to download image: HTTP {response.status_code}"
+                    analysis = await analyzer.async_image_chat(
+                        image_base64,
+                        custom_prompt or analyze_image_system_message,
                     )
 
-                image_base64 = base64.b64encode(
-                    response.content).decode("utf-8")
-                custom_prompt = None
-                if request.metadata and request.metadata.get("analysis_prompt"):
-                    custom_prompt = str(request.metadata["analysis_prompt"])
+                    asset_id = blob_name.split(".")[0].split("/")[-1]
+                    analysis_data = {
+                        "summary": analysis.get(
+                            "description", "No summary provided"
+                        ),
+                        "products": analysis.get("products", "None identified"),
+                        "tags": analysis.get("tags", []),
+                        "feedback": analysis.get(
+                            "feedback", "No feedback provided"
+                        ),
+                        "analyzed_at": datetime.utcnow().isoformat(),
+                    }
 
-                # Run sync LLM call in thread pool
-                analysis = await asyncio.to_thread(
-                    analyzer.image_chat,
-                    image_base64,
-                    custom_prompt or analyze_image_system_message,
-                )
+                    await self._call_service_method(
+                        cosmos_service,
+                        "update_asset_metadata",
+                        asset_id,
+                        "image",
+                        {
+                            "analysis": analysis_data,
+                            "has_analysis": True,
+                        },
+                    )
 
-                asset_id = blob_name.split(".")[0].split("/")[-1]
-                analysis_data = {
-                    "summary": analysis.get("description", "No summary provided"),
-                    "products": analysis.get("products", "None identified"),
-                    "tags": analysis.get("tags", []),
-                    "feedback": analysis.get("feedback", "No feedback provided"),
-                    "analyzed_at": datetime.utcnow().isoformat(),
-                }
-
-                # Run sync cosmos DB call in thread pool to avoid blocking
-                await asyncio.to_thread(
-                    cosmos_service.update_asset_metadata,
-                    asset_id,
-                    "image",
-                    {
-                        "analysis": analysis_data,
-                        "has_analysis": True,
-                    },
-                )
-
-                analysis_results.append(
-                    {
+                    result: Dict[str, object] = {
                         "blob_name": blob_name,
                         "asset_id": asset_id,
                         "analysis": analysis,
                         "success": True,
                     }
-                )
-            except Exception as exc:
-                logger.error(
-                    "Failed to analyze image %s: %s", saved_image.get(
-                        "blob_name"), exc
-                )
-                analysis_results.append(
-                    {
+                except Exception as exc:
+                    logger.error(
+                        "Failed to analyze image %s: %s",
+                        saved_image.get("blob_name"),
+                        exc,
+                    )
+                    result = {
                         "blob_name": saved_image.get("blob_name"),
                         "error": str(exc),
                         "success": False,
                     }
-                )
 
+                completed_analyses += 1
+                output_index = saved_image.get("original_index", idx + 1)
+                await self._emit_progress(
+                    progress_callback,
+                    "analyzing",
+                    {
+                        "status": "in_progress",
+                        "completed": completed_analyses,
+                        "total": len(saved_images),
+                        "image_index": output_index,
+                        "success": bool(result["success"]),
+                    },
+                )
+                return idx, result
+
+        indexed_results = await asyncio.gather(
+            *(
+                analyze_one(idx, saved_image)
+                for idx, saved_image in enumerate(saved_images)
+            )
+        )
+
+        analysis_results = [
+            result for _, result in sorted(indexed_results, key=lambda item: item[0])
+        ]
+        await self._emit_progress(
+            progress_callback,
+            "analyzing",
+            {
+                "status": "completed",
+                "completed": len(analysis_results),
+                "total": len(saved_images),
+                "failed": sum(
+                    1 for result in analysis_results if not result.get("success")
+                ),
+            },
+        )
         return analysis_results
 
     def _generate_filename(
@@ -854,6 +1140,37 @@ class ImagePipelineService:
         unique_suffix = uuid.uuid4().hex[:8]
         filename = f"{safe_prompt}_{idx + 1}_{unique_suffix}.{extension}"
         return self._normalize_filename(filename)
+
+    def _generate_job_filename(
+        self, image_job_id: str, extension: str, idx: int
+    ) -> str:
+        safe_job_id = re.sub(r"[^a-zA-Z0-9_-]", "_", image_job_id).strip("_")
+        if not safe_job_id:
+            raise HTTPException(status_code=400, detail="Invalid image_job_id metadata")
+        safe_job_id = safe_job_id[:160]
+        return self._normalize_filename(
+            f"image_job_{safe_job_id}_{idx + 1}.{extension}"
+        )
+
+    @staticmethod
+    async def _call_service_method(
+        service: object,
+        method_name: str,
+        *args: object,
+    ) -> object:
+        method = getattr(service, method_name)
+        if inspect.iscoroutinefunction(method):
+            return await method(*args)
+        return await asyncio.to_thread(method, *args)
+
+    @staticmethod
+    async def _emit_progress(
+        callback: Optional[ProgressCallback],
+        stage: str,
+        details: Dict[str, object],
+    ) -> None:
+        if callback is not None:
+            await callback(stage, details)
 
     @staticmethod
     def _normalize_filename(filename: str) -> str:
@@ -873,10 +1190,14 @@ class ImagePipelineService:
                 normalized = stem[:200]
         return normalized
 
-    def _get_analyzer(self) -> ImageAnalyzer:
+    async def _get_analyzer(self) -> ImageAnalyzer:
         if not self._image_analyzer:
+            clients = await asyncio.to_thread(get_core_clients)
             self._image_analyzer = ImageAnalyzer(
-                llm_client, settings.LLM_DEPLOYMENT)
+                clients.llm_client,
+                settings.LLM_DEPLOYMENT,
+                async_openai_client=clients.async_llm_client,
+            )
         return self._image_analyzer
 
     @staticmethod

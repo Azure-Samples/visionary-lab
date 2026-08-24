@@ -7,9 +7,16 @@ The backend is a FastAPI application for generating, analyzing, storing, and org
 ```text
 backend/
 ├── main.py
+├── worker.py
+├── jobs/
+│   ├── factory.py
+│   ├── manager.py
+│   ├── queue.py
+│   └── store.py
 ├── api/endpoints/
 │   ├── env.py
 │   ├── gallery.py
+│   ├── image_jobs.py
 │   ├── images.py
 │   └── metadata_router.py
 ├── core/
@@ -30,7 +37,10 @@ backend/
 
 ## Main components
 
-- `main.py` creates the application, middleware, static file mount, and API routers.
+- `main.py` creates the API application and owns API-side durable job clients during its lifespan.
+- `worker.py` is the standalone no-ingress process that consumes durable image jobs.
+- `jobs/` implements queue dispatch, Cosmos persistence, leases, cancellation, retries, and worker lifecycle.
+- `api/endpoints/image_jobs.py` exposes submission, status, cancellation, and retry endpoints.
 - `api/endpoints/images.py` exposes image generation, editing, analysis, prompt enhancement, and file-management endpoints.
 - `api/endpoints/gallery.py` exposes the image gallery, uploads, folders, downloads, and storage access tokens.
 - `api/endpoints/metadata_router.py` manages image metadata backed by Cosmos DB.
@@ -52,8 +62,15 @@ The backend uses centralized settings from `core/config.py`, including:
 - Azure Cosmos DB endpoint, database, and container
 - Local upload and image directories
 - Image-generation defaults
+- Durable image-job queue, worker, retry, and retention settings
 
 `main.py` creates the configured upload and image directories at startup. The generated OpenAPI schema is available at `/api/v1/openapi.json`.
+
+## Durable image jobs
+
+Long-running generation is accepted through the image-job API and dispatched to a queue-backed worker; it does not run as a FastAPI `BackgroundTask`. In Azure, the API and worker use the same image with different `IMAGE_JOB_ROLE` values. Locally, `IMAGE_JOB_ROLE=all` keeps both roles in one process while retaining the same durable interfaces.
+
+Production uses Azure Storage Queue and Cosmos DB with managed identity. The worker owns generation, progress reporting, cancellation, lease renewal, poison-message handling, and progressive image-output persistence. Application lifespan opens and closes process-owned SDK clients explicitly so importing backend modules does not perform network I/O.
 
 ## Design conventions
 

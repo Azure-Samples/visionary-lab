@@ -16,38 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { deleteGalleryAsset, fetchFolders, moveAsset } from "@/services/api";
 import { OptimizedImage } from "@/components/OptimizedImage";
-
-interface ImageMetadata {
-  src: string;
-  title: string;
-  description?: string;
-  id: string;
-  name: string;
-  tags?: string[];
-  originalItem: {
-    metadata?: {
-      prompt?: string;
-      description?: string;
-      has_transparency?: string;
-      width?: string;
-      height?: string;
-      createdAt?: string;
-      [key: string]: string | number | boolean | undefined;
-    };
-    size?: number;
-    url?: string;
-    [key: string]: string | number | boolean | object | undefined;
-  };
-  width?: number;
-  height?: number;
-  analysis?: {
-    summary?: string;
-    products?: string;
-    feedback?: string;
-    tags?: string[];
-    analyzed?: boolean;
-  };
-}
+import type { ImageMetadata } from "@/utils/gallery-utils";
 
 interface ImageDetailViewProps {
   image: ImageMetadata | null;

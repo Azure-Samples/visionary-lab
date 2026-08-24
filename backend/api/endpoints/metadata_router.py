@@ -27,14 +27,19 @@ IMAGE_MEDIA_TYPE = "image"
 
 def get_cosmos_service() -> CosmosDBService:
     """Dependency to get Cosmos DB service instance"""
+    service = None
     try:
-        return CosmosDBService()
+        service = CosmosDBService()
     except Exception as e:
         logger.error(f"Failed to initialize Cosmos DB service: {e}")
         raise HTTPException(
             status_code=503,
             detail="Metadata service is currently unavailable. Please check your Cosmos DB configuration.",
         )
+    try:
+        yield service
+    finally:
+        service.close()
 
 
 @router.post("/", response_model=AssetMetadataResponse)

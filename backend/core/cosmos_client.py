@@ -29,18 +29,29 @@ class CosmosDBService:
 
         try:
             credential = DefaultAzureCredential(logging_enable=True)
+            self.credential = credential
             self.logger.info("Using managed identity authentication for Cosmos DB")
             self.client = CosmosClient(url=self.endpoint, credential=credential)
         except Exception as e:
             self.logger.error(f"Failed to authenticate with Cosmos DB: {str(e)}")
             raise DatabaseError(f"Cosmos DB authentication error: {str(e)}")
-        # Get or create database and container
-        self.database = self._get_or_create_database()
-        self.container = self._get_or_create_container()
+        # Infrastructure owns schema creation. Reusable clients should not perform
+        # management operations every time a request or worker starts.
+        self.database = self.client.get_database_client(self.database_id)
+        self.container = self.database.get_container_client(self.container_id)
 
         logger.info(
             f"Initialized Cosmos DB service - Database: {self.database_id}, Container: {self.container_id}"
         )
+
+    def close(self) -> None:
+        """Release the reusable Cosmos client and managed-identity credential."""
+        close_client = getattr(self.client, "close", None)
+        if close_client is not None:
+            close_client()
+        close_credential = getattr(getattr(self, "credential", None), "close", None)
+        if close_credential is not None:
+            close_credential()
 
     def _get_or_create_database(self) -> DatabaseProxy:
         """Get or create the database"""
@@ -129,6 +140,23 @@ class CosmosDBService:
         except exceptions.CosmosHttpResponseError as e:
             logger.error(f"Failed to create asset metadata: {e}")
             raise
+
+    def upsert_asset_metadata(self, asset_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Idempotently persist generated-asset metadata for retryable jobs."""
+        if "id" not in asset_data:
+            asset_data["id"] = str(uuid.uuid4())
+        payload = dict(asset_data)
+        current_time = datetime.utcnow().isoformat()
+        existing = self.get_asset_metadata(
+            str(payload["id"]), str(payload.get("media_type") or "unknown")
+        )
+        payload["created_at"] = (
+            existing.get("created_at") if existing else current_time
+        )
+        payload["updated_at"] = current_time
+        payload.setdefault("media_type", "unknown")
+        payload["doc_type"] = "asset_metadata"
+        return self.container.upsert_item(body=payload)
 
     def get_asset_metadata(
         self, asset_id: str, media_type: str

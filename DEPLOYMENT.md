@@ -84,10 +84,11 @@ The deployment creates:
 - **Azure AI Foundry** (AIServices): Unified AI resource with all model deployments
 - **AI Foundry Project**: Scoped workspace for the application
 - **Azure Container Apps Environment**: Serverless container hosting
-- **Backend Container App**: FastAPI application (Python) with SystemAssigned managed identity
+- **Backend API Container App**: FastAPI application (Python) with environment-internal ingress and no queue-based scaling
+- **Image Worker Container App**: No-ingress queue consumer that scales independently from zero
 - **Frontend Container App**: Next.js application (Node.js)
 - **Azure Container Registry**: Private registry for storing Docker images
-- **Azure Storage Account**: For storing generated images
+- **Azure Storage Account**: Blob storage for generated images and a durable image-generation job queue
 - **Azure Cosmos DB**: For metadata storage
 - **Log Analytics Workspace**: For monitoring and logging
 
@@ -98,7 +99,14 @@ The deployment creates:
 | Backend Container App | Cognitive Services OpenAI User | AI Foundry |
 | Backend Container App | Storage Blob Data Contributor | Storage Account |
 | Backend Container App | Storage Blob Delegator | Storage Account |
+| Backend Container App | Storage Queue Data Contributor | Storage Account |
 | Backend Container App | Cosmos DB Data Contributor | Cosmos DB Account |
+| Image Worker Container App | Cognitive Services OpenAI User | AI Foundry |
+| Image Worker Container App | Storage Blob Data Contributor | Storage Account |
+| Image Worker Container App | Storage Blob Delegator | Storage Account |
+| Image Worker Container App | Storage Queue Data Contributor | Storage Account |
+| Image Worker Container App | Cosmos DB Data Contributor | Cosmos DB Account |
+| Image Worker ACR identity | AcrPull | Azure Container Registry |
 
 ## Environment Variables
 
@@ -113,9 +121,26 @@ The following environment variables are automatically configured by the infrastr
 - `AZURE_BLOB_SERVICE_URL`: Storage endpoint URL
 - `AZURE_STORAGE_ACCOUNT_NAME`: Storage account name
 - `AZURE_BLOB_IMAGE_CONTAINER`: Container for images (default: "images")
+- `AZURE_STORAGE_QUEUE_URL`: Storage Queue service endpoint URL
+- `AZURE_STORAGE_QUEUE_NAME`: Durable image job queue (default: "image-generation-jobs")
+- `AZURE_STORAGE_POISON_QUEUE_NAME`: Failed-message diagnostics queue (default: "image-generation-jobs-poison")
+- `CORS_ALLOWED_ORIGINS`: The deployed frontend origin and optional custom frontend domain
+- `IMAGE_JOB_ROLE`: `api` on the web app and `worker` on the queue consumer
+- `IMAGE_JOB_MODE`: Set to `azure` so production cannot silently fall back to process memory
+- `IMAGE_JOB_CONCURRENCY`: Per-replica worker concurrency (worker only)
+- `IMAGE_JOB_MAX_ATTEMPTS`: Maximum automatic worker attempts before dead-lettering
+- `IMAGE_JOB_RETENTION_SECONDS`: Cosmos TTL for image job records (default: 30 days)
 - `AZURE_COSMOS_DB_ENDPOINT`: Cosmos DB endpoint
 - `AZURE_COSMOS_DB_ID`: Database name
 - `AZURE_COSMOS_CONTAINER_ID`: Container name
+
+The API and worker use separate system-assigned identities. The API keeps at least one replica for HTTP traffic, has environment-internal ingress, and has no queue scale rule. Browser traffic reaches it through the authenticated same-origin Next.js route at `BACKEND_URI`; service-to-service callers can use `BACKEND_INTERNAL_URI` from inside the Container Apps environment. The worker has no ingress or HTTP probe, can scale to zero, and scales only from the durable Storage Queue. Each worker gets 2 vCPU and 4 GiB memory; its queue-length target and per-replica concurrency are both two jobs by default, with up to 10 replicas. Override `imageGenerationQueueScaleTargetLength`, `imageWorkerConcurrency`, or `imageWorkerMaxReplicas` when provisioning if needed.
+
+Blob CORS is provisioned declaratively rather than mutated by each worker. By default, the allowed origins are the generated frontend Container App URL plus `frontendCustomDomain` when configured. Advanced deployments can supply `storageBlobCorsAllowedOrigins` directly in Bicep to replace that list.
+
+### Keeping the worker image synchronized
+
+The API and worker run the same backend image with different `IMAGE_JOB_ROLE` values. Only the API carries the `azd-service-name: backend` host tag because azd requires exactly one host resource per service. A non-interactive backend `postdeploy` hook reads the image from the successfully deployed API revision and updates the worker to that exact image when needed. This runs for both `azd deploy backend` and the backend phase of `azd deploy`/`azd up`, and it fails the deployment if synchronization cannot be verified.
 
 ## Local Development
 

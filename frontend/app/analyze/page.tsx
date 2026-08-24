@@ -30,14 +30,18 @@ export default function AnalyzePage() {
     }
   }, [settings.customAnalysisPrompt, customPrompt]);
 
-  const handleImageUpload = (file: File) => {
+  const handleImageUpload = (file: File | null) => {
     setUploadedImage(file);
+    setAnalysisResults(null);
+
+    if (!file) {
+      setImagePreview(null);
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => setImagePreview(e.target?.result as string);
     reader.readAsDataURL(file);
-    
-    // Clear previous results when new image is uploaded
-    setAnalysisResults(null);
   };
 
   const handleAnalyze = async () => {

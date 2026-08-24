@@ -11,6 +11,7 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 const nextConfig: NextConfig = {
   /* config options here */
   output: 'standalone',
+  agentRules: false,
   // Add allowedDevOrigins to prevent the CORS warning in development
   allowedDevOrigins: ['localhost', '127.0.0.1', '::1'],
   
@@ -49,40 +50,11 @@ const nextConfig: NextConfig = {
     },
     // Enable modern bundling optimizations
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', 'framer-motion'],
-    // Enable turbo mode for faster builds
-    turbo: {
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js',
-        },
-      },
-    },
-  },
-  
-  
-  // Disable ESLint during builds
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  // Disable TypeScript checks during builds
-  typescript: {
-    ignoreBuildErrors: true,
   },
   
   // Enhanced headers with caching and security
   async headers() {
     return [
-      {
-        // Add CORS headers to all API routes
-        source: "/api/:path*",
-        headers: [
-          { key: "Access-Control-Allow-Credentials", value: "true" },
-          { key: "Access-Control-Allow-Origin", value: "*" },
-          { key: "Access-Control-Allow-Methods", value: "GET,POST,PUT,DELETE,OPTIONS" },
-          { key: "Access-Control-Allow-Headers", value: "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization" },
-        ]
-      },
       {
         // Service worker caching
         source: '/sw.js',
@@ -98,13 +70,10 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // Cache static assets + security headers
+        // Shared security headers. Next.js applies immutable caching to its
+        // hashed static assets without making dynamic pages or APIs public.
         source: '/(.*)',
         headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
           {
             key: 'X-Content-Type-Options',
             value: 'nosniff',
@@ -116,6 +85,15 @@ const nextConfig: NextConfig = {
           {
             key: 'X-XSS-Protection',
             value: '1; mode=block',
+          },
+        ],
+      },
+      {
+        source: '/api/backend/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'private, no-store, max-age=0',
           },
         ],
       },

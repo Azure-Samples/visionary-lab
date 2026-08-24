@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 from typing import List, Optional, Dict, Any, Union, Literal
 from enum import Enum
 from backend.models.common import BaseResponse
@@ -179,10 +179,27 @@ class ImageSaveRequest(BaseModel):
     )
 
 
+class SavedImageAsset(BaseModel):
+    """Stable artifact contract shared by jobs and the frontend."""
+
+    model_config = ConfigDict(extra="allow")
+
+    blob_name: str
+    url: str
+    original_filename: Optional[str] = None
+    original_index: Optional[int] = Field(default=None, ge=1, le=10)
+    container: Optional[str] = None
+    content_type: Optional[str] = None
+    size: Optional[int] = Field(default=None, ge=0)
+    width: Optional[int] = Field(default=None, ge=0)
+    height: Optional[int] = Field(default=None, ge=0)
+    folder_path: Optional[str] = None
+
+
 class ImageSaveResponse(BaseResponse):
     """Response model for saving generated images to blob storage"""
 
-    saved_images: List[Dict[str, Any]] = Field(
+    saved_images: List[SavedImageAsset] = Field(
         ..., description="List of saved image details from blob storage"
     )
     total_saved: int = Field(
@@ -379,11 +396,16 @@ class ImagePipelineRequest(BaseModel):
         PipelineAction.GENERATE,
         description="Primary pipeline action to execute",
     )
-    prompt: str = Field(..., description="Prompt used for generation or editing")
+    prompt: str = Field(
+        ...,
+        min_length=1,
+        max_length=32000,
+        description="Prompt used for generation or editing",
+    )
     model: str = Field(
         "gpt-image-1.5", description="Model deployment identifier"
     )
-    n: int = Field(1, description="Number of variants to produce (1-10)")
+    n: int = Field(1, ge=1, le=10, description="Number of variants to produce (1-10)")
     size: str = Field(
         "auto",
         description="Requested output size (1024x1024, 1536x1024, 1024x1536, or auto)",
@@ -399,6 +421,8 @@ class ImagePipelineRequest(BaseModel):
     )
     output_compression: Optional[int] = Field(
         100,
+        ge=0,
+        le=100,
         description="Compression percentage for webp/jpeg outputs (0-100)",
     )
     background: Optional[str] = Field(

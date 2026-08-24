@@ -20,26 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { deleteGalleryAsset, fetchFolders, moveAsset } from "@/services/api";
 import { toast } from "sonner";
-
-interface ImageMetadata {
-  src: string;
-  title: string;
-  description?: string;
-  id: string;
-  name: string;
-  tags?: string[];
-  originalItem: {
-    metadata?: {
-      prompt?: string;
-      description?: string;
-      [key: string]: string | number | boolean | undefined;
-    };
-    [key: string]: string | number | boolean | object | undefined;
-  };
-  width?: number;
-  height?: number;
-  size?: "small" | "medium" | "large";
-}
+import type { ImageMetadata } from "@/utils/gallery-utils";
 
 interface ImageGalleryCardProps {
   image: ImageMetadata;

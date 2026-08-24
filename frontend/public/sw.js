@@ -1,13 +1,10 @@
 // Keep these versions aligned so activation removes every cache created by the
 // previous application surface, including pages and chunks that no longer exist.
-const CACHE_NAME = 'visionary-lab-v2';
 const STATIC_CACHE = 'static-v2';
 const IMAGE_CACHE = 'images-v2';
-const API_CACHE = 'api-v2';
 
 // Assets to cache immediately
 const STATIC_ASSETS = [
-  '/',
   '/manifest.json',
   '/_next/static/css/',
   '/_next/static/js/',
@@ -31,8 +28,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME && cacheName !== STATIC_CACHE && 
-              cacheName !== IMAGE_CACHE && cacheName !== API_CACHE) {
+          if (cacheName !== STATIC_CACHE && cacheName !== IMAGE_CACHE) {
             console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -62,11 +58,9 @@ self.addEventListener('fetch', (event) => {
     // Let the browser handle these requests normally to avoid CORS issues
     return;
   } else if (url.pathname.startsWith('/api/')) {
-    // API calls - network first with short TTL
-    event.respondWith(networkFirst(request, API_CACHE, 5 * 60 * 1000)); // 5 minutes
-  } else if (url.origin === self.location.origin) {
-    // Same origin requests - stale while revalidate
-    event.respondWith(staleWhileRevalidate(request, CACHE_NAME));
+    // Job, gallery, authentication, and environment responses are user-specific
+    // and time-sensitive. Never place API responses in Cache Storage.
+    return;
   }
 });
 
@@ -98,53 +92,6 @@ async function cacheFirst(request, cacheName, maxAge = 365 * 24 * 60 * 60 * 1000
     }
     throw error;
   }
-}
-
-// Network first strategy - good for API calls
-async function networkFirst(request, cacheName, maxAge = 5 * 60 * 1000) {
-  const cache = await caches.open(cacheName);
-  
-  try {
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
-  } catch (error) {
-    const cachedResponse = await cache.match(request);
-    if (cachedResponse) {
-      const cachedDate = new Date(cachedResponse.headers.get('date') || 0);
-      const now = new Date();
-      
-      // Return cached version if it's not too old
-      if (now - cachedDate < maxAge) {
-        return cachedResponse;
-      }
-    }
-    throw error;
-  }
-}
-
-// Stale while revalidate strategy - good for pages
-async function staleWhileRevalidate(request, cacheName) {
-  const cache = await caches.open(cacheName);
-  const cachedResponse = await cache.match(request);
-  
-  // Fetch from network in background
-  const networkResponsePromise = fetch(request).then((networkResponse) => {
-    if (networkResponse.ok) {
-      cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
-  });
-  
-  // Return cached version immediately if available
-  if (cachedResponse) {
-    return cachedResponse;
-  }
-  
-  // Otherwise wait for network
-  return networkResponsePromise;
 }
 
 // Background sync for failed requests

@@ -67,6 +67,7 @@ resource visionarylabContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabas
         kind: 'Hash'
         version: 1 // Non-hierarchical partition key
       }
+      defaultTtl: -1
       indexingPolicy: {
         indexingMode: 'consistent'
         automatic: true

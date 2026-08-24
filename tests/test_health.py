@@ -14,7 +14,10 @@ def test_root_returns_welcome(client):
 def test_health_check(client):
     response = client.get("/api/v1/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {
+        "status": "ok",
+        "image_jobs": {"store": "ok", "queue": "ok"},
+    }
 
 
 def test_openapi_schema_accessible(client):

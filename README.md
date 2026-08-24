@@ -12,6 +12,8 @@
 - Refine prompts using AI best practices to ensure high-impact visuals
 - Analyze outputs with AI for quality control, metadata tagging, and asset optimization
 - Guardrails for content showing brand products (brand protection)
+- Durable, cancellable image batches with per-image progress and partial-result retry
+- Generate several batches concurrently while continuing to compose new prompts
 
 ### Asset Management
 - Manage your content in an organized asset library with folder support
@@ -29,6 +31,8 @@ Visionary Lab uses **Azure AI Foundry** as a single unified AI resource with all
 |-----------|---------|------|
 | AI Models | Azure AI Foundry (AIServices) | Managed Identity |
 | Image Storage | Azure Blob Storage | Managed Identity |
+| Image Job Dispatch | Azure Storage Queue | Managed Identity |
+| Image Workers | Azure Container Apps (scale to zero) | Managed Identity |
 | Metadata | Azure Cosmos DB | Managed Identity |
 | Hosting | Azure Container Apps | SystemAssigned MI |
 
@@ -46,13 +50,13 @@ Visionary Lab uses **Azure AI Foundry** as a single unified AI resource with all
 Azure resources:
 
 - Azure AI Foundry resource with deployed models (see table above)
-- Azure Storage Account with a Blob Container for images
+- Azure Storage Account with a Blob container for images and an image-generation job queue
 - Azure Cosmos DB account
 
 Compute environment:
 
-- Python 3.12+
-- Node.js 19+ and npm
+- Python 3.13+
+- Node.js 22+ and npm
 - Git
 - uv package manager
 - Azure CLI (`az login` required for local development)
@@ -99,7 +103,7 @@ cp .env.example .env
 
 ```bash
 cd frontend
-npm install --legacy-peer-deps
+npm ci --registry=https://packagefeedproxy.microsoft.io/npm/
 ```
 
 ## Step 2: Configure Resources
@@ -125,6 +129,9 @@ npm install --legacy-peer-deps
    | `FLUX_KONTEXT_DEPLOYMENT` | FLUX model deployment (e.g., `flux-kontext-pro`) |
    | `AZURE_BLOB_SERVICE_URL` | Blob Storage URL |
    | `AZURE_STORAGE_ACCOUNT_NAME` | Storage account name |
+   | `AZURE_STORAGE_QUEUE_URL` | Storage Queue service URL |
+   | `AZURE_STORAGE_QUEUE_NAME` | Durable image job queue |
+   | `AZURE_STORAGE_POISON_QUEUE_NAME` | Terminal-failure diagnostics queue |
    | `AZURE_COSMOS_DB_ENDPOINT` | Cosmos DB endpoint URL |
 
    > **No API keys needed.** All services authenticate via `DefaultAzureCredential` which uses your `az login` session locally and managed identity in Azure.
@@ -133,21 +140,21 @@ npm install --legacy-peer-deps
 
 ## Step 3: Running the Application
 
-1. Start the backend:
+1. Start the local stack:
 
    ```bash
-   cd backend
-   uv run fastapi dev
+   ./scripts/dev.sh
    ```
 
-   The backend server will start on http://localhost:8000.
+   The backend runs on http://localhost:8000 and the frontend on
+   http://localhost:3000. Local mode runs the API and queue consumers in one
+   process; Azure deploys them independently.
 
-2. Open a new terminal to start the frontend:
+2. To run either side independently:
 
    ```bash
-   cd frontend
-   npm run build
-   npm start
+   UV_CACHE_DIR=.uv-cache uv run fastapi dev backend/main.py --port 8000
+   cd frontend && npm run dev
    ```
 
    The frontend will be available at http://localhost:3000.
@@ -174,6 +181,7 @@ During `azd up`, you'll be prompted for:
 - Azure AI Foundry with all model deployments
 - Managed identity for all service connections (no API keys)
 - Azure Storage and Cosmos DB for content management
+- A private FastAPI API app plus a no-ingress, queue-scaled image worker app
 - RBAC role assignments auto-configured
 - Optional Entra ID authentication (configurable per deployment)
 

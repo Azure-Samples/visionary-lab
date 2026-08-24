@@ -91,7 +91,7 @@ class TestImagePipeline:
         from backend.core.instructions import analyze_image_system_message
 
         # Step 1: Generate
-        gen_result = image_client.generate_image(
+        gen_result = await image_client.generate_image(
             prompt="A bright yellow sunflower in a field",
             n=1,
             size="1024x1024",
