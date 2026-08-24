@@ -1,4 +1,4 @@
-"""Integration tests for image and video analysis via LLM.
+"""Integration tests for image analysis via LLM.
 
 These tests call the real Azure OpenAI LLM API.
 Run with:  uv run pytest tests/integration/test_analysis.py -v -s
@@ -6,11 +6,10 @@ Run with:  uv run pytest tests/integration/test_analysis.py -v -s
 
 import base64
 import pytest
-from backend.core.analyze import ImageAnalyzer, VideoAnalyzer
+from backend.core.analyze import ImageAnalyzer
 from backend.core.config import settings
 from backend.core.instructions import (
     analyze_image_system_message,
-    analyze_video_system_message,
     img_prompt_enhance_msg,
 )
 
@@ -92,22 +91,3 @@ class TestPromptEnhancement:
         enhanced = result["prompt"]
         assert len(enhanced) > len("a dog in a park")
         assert isinstance(enhanced, str)
-
-    def test_enhance_video_prompt(self, llm_client):
-        """Enhance a video prompt."""
-        import json
-        from backend.core.instructions import video_prompt_enhancement_system_message
-
-        response = llm_client.chat.completions.create(
-            model=settings.LLM_DEPLOYMENT,
-            messages=[
-                {"role": "system", "content": video_prompt_enhancement_system_message},
-                {"role": "user", "content": "sunset on a beach"},
-            ],
-            temperature=0,
-            response_format={"type": "json_object"},
-        )
-
-        result = json.loads(response.choices[0].message.content)
-        assert "prompt" in result
-        assert len(result["prompt"]) > len("sunset on a beach")

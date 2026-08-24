@@ -13,13 +13,12 @@ import requests
 from fastapi import HTTPException, UploadFile
 from PIL import Image
 
-from backend.core import llm_client, image_sas_token
+from backend.core import get_image_sas_token, llm_client
 from backend.core.analyze import ImageAnalyzer
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.config import settings
 from backend.core.cosmos_client import CosmosDBService
 from backend.core.instructions import analyze_image_system_message
-from backend.models.gallery import MediaType
 from backend.models.images import (
     ImageEditRequest,
     ImageGenerationRequest,
@@ -309,7 +308,6 @@ class ImagePipelineService:
             upload = UploadFile(filename=filename, file=img_file)
             result = await azure_storage_service.upload_asset(
                 upload,
-                MediaType.IMAGE.value,
                 metadata=None,
                 folder_path=request.folder_path,
             )
@@ -772,7 +770,9 @@ class ImagePipelineService:
                 image_url = str(saved_image["url"])
                 blob_name = str(saved_image["blob_name"])
                 if "?" not in image_url:
-                    image_url = f"{image_url}?{image_sas_token}"
+                    image_sas_token = get_image_sas_token()
+                    if image_sas_token:
+                        image_url = f"{image_url}?{image_sas_token}"
 
                 # Run sync HTTP request in thread pool
                 response = await asyncio.to_thread(

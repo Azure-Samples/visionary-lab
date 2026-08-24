@@ -1,7 +1,9 @@
-const CACHE_NAME = 'visionary-lab-v1';
-const STATIC_CACHE = 'static-v1';
-const IMAGE_CACHE = 'images-v1';
-const API_CACHE = 'api-v1';
+// Keep these versions aligned so activation removes every cache created by the
+// previous application surface, including pages and chunks that no longer exist.
+const CACHE_NAME = 'visionary-lab-v2';
+const STATIC_CACHE = 'static-v2';
+const IMAGE_CACHE = 'images-v2';
+const API_CACHE = 'api-v2';
 
 // Assets to cache immediately
 const STATIC_ASSETS = [
@@ -156,5 +158,3 @@ async function doBackgroundSync() {
   // Implement background sync logic here
   console.log('Background sync triggered');
 }
-
- 

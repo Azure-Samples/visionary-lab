@@ -23,7 +23,6 @@ class AzureBlobStorageService:
     def __init__(self):
         """Initialize Azure Blob Storage client"""
         self.image_container = settings.AZURE_BLOB_IMAGE_CONTAINER
-        self.video_container = settings.AZURE_BLOB_VIDEO_CONTAINER
 
         account_url = settings.AZURE_BLOB_SERVICE_URL
         if not account_url and settings.AZURE_STORAGE_ACCOUNT_NAME:
@@ -36,7 +35,6 @@ class AzureBlobStorageService:
 
         # Ensure containers exist
         self._ensure_container_exists(self.image_container)
-        self._ensure_container_exists(self.video_container)
 
         # Configure CORS for direct access from frontend (only once per application lifecycle)
         with self._cors_lock:
@@ -206,17 +204,16 @@ class AzureBlobStorageService:
         ).strip()
         return sanitized or "_"
 
-    async def upload_asset(self, file: UploadFile, asset_type: str = "image",
+    async def upload_asset(self, file: UploadFile,
                            metadata: Optional[Dict[str, str]] = None,
                            folder_path: Optional[str] = None) -> Dict[str, str]:
         """
-        Upload an asset (image or video) to Azure Blob Storage
+        Upload an image to Azure Blob Storage.
 
         Note: Metadata is no longer stored in blob storage - use Cosmos DB instead
 
         Args:
             file: The uploaded file
-            asset_type: Type of asset ("image" or "video")
             metadata: Optional metadata (ignored - kept for API compatibility)
             folder_path: Optional folder path to store the asset in
 
@@ -224,12 +221,11 @@ class AzureBlobStorageService:
             Dictionary with asset information
         """
         try:
-            # Determine container based on asset type
-            container_name = self.image_container if asset_type == "image" else self.video_container
+            container_name = self.image_container
 
             # Get file extension and determine content type
             _, ext = os.path.splitext(file.filename)
-            content_type = self._get_content_type(ext, asset_type)
+            content_type = self._get_content_type(ext)
 
             # Normalize folder path
             normalized_folder_path = self.normalize_folder_path(folder_path)
@@ -271,17 +267,16 @@ class AzureBlobStorageService:
 
             # Get image dimensions for return data (but don't store in blob metadata)
             width, height = None, None
-            if asset_type == "image":
-                try:
-                    from PIL import Image
-                    import io
+            try:
+                from PIL import Image
+                import io
 
-                    # Get image dimensions using PIL
-                    with Image.open(io.BytesIO(file_content)) as img:
-                        width, height = img.width, img.height
-                except Exception as e:
-                    # If we can't get dimensions, log but continue
-                    logger.warning(f"Could not get image dimensions: {str(e)}")
+                # Get image dimensions using PIL
+                with Image.open(io.BytesIO(file_content)) as img:
+                    width, height = img.width, img.height
+            except Exception as e:
+                # If we can't get dimensions, log but continue
+                logger.warning(f"Could not get image dimensions: {str(e)}")
 
             blob_client.upload_blob(
                 data=file_content,
@@ -313,13 +308,12 @@ class AzureBlobStorageService:
         except Exception:
             raise
 
-    def _get_content_type(self, extension: str, asset_type: str) -> str:
+    def _get_content_type(self, extension: str) -> str:
         """
         Determine content type based on file extension
 
         Args:
             extension: File extension including the dot
-            asset_type: Type of asset ("image" or "video")
 
         Returns:
             MIME type string
@@ -337,20 +331,7 @@ class AzureBlobStorageService:
             ".bmp": "image/bmp"
         }
 
-        # Video content types
-        video_types = {
-            ".mp4": "video/mp4",
-            ".mov": "video/quicktime",
-            ".avi": "video/x-msvideo",
-            ".wmv": "video/x-ms-wmv",
-            ".webm": "video/webm",
-            ".mkv": "video/x-matroska"
-        }
-
-        if asset_type == "image":
-            return image_types.get(extension, "application/octet-stream")
-        else:
-            return video_types.get(extension, "application/octet-stream")
+        return image_types.get(extension, "application/octet-stream")
 
     def delete_asset(self, blob_name: str, container_name: str) -> bool:
         """

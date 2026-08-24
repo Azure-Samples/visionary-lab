@@ -1,135 +1,80 @@
 # Frontend Documentation
 
-This document provides a factual overview of the frontend system for the AI Content Lab based on code examination.
+The frontend is a Next.js 15 application for generating, editing, organizing, and analyzing images.
 
-## 1. Project Structure
+## Project Structure
 
-The frontend is a Next.js application with the following key directories:
-
-```
+```text
 frontend/
-├── .env.local               # Local environment variables
-├── Dockerfile               # Container configuration
-├── app/                     # Next.js App Router pages and layouts
-│   ├── api/                 # API routes (Next.js server-side endpoints)
-│   ├── auth/                # Authentication-related routes
-│   ├── edit-image/          # Image editing functionality
-│   ├── gallery/             # Gallery view for content
-│   ├── jobs/                # Job management interface
-│   ├── login/               # Login page
-│   ├── new-image/           # Image creation page
-│   ├── new-video/           # Video creation page
-│   ├── settings/            # Application settings
-│   ├── video/               # Video viewing functionality
-│   ├── layout.tsx           # Root layout component
-│   └── page.tsx             # Home page component
-├── components/              # Reusable React components
-│   ├── ui/                  # UI component library
-│   ├── video/               # Video-specific components
-│   ├── ImageCreationContainer.tsx 
-│   ├── VideoCreationContainer.tsx
+├── app/
+│   ├── analyze/             # Custom image analysis
+│   ├── api/                 # Next.js server routes
+│   ├── edit-image/          # Image editing workflow
+│   ├── login/               # Authentication page
+│   ├── new-image/           # Image creation and gallery
+│   ├── settings/            # Brand, analysis, and API settings
+│   ├── layout.tsx           # Root application layout
+│   └── page.tsx             # Home page
+├── components/
+│   ├── ui/                  # Shared UI primitives
+│   ├── ImageCreationContainer.tsx
 │   ├── ImageDetailView.tsx
-│   ├── VideoDetailView.tsx
-│   └── ...                  # Many other component files
-├── context/                 # React context providers
+│   ├── ImageOverlay.tsx
+│   └── image-gallery-card.tsx
+├── context/                 # Shared React state
 ├── hooks/                   # Custom React hooks
-├── lib/                     # Utility libraries
-├── public/                  # Static assets
-├── services/                # API service integrations
+├── public/                  # Static application assets
+├── services/
 │   ├── api.ts               # Backend API client
 │   ├── imageService.ts      # Image-specific API functions
-│   └── sas-token.ts         # Azure storage SAS token management
-├── types/                   # TypeScript type definitions
-└── utils/                   # Utility functions
+│   └── sas-token.ts         # Image storage access
+└── utils/                   # Gallery, image, and general helpers
 ```
 
-## 2. Technology Stack
+## Technology Stack
 
-The frontend is built with:
+- Next.js 15 with the App Router
+- React 19 and TypeScript
+- Tailwind CSS
+- NextAuth.js with Microsoft Entra ID
+- Radix UI primitives
+- Framer Motion
 
-- **Next.js 15.2.4**: App Router architecture with React 19
-- **TypeScript**: For type safety
-- **Tailwind CSS**: For styling
-- **NextAuth.js (next-auth v5)**: For authentication
-- **Radix UI**: For accessible UI components
-- **Framer Motion**: For animations
-- **FFMPEG**: For client-side video processing
+## Main Workflows
 
-## 3. Key Features & Implementation Details
+- Create and browse images at `/new-image`.
+- Edit existing images at `/edit-image`.
+- Run custom image analysis at `/analyze`.
+- Configure brand protection, analysis prompts, and API status at `/settings`.
 
-### Authentication
+The home route renders the image creation page.
 
-- Uses NextAuth.js with Microsoft Entra ID (formerly Azure AD) provider
-- Authentication is defined in `auth.ts` with the following scopes:
-  - `openid profile email User.Read`
-- The auth system uses environment variables for configuration:
-  - `AUTH_MICROSOFT_ENTRA_ID_ID`
-  - `AUTH_MICROSOFT_ENTRA_ID_TENANT_ID`
-  - `AUTH_MICROSOFT_ENTRA_ID_SECRET`
-  - `AUTH_SECRET`
+## API and Storage
 
-### API Communication
+The client in `services/api.ts` uses `NEXT_PUBLIC_API_URL` when set. Otherwise it builds the backend URL from:
 
-- Backend API is accessed via service modules in `services/` directory
-- `api.ts` contains the core API client functionality with:
-  - Configurable API URL via environment variables (`NEXT_PUBLIC_API_PROTOCOL`, `NEXT_PUBLIC_API_HOSTNAME`, `NEXT_PUBLIC_API_PORT`)
-  - Default URL: `http://localhost:8000/api/v1`
-  - Includes endpoints for image and video generation, editing, and management
+- `NEXT_PUBLIC_API_PROTOCOL`
+- `NEXT_PUBLIC_API_HOSTNAME`
+- `NEXT_PUBLIC_API_PORT`
 
-### Content Generation UI
+Generated images are accessed from Azure Blob Storage. `services/sas-token.ts` obtains the image container URL and SAS token from the backend, while `next.config.ts` allows optimized image delivery from Azure-hosted URLs.
 
-- **Image Creation**: Implemented in `ImageCreationContainer.tsx` and accessed via `/new-image`
-- **Video Creation**: Implemented in `VideoCreationContainer.tsx` and accessed via `/new-video`
-- **Image Editing**: Available at `/edit-image` route
-- **Content Gallery**: Available at `/gallery` route
+## Authentication
 
-### Azure Storage Integration
+Authentication is configured in `auth.ts` with Microsoft Entra ID. Relevant environment variables are:
 
-- Configured to handle assets from Azure Blob Storage
-- `next.config.ts` includes remotePatterns for Azure Blob Storage URLs
-- SAS token management in `services/sas-token.ts` for secure access to blob storage
+- `AUTH_MICROSOFT_ENTRA_ID_ID`
+- `AUTH_MICROSOFT_ENTRA_ID_TENANT_ID`
+- `AUTH_MICROSOFT_ENTRA_ID_SECRET`
+- `AUTH_SECRET`
 
-### Image Optimization
+## Development
 
-- Next.js Image component configured in `next.config.ts` for optimized image delivery
-- Remote patterns include:
-  - Backend API assets (`/api/v1/gallery/asset/**`)
-  - Azure Blob Storage (`${STORAGE_ACCOUNT_NAME}.blob.core.windows.net`)
+From `frontend/`:
 
-## 4. Environment Configuration
+```bash
+npm install
+npm run dev
+```
 
-The frontend requires the following environment variables:
-
-- **API Configuration**:
-  - `NEXT_PUBLIC_API_PROTOCOL`: Protocol for backend API (http/https)
-  - `NEXT_PUBLIC_API_HOSTNAME`: Hostname for backend API
-  - `NEXT_PUBLIC_API_PORT`: Port for backend API
-  
-- **Azure Storage**:
-  - `NEXT_PUBLIC_STORAGE_ACCOUNT_NAME`: Azure Storage account name
-
-- **Authentication**:
-  - `AUTH_MICROSOFT_ENTRA_ID_ID`: Microsoft Entra ID client ID
-  - `AUTH_MICROSOFT_ENTRA_ID_TENANT_ID`: Microsoft Entra ID tenant ID
-  - `AUTH_MICROSOFT_ENTRA_ID_SECRET`: Microsoft Entra ID client secret
-  - `AUTH_SECRET`: Secret for NextAuth.js
-
-## 5. Development
-
-- The project uses modern Next.js development features:
-  - Turbopack for faster development builds (`next dev --turbopack`)
-  - Standalone output for optimized production deployment
-  - ESLint for code quality enforcement
-
-## 6. Component Architecture
-
-- **UI Components**: Leverages Radix UI primitives for accessible UI components
-- **Page Components**: Follows Next.js App Router pattern with:
-  - Layout components for shared UI
-  - Page components for route-specific content
-  - Loading and error states
-- **Container Components**: Complex UI logic encapsulated in container components
-  - `ImageCreationContainer.tsx`
-  - `VideoCreationContainer.tsx`
-  - `ImageDetailView.tsx`
-  - `VideoDetailView.tsx`
+Production verification uses `npm run build`.

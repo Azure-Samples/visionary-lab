@@ -40,9 +40,6 @@ ensure_env() {
   # Check for placeholder values and prompt the user
   local missing=()
   local vars=(
-    "SORA_AOAI_RESOURCE:Azure OpenAI Sora resource name"
-    "SORA_DEPLOYMENT:Sora deployment name"
-    "SORA_AOAI_API_KEY:Sora API key"
     "IMAGEGEN_AOAI_RESOURCE:Image generation resource name"
     "IMAGEGEN_DEPLOYMENT:Image generation deployment name (e.g. gpt-image-1)"
     "IMAGEGEN_15_DEPLOYMENT:Image 1.5 deployment name (e.g. gpt-image-1.5)"

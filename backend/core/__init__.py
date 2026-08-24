@@ -1,12 +1,12 @@
 import logging
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from azure.storage.blob import BlobServiceClient, generate_container_sas, ContainerSasPermissions
 from openai import AzureOpenAI, AsyncAzureOpenAI
 
 from .config import settings
-from .sora import Sora
 from .gpt_image import GPTImageClient
 
 logger = logging.getLogger(__name__)
@@ -16,19 +16,6 @@ credential = DefaultAzureCredential()
 token_provider = get_bearer_token_provider(
     credential, "https://cognitiveservices.azure.com/.default"
 )
-
-# Initialize Sora 2 client
-try:
-    sora_client = Sora(
-        endpoint=settings.AI_FOUNDRY_ENDPOINT,
-        deployment_name=settings.SORA_DEPLOYMENT,
-        credential=credential,
-        token_provider=token_provider,
-    )
-    logger.info(f"Initialized Sora 2 client with Foundry endpoint, deployment: {settings.SORA_DEPLOYMENT}")
-except Exception as e:
-    logger.error(f"Failed to initialize Sora 2 client: {str(e)}")
-    sora_client = None
 
 # Initialize GPT-Image client (using default model)
 try:
@@ -102,5 +89,7 @@ def _generate_sas(container_name: str) -> str | None:
         return None
 
 
-video_sas_token = _generate_sas(settings.AZURE_BLOB_VIDEO_CONTAINER)
-image_sas_token = _generate_sas(settings.AZURE_BLOB_IMAGE_CONTAINER)
+@lru_cache(maxsize=1)
+def get_image_sas_token() -> str | None:
+    """Generate the image-container SAS token on first use, not at import time."""
+    return _generate_sas(settings.AZURE_BLOB_IMAGE_CONTAINER)

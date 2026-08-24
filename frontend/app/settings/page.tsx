@@ -23,8 +23,6 @@ import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 const FadeScaleTransition = dynamic(() => import("@/components/ui/page-transition").then(m => ({ default: m.FadeScaleTransition })), { ssr: false });
 
-// No longer need video settings types
-
 // No longer need EnvVariables interface
 
 interface ApiStatus {
@@ -82,8 +80,6 @@ export default function SettingsPage() {
     fetchApiStatus();
   }, []);
 
-  // No longer need video settings functions
-
   const handleAddBrand = () => {
     if (newBrand.trim() && (imageSettings.settings.brandsList?.length || 0) < 3) {
       imageSettings.addBrand(newBrand);
@@ -133,7 +129,7 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Brand Protection</CardTitle>
-                <CardDescription>Configure brand protection settings for both image and video generation</CardDescription>
+                <CardDescription>Configure brand protection settings for image generation</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-4">
@@ -388,24 +384,6 @@ export default function SettingsPage() {
                                  </div>
                                </div>
 
-                              {/* Video Generation */}
-                              <div className="border rounded-md p-3">
-                                <h3 className="text-sm font-medium mb-2">Video Generation</h3>
-                                <div className="flex flex-wrap gap-2">
-                                  {(apiStatus?.set || [])
-                                    .filter(key => key.includes('SORA') || key.includes('REPLICATE') || key.includes('RUNWAY'))
-                                    .map((variable) => (
-                                      <Badge key={variable} className="bg-green-100 text-green-800 hover:bg-green-200 flex items-center">
-                                        <Check className="h-3 w-3 mr-1" />
-                                        {variable}
-                                      </Badge>
-                                    ))}
-                                  {(apiStatus?.set || []).filter(key => key.includes('SORA') || key.includes('REPLICATE') || key.includes('RUNWAY')).length === 0 && (
-                                    <p className="text-xs text-muted-foreground">No video generation APIs are configured</p>
-                                  )}
-                                </div>
-                              </div>
-
                               {/* Language Models */}
                               <div className="border rounded-md p-3">
                                 <h3 className="text-sm font-medium mb-2">Language Models & Analysis</h3>
@@ -527,4 +505,4 @@ export default function SettingsPage() {
       </div>
     </FadeScaleTransition>
   );
-} 
+}

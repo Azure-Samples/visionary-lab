@@ -40,24 +40,19 @@ param IMAGEGEN_DEPLOYMENT string = ''
 param IMAGEGEN_15_DEPLOYMENT string = ''
 @description('Name of the gpt-image-1-mini deployment')
 param IMAGEGEN_1_MINI_DEPLOYMENT string = ''
-@description('Name of the Sora deployment')
-param SORA_DEPLOYMENT string = ''
 @description('Name of the FLUX Kontext Pro deployment')
 param FLUX_KONTEXT_DEPLOYMENT string = ''
 
 // Model types and versions (for Bicep-managed deployments)
 param llmModelType string = 'gpt-4o'
 param llmModelVersion string = '2024-11-20'
-// Image/video models may be deployed via CLI when Bicep doesn't support the format
+// Image models may be deployed via CLI when Bicep doesn't support the format
 @description('Set to true to deploy image gen models via Bicep (requires OpenAI-format models)')
 param deployImageGenModels bool = false
 param imageGenModelType string = 'gpt-image-1.5'
 param imageGenModelVersion string = '2024-04-01'
 param imageGen15ModelVersion string = '2024-04-01'
 param imageGen1MiniModelVersion string = '2024-04-01'
-@description('Set to true to deploy Sora via Bicep')
-param deploySoraModel bool = false
-param soraModelVersion string = '2025-05-02'
 
 // Docker images for the backend and frontend container apps
 param DOCKER_IMAGE_BACKEND string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
@@ -286,20 +281,6 @@ module imageGen1MiniDeployment './modules/aiFoundryModelDeployment.bicep' = if (
   ]
 }
 
-module soraDeployment './modules/aiFoundryModelDeployment.bicep' = if (deploySoraModel && SORA_DEPLOYMENT != '') {
-  name: 'soraDeployment'
-  params: {
-    aiFoundryName: aiFoundryName
-    deploymentName: SORA_DEPLOYMENT
-    modelName: 'sora'
-    modelVersion: soraModelVersion
-    skuCapacity: 1
-  }
-  dependsOn: [
-    imageGen1MiniDeployment
-  ]
-}
-
 // ─── Container App Environment ───
 module containerAppEnvMod './modules/containerAppEnv.bicep' = {
   name: 'containerAppEnvMod'
@@ -334,7 +315,6 @@ module containerAppBackend './modules/containerApp.bicep' = {
     IMAGEGEN_DEPLOYMENT: IMAGEGEN_DEPLOYMENT
     IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
     IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
-    SORA_DEPLOYMENT: SORA_DEPLOYMENT
     FLUX_KONTEXT_DEPLOYMENT: FLUX_KONTEXT_DEPLOYMENT
     COSMOS_ENDPOINT: cosmosDbMod.outputs.cosmosAccountEndpoint
     COSMOS_DATABASE_NAME: cosmosDbMod.outputs.databaseName
@@ -365,7 +345,6 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     IMAGEGEN_DEPLOYMENT: IMAGEGEN_DEPLOYMENT
     IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
     IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
-    SORA_DEPLOYMENT: SORA_DEPLOYMENT
     FLUX_KONTEXT_DEPLOYMENT: FLUX_KONTEXT_DEPLOYMENT
     API_PROTOCOL: API_PROTOCOL == '' ? 'https' : API_PROTOCOL
     API_PORT: API_PORT == '' ? '443' : API_PORT

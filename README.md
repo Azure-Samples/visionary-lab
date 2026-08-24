@@ -1,15 +1,8 @@
 # Visionary Lab
 
-**Create high-quality visual content with GPT-Image-1.5, FLUX Kontext Pro, and Sora 2 on Azure AI Foundry — tailored for professional use cases.**
+**Create high-quality image content with GPT-Image-1.5, FLUX Kontext Pro, and GPT-Image-1-Mini on Azure AI Foundry — tailored for professional use cases.**
 
 ## Key Features
-
-### Video Generation (Sora 2)
-- Create videos from text prompts with the **Sora 2** model
-- Generate videos from text + images (image-to-video)
-- Audio automatically included in all generated videos
-- Support for multiple resolutions: 720p and 1080p (landscape and portrait)
-- Durations: 4s, 8s, or 12s
 
 ### Image Generation (GPT-Image-1.5 · FLUX Kontext Pro · GPT-Image-1-Mini)
 - Generate polished image assets from text prompts, input images, or both
@@ -22,14 +15,11 @@
 
 ### Asset Management
 - Manage your content in an organized asset library with folder support
-- Automatic video analysis and metadata tagging
-
-<img src="ui-sample.png" alt="Visionary Lab UI" width="800"/>
+- Automatic image analysis and metadata tagging
 
 > You can also get started with our notebooks to explore the models and APIs:
 >
 > - Image generation: [gpt-image-1.ipynb](notebooks/gpt-image-1.ipynb)
-> - Video generation: [sora-api-starter.ipynb](notebooks/sora-api-starter.ipynb)
 
 ## Architecture
 
@@ -38,7 +28,7 @@ Visionary Lab uses **Azure AI Foundry** as a single unified AI resource with all
 | Component | Service | Auth |
 |-----------|---------|------|
 | AI Models | Azure AI Foundry (AIServices) | Managed Identity |
-| Image/Video Storage | Azure Blob Storage | Managed Identity |
+| Image Storage | Azure Blob Storage | Managed Identity |
 | Metadata | Azure Cosmos DB | Managed Identity |
 | Hosting | Azure Container Apps | SystemAssigned MI |
 
@@ -50,14 +40,13 @@ Visionary Lab uses **Azure AI Foundry** as a single unified AI resource with all
 | `gpt-image-1.5` | GPT-Image-1.5 | Primary image generation |
 | `gpt-image-1-mini` | GPT-Image-1-Mini | Fast image generation |
 | `flux-kontext-pro` | FLUX.1-Kontext-pro | Alternative image generation |
-| `sora-2` | Sora 2 | Video generation |
 
 ## Prerequisites
 
 Azure resources:
 
 - Azure AI Foundry resource with deployed models (see table above)
-- Azure Storage Account with Blob Containers for images and videos
+- Azure Storage Account with a Blob Container for images
 - Azure Cosmos DB account
 
 Compute environment:
@@ -134,26 +123,13 @@ npm install --legacy-peer-deps
    | `IMAGEGEN_DEPLOYMENT` | Primary image model deployment (e.g., `gpt-image-1.5`) |
    | `IMAGEGEN_1_MINI_DEPLOYMENT` | Mini image model deployment (e.g., `gpt-image-1-mini`) |
    | `FLUX_KONTEXT_DEPLOYMENT` | FLUX model deployment (e.g., `flux-kontext-pro`) |
-   | `SORA_DEPLOYMENT` | Video model deployment (e.g., `sora-2`) |
    | `AZURE_BLOB_SERVICE_URL` | Blob Storage URL |
    | `AZURE_STORAGE_ACCOUNT_NAME` | Storage account name |
    | `AZURE_COSMOS_DB_ENDPOINT` | Cosmos DB endpoint URL |
 
    > **No API keys needed.** All services authenticate via `DefaultAzureCredential` which uses your `az login` session locally and managed identity in Azure.
 
-> **Note:** For the best experience, deploy all models. The app works with a subset — unavailable models are gracefully skipped.
-
-### Sora 2 Specifications
-
-**Supported Resolutions:**
-- 1280×720 (16:9 landscape)
-- 720×1280 (9:16 portrait)
-- 1792×1024 (16:9 landscape, high quality)
-- 1024×1792 (9:16 portrait, high quality)
-
-**Supported Durations:** 4s, 8s, or 12s
-
-**Audio:** All generated videos automatically include synchronized audio
+> **Note:** The app works with a subset of the image models; unavailable deployments are gracefully skipped.
 
 ## Step 3: Running the Application
 
@@ -165,12 +141,6 @@ npm install --legacy-peer-deps
    ```
 
    The backend server will start on http://localhost:8000.
-
-   **Note:**
-   If you encounter: `ImportError: libGL.so.1: cannot open shared object file`, install:
-   ```bash
-   sudo apt update && sudo apt install libgl1-mesa-glx
-   ```
 
 2. Open a new terminal to start the frontend:
 
@@ -198,7 +168,7 @@ azd up
 
 During `azd up`, you'll be prompted for:
 - **AI Foundry name**: Globally unique name for your AI Foundry resource
-- **Model deployment names**: Which models to deploy (gpt-4o, gpt-image-1.5, sora-2, etc.)
+- **Model deployment names**: Which LLM and image models to deploy (for example, gpt-4o and gpt-image-1.5)
 
 ✨ That's it! Your Visionary Lab will be running on Azure Container Apps with:
 - Azure AI Foundry with all model deployments

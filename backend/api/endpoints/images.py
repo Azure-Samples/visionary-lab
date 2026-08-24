@@ -37,7 +37,7 @@ from backend.models.images import (
     PipelineSaveOptions,
     PipelineAnalysisOptions,
 )
-from backend.core import llm_client, async_llm_client, image_sas_token
+from backend.core import async_llm_client, get_image_sas_token, llm_client
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.analyze import ImageAnalyzer
 from backend.core.config import settings
@@ -353,7 +353,9 @@ async def analyze_image(req: ImageAnalyzeRequest):
             else:
                 # check if the path contains a SAS token
                 if "?" not in file_path:
-                    file_path += f"?{image_sas_token}"
+                    image_sas_token = get_image_sas_token()
+                    if image_sas_token:
+                        file_path += f"?{image_sas_token}"
 
             # Download the image from the URL (async)
             async with httpx.AsyncClient() as client:
@@ -488,7 +490,9 @@ async def analyze_image_custom(req: ImageAnalyzeCustomRequest):
             else:
                 # check if the path contains a SAS token
                 if "?" not in file_path:
-                    file_path += f"?{image_sas_token}"
+                    image_sas_token = get_image_sas_token()
+                    if image_sas_token:
+                        file_path += f"?{image_sas_token}"
 
             # Download the image from the URL (async)
             async with httpx.AsyncClient() as client:

@@ -37,8 +37,6 @@ COPY backend /app/backend
 
 FROM base
 
-RUN apt-get update && apt-get install -y libgl1-mesa-glx libglib2.0-0
-
 RUN groupadd -r app
 RUN useradd -r -d /app -g app -N app
 
