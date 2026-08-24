@@ -19,6 +19,8 @@ os.environ.setdefault("AZURE_BLOB_SERVICE_URL", "https://teststorage.blob.core.w
 os.environ.setdefault("AZURE_BLOB_IMAGE_CONTAINER", "images")
 os.environ.setdefault("AZURE_BLOB_VIDEO_CONTAINER", "videos")
 os.environ.setdefault("AZURE_COSMOS_DB_ENDPOINT", "https://test.documents.azure.com:443/")
+os.environ.setdefault("IMAGE_JOB_MODE", "memory")
+os.environ.setdefault("IMAGE_JOB_ROLE", "api")
 
 from fastapi.testclient import TestClient
 
@@ -61,4 +63,5 @@ def app(mock_azure_storage, mock_cosmos):
 @pytest.fixture(scope="session")
 def client(app):
     """HTTP test client for the FastAPI application."""
-    return TestClient(app)
+    with TestClient(app) as test_client:
+        yield test_client

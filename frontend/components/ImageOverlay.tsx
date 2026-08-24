@@ -31,21 +31,18 @@ interface ImageOverlayProps {
     prompt: string;
     model: string;
     imageSize: string;
-    saveImages: boolean;
-    mode: string;
     brandsProtection: string;
-    brandProtectionModel: string;
     variations: number;
     folder: string;
     background: string;
     outputFormat: string;
     quality: string;
     inputFidelity: string;
+    analyze: boolean;
     sourceImages?: File[];
     brandsList?: string[];
-  }) => void;
-  isGenerating?: boolean;
-  onPromptChange?: (newPrompt: string, isEnhanced: boolean) => void;
+  }) => Promise<void>;
+  isSubmitting?: boolean;
   folders?: string[];
   selectedFolder?: string;
   onFolderCreated?: (newFolder: string | string[]) => void;
@@ -53,8 +50,7 @@ interface ImageOverlayProps {
 
 export function ImageOverlay({ 
   onGenerate, 
-  isGenerating = false, 
-  onPromptChange,
+  isSubmitting = false,
   folders = [],
   selectedFolder = "",
   onFolderCreated
@@ -62,8 +58,6 @@ export function ImageOverlay({
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState("gpt-image-1.5");
   const [imageSize, setImageSize] = useState("1024x1024");
-  const [saveImages] = useState(true);
-  const [mode] = useState("prod");
   const imageSettings = useImageSettings();
   const [aiAnalysisEnabled, setAiAnalysisEnabled] = useState(true);
   const [variations, setVariations] = useState("1");
@@ -145,27 +139,32 @@ export function ImageOverlay({
       return;
     }
     
-    onGenerate({
+    const generationSettings = {
       prompt,
       model,
       imageSize,
-      saveImages,
-      mode,
       brandsProtection: imageSettings.settings.brandsProtection,
-      brandProtectionModel: "GPT-4o",
       variations: numVariations,
       folder,
       background,
       outputFormat,
       quality,
       inputFidelity,
+      analyze: aiAnalysisEnabled,
       sourceImages,
       brandsList: imageSettings.settings.brandsList
-    });
+    };
+
+    void onGenerate(generationSettings);
+
+    if (sourceImages.length === 0) {
+      setPrompt("");
+      window.requestAnimationFrame(() => textareaRef.current?.focus());
+    }
   };
 
   const handleWizardEnhance = async () => {
-    if (!prompt.trim() || isGenerating || isWizardEnhancing) return;
+    if (!prompt.trim() || isSubmitting || isWizardEnhancing) return;
     
     // Set loading state
     setIsWizardEnhancing(true);
@@ -176,11 +175,6 @@ export function ImageOverlay({
       
       // Update the prompt with the enhanced version
       setPrompt(enhancedPrompt);
-      
-      // Notify parent component about the prompt change
-      if (onPromptChange) {
-        onPromptChange(enhancedPrompt, true);
-      }
       
       // Show success message
       toast.success("Prompt enhanced", {
@@ -340,8 +334,8 @@ export function ImageOverlay({
   };
 
   const getSubmitButtonLabel = (): string => {
-    if (isGenerating) {
-      return "Processing...";
+    if (isSubmitting) {
+      return sourceImages.length > 0 ? "Editing..." : "Starting...";
     }
     if (sourceImages.length > 0) {
       return "Edit Images";
@@ -350,9 +344,9 @@ export function ImageOverlay({
   };
 
   return (
-    <div className="sticky bottom-0 left-0 right-0 flex items-end justify-center p-6 z-20 pointer-events-none">
+    <div className="flex items-end justify-center p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))] pointer-events-none">
       <div className={cn(
-        "w-full transition-all duration-300 ease-in-out pointer-events-auto mb-6"
+        "w-full transition-all duration-300 ease-in-out pointer-events-auto mb-2 sm:mb-6"
       )}
       style={{
         maxWidth: sourceImages.length > 0 ? '58rem' : '56rem'
@@ -370,7 +364,7 @@ export function ImageOverlay({
                     <div className="relative h-12 w-12">
                       <Image 
                         src={imageUrls[index]} 
-                        alt={`Image ${index + 1}`}
+                        alt={`${img.name}, source image ${index + 1}`}
                         fill
                         className={cn(
                           "rounded-md border object-cover transition-all duration-200",
@@ -394,7 +388,7 @@ export function ImageOverlay({
                         "absolute -top-2 -right-2 rounded-full p-0.5 hover:bg-black",
                         "bg-white/90 text-gray-700 dark:bg-black/70 dark:text-white"
                       )}
-                      disabled={isGenerating}
+                      disabled={isSubmitting}
                       aria-label="Remove image"
                       title="Remove image"
                       variant="ghost"
@@ -414,7 +408,7 @@ export function ImageOverlay({
                       "text-gray-500 dark:text-white/70",
                       "hover:bg-gray-200/50 dark:hover:bg-white/10"
                     )}
-                    disabled={isGenerating}
+                    disabled={isSubmitting}
                   >
                     Clear all
                   </Button>
@@ -433,7 +427,7 @@ export function ImageOverlay({
             )}
             
             {/* Input row with buttons */}
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-1.5 sm:gap-3">
              <TooltipProvider>
               <Tooltip delayDuration={300}>
                   <TooltipTrigger asChild>
@@ -451,7 +445,7 @@ export function ImageOverlay({
                         "text-gray-500 dark:text-white/70",
                         "hover:bg-gray-200/50 dark:hover:bg-white/10"
                       )}
-                      disabled={isGenerating}
+                      disabled={isSubmitting}
                     >
                       <PlusCircle className="h-5 w-5" />
                     </Button>
@@ -467,29 +461,25 @@ export function ImageOverlay({
                 onChange={handleFileSelect}
                 accept="image/jpeg,image/png,image/webp"
                 className="hidden"
-                disabled={isGenerating}
+                disabled={isSubmitting}
                 aria-label="Upload image files"
                 multiple
               />
               
-              <div className="flex-1 relative">
+              <div className="relative min-w-0 flex-1">
                 <Textarea
                   value={prompt}
-                  onChange={(e) => {
-                    setPrompt(e.target.value);
-                    if (onPromptChange) {
-                      onPromptChange(e.target.value, false);
-                    }
-                  }}
+                  onChange={(e) => setPrompt(e.target.value)}
                   placeholder={sourceImages.length > 0 ? "Describe how to edit these images..." : "Describe your image..."}
+                  aria-label={sourceImages.length > 0 ? "Image editing instructions" : "Image prompt"}
                   className={cn(
                     "border border-gray-500/30 min-h-[40px] max-h-[200px] resize-none px-3 py-2 overflow-y-auto",
                     "bg-white/50 border-gray-200 text-gray-900 focus:ring-gray-200",
                     "dark:bg-black/30 dark:border-0 dark:text-white dark:focus:ring-white/20"
                   )}
-                  disabled={isGenerating}
+                  disabled={isSubmitting}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && prompt.trim() && !isGenerating) {
+                    if (e.key === 'Enter' && !e.shiftKey && prompt.trim() && !isSubmitting) {
                       e.preventDefault();
                       handleSubmit();
                     }
@@ -508,7 +498,7 @@ export function ImageOverlay({
                 />
               </div>
               
-              <div className="flex items-start gap-2 mt-1">
+              <div className="mt-1 flex shrink-0 items-start gap-1 sm:gap-2">
                 <Tooltip delayDuration={300}>
                     <TooltipTrigger asChild>
                       <Button
@@ -521,7 +511,7 @@ export function ImageOverlay({
                           "bg-gray-100 hover:bg-gray-200 text-gray-900",
                           "dark:bg-white/10 dark:hover:bg-white/20 dark:text-white"
                         )}
-                        disabled={isGenerating || isWizardEnhancing || !prompt.trim()}
+                        disabled={isSubmitting || isWizardEnhancing || !prompt.trim()}
                       >
                         {isWizardEnhancing ? (
                           <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
@@ -538,19 +528,20 @@ export function ImageOverlay({
                 <Button
                   variant="outline"
                   onClick={handleSubmit}
+                  aria-label={getSubmitButtonLabel()}
                   className={cn(
                     "border-0",
                     "bg-gray-100 hover:bg-gray-200 text-gray-900",
                     "dark:bg-white/10 dark:hover:bg-white/20 dark:text-white"
                   )}
-                  disabled={isGenerating || !prompt.trim() || (sourceImages.length > 0 && model === "gpt-image-1-mini")}
+                  disabled={isSubmitting || !prompt.trim() || (sourceImages.length > 0 && model === "gpt-image-1-mini")}
                 >
-                  {isGenerating ? (
-                    <Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 sm:mr-2 motion-safe:animate-spin" />
                   ) : (
-                    <ArrowUp className="h-4 w-4 mr-2" />
+                    <ArrowUp className="h-4 w-4 sm:mr-2" />
                   )}
-                  {getSubmitButtonLabel()}
+                  <span className="hidden sm:inline">{getSubmitButtonLabel()}</span>
                 </Button>
               </div>
              </TooltipProvider>
@@ -560,8 +551,8 @@ export function ImageOverlay({
                 <TooltipProvider>
                   <div className="flex flex-wrap items-center gap-1.5 w-full">
                     {/* Model */}
-                    <Select value={model} onValueChange={setModel} disabled={isGenerating}>
-                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                    <Select value={model} onValueChange={setModel} disabled={isSubmitting}>
+                      <SelectTrigger aria-label="Image model" className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <span>{
                           { "gpt-image-1.5": "GPT-Image-1.5", "gpt-image-1-mini": "GPT-Image-1 Mini", "flux-kontext-pro": "FLUX Kontext Pro" }[model] ?? model
                         }</span>
@@ -588,11 +579,11 @@ export function ImageOverlay({
                       </SelectContent>
                     </Select>
 
-                    <span className="text-muted-foreground/40">·</span>
+                    <span className="text-muted-foreground/40" aria-hidden="true">·</span>
 
                     {/* Size */}
-                    <Select value={imageSize} onValueChange={setImageSize} disabled={isGenerating}>
-                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                    <Select value={imageSize} onValueChange={setImageSize} disabled={isSubmitting}>
+                      <SelectTrigger aria-label="Image size" className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent align="start">
@@ -605,8 +596,8 @@ export function ImageOverlay({
 
                     {/* Background — gpt-image models only */}
                     {!isFluxModel && (
-                    <Select value={background} onValueChange={setBackground} disabled={isGenerating}>
-                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                    <Select value={background} onValueChange={setBackground} disabled={isSubmitting}>
+                      <SelectTrigger aria-label="Image background" className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent align="start">
@@ -619,8 +610,8 @@ export function ImageOverlay({
 
                     {/* Format — gpt-image models only */}
                     {!isFluxModel && (
-                    <Select value={outputFormat} onValueChange={setOutputFormat} disabled={isGenerating}>
-                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                    <Select value={outputFormat} onValueChange={setOutputFormat} disabled={isSubmitting}>
+                      <SelectTrigger aria-label="Output format" className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent align="start">
@@ -633,8 +624,8 @@ export function ImageOverlay({
 
                     {/* Quality — gpt-image models only */}
                     {!isFluxModel && (
-                    <Select value={quality} onValueChange={setQuality} disabled={isGenerating}>
-                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                    <Select value={quality} onValueChange={setQuality} disabled={isSubmitting}>
+                      <SelectTrigger aria-label="Image quality" className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent align="start">
@@ -648,8 +639,8 @@ export function ImageOverlay({
 
                     {/* Fidelity — only when editing images */}
                     {sourceImages.length > 0 && (
-                      <Select value={inputFidelity} onValueChange={setInputFidelity} disabled={isGenerating}>
-                        <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted motion-safe:animate-in motion-safe:fade-in-0 duration-200">
+                      <Select value={inputFidelity} onValueChange={setInputFidelity} disabled={isSubmitting}>
+                        <SelectTrigger aria-label="Input fidelity" className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted motion-safe:animate-in motion-safe:fade-in-0 duration-200">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent align="start">
@@ -659,11 +650,11 @@ export function ImageOverlay({
                       </Select>
                     )}
 
-                    <span className="text-muted-foreground/40">·</span>
+                    <span className="text-muted-foreground/40" aria-hidden="true">·</span>
 
                     {/* Variations */}
-                    <Select value={variations} onValueChange={setVariations} disabled={isGenerating}>
-                      <SelectTrigger className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
+                    <Select value={variations} onValueChange={setVariations} disabled={isSubmitting}>
+                      <SelectTrigger aria-label="Number of images" className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <Images className="h-3 w-3 opacity-60" />
                         <SelectValue />
                       </SelectTrigger>
@@ -682,7 +673,7 @@ export function ImageOverlay({
                           <Select
                             value={folder}
                             onValueChange={setFolder}
-                            disabled={isGenerating}
+                            disabled={isSubmitting}
                             onOpenChange={(open) => {
                               if (!open) {
                                 setIsCreatingFolder(false);
@@ -690,7 +681,7 @@ export function ImageOverlay({
                               }
                             }}
                           >
-                            <SelectTrigger className="w-[130px] h-8">
+                            <SelectTrigger aria-label="Destination folder" className="w-[130px] h-8">
                               <div className="flex items-center">
                                 <FolderTree className="h-4 w-4 mr-2 text-primary" />
                                 <SelectValue placeholder="Root" />
@@ -705,6 +696,7 @@ export function ImageOverlay({
                                     value={newFolderName}
                                     onChange={(e) => setNewFolderName(e.target.value)}
                                     placeholder="New folder name..."
+                                    aria-label="New folder name"
                                     className="h-7 text-xs border-0 focus-visible:ring-0 bg-muted/50"
                                     onKeyDown={handleKeyDown}
                                     disabled={isCreatingFolderLoading}
@@ -715,6 +707,7 @@ export function ImageOverlay({
                                     className="h-7 w-7"
                                     onClick={handleCreateFolder}
                                     disabled={!newFolderName.trim() || isCreatingFolderLoading}
+                                    aria-label="Create folder"
                                   >
                                     {isCreatingFolderLoading ? (
                                       <Loader2 className="h-3 w-3 motion-safe:animate-spin" />
@@ -733,6 +726,7 @@ export function ImageOverlay({
                                       className="h-6 w-6"
                                       onClick={handleRefreshFolders}
                                       disabled={isRefreshingFolders}
+                                      aria-label="Refresh folders"
                                     >
                                       <RefreshCw className={`h-3 w-3 ${isRefreshingFolders ? 'motion-safe:animate-spin' : ''}`} />
                                     </Button>
@@ -749,6 +743,7 @@ export function ImageOverlay({
                                           }
                                         }, 10);
                                       }}
+                                      aria-label="Create a new folder"
                                     >
                                       <Plus className="h-3 w-3" />
                                     </Button>
@@ -781,11 +776,11 @@ export function ImageOverlay({
                           onValueChange={(value) => {
                             setAiAnalysisEnabled(value === "analyze");
                           }}
-                          disabled={isGenerating}
+                          disabled={isSubmitting}
                         >
                           <ToggleGroupItem 
                             value="analyze" 
-                            aria-label="Toggle analysis"
+                            aria-label="Analyze generated images"
                             className={cn(
                               "rounded-md w-10 h-8 p-2 flex items-center justify-center transition-colors duration-200",
                               aiAnalysisEnabled

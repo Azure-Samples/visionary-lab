@@ -2,39 +2,30 @@
  * API service for interacting with the backend API
  */
 
-// API base URL configuration with GitHub Codespaces detection
+// Browser traffic always uses the same-origin Next.js proxy. Server-side callers
+// can still use the internal backend URL directly.
 const API_PROTOCOL = process.env.NEXT_PUBLIC_API_PROTOCOL || 'http';
 const API_HOSTNAME = process.env.NEXT_PUBLIC_API_HOSTNAME || 'localhost';
-// For GitHub Codespaces, port is part of the hostname, so this might be empty
 const API_PORT = process.env.NEXT_PUBLIC_API_PORT || '8000';
-
-// First build temporary base URL with conditional port inclusion
-let API_BASE_URL = API_PORT 
-  ? `${API_PROTOCOL}://${API_HOSTNAME}:${API_PORT}/api/v1` 
-  : `${API_PROTOCOL}://${API_HOSTNAME}/api/v1`;
-
-// Override with direct API URL if provided
-if (process.env.NEXT_PUBLIC_API_URL) {
-  console.log(`Overriding API URL with NEXT_PUBLIC_API_URL: ${process.env.NEXT_PUBLIC_API_URL}`);
-  // Ensure API URL ends with /api/v1
-  API_BASE_URL = process.env.NEXT_PUBLIC_API_URL.endsWith('/api/v1') 
-    ? process.env.NEXT_PUBLIC_API_URL 
-    : `${process.env.NEXT_PUBLIC_API_URL}/api/v1`;
-}
-
-// Export the final configured URL
-export { API_BASE_URL };
-
-// Log the configured API URL at startup to help debug connection issues
-console.log(`API configured with: ${API_BASE_URL}`);
-console.log('API environment variables:');
-console.log(`- NEXT_PUBLIC_API_URL: ${process.env.NEXT_PUBLIC_API_URL || 'not set'}`);
-console.log(`- NEXT_PUBLIC_API_PROTOCOL: ${process.env.NEXT_PUBLIC_API_PROTOCOL || 'not set'}`);
-console.log(`- NEXT_PUBLIC_API_HOSTNAME: ${process.env.NEXT_PUBLIC_API_HOSTNAME || 'not set'}`);
-console.log(`- NEXT_PUBLIC_API_PORT: ${process.env.NEXT_PUBLIC_API_PORT || 'not set'}`);
+const configuredDirectUrl =
+  process.env.BACKEND_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  (API_PORT
+    ? `${API_PROTOCOL}://${API_HOSTNAME}:${API_PORT}`
+    : `${API_PROTOCOL}://${API_HOSTNAME}`);
+const normalizedDirectUrl = configuredDirectUrl.replace(/\/$/, '');
+export const DIRECT_API_BASE_URL = normalizedDirectUrl.endsWith('/api/v1')
+  ? normalizedDirectUrl
+  : `${normalizedDirectUrl}/api/v1`;
+export const API_BASE_URL =
+  typeof window === 'undefined' ? DIRECT_API_BASE_URL : '/api/backend/api/v1';
 
 // Enable debug mode to log API requests
 const API_DEBUG = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
+
+if (API_DEBUG) {
+  console.log(`API configured with: ${API_BASE_URL}`);
+}
 
 // Types for API requests and responses
 export interface VideoGenerationRequest {
@@ -96,7 +87,7 @@ export interface GalleryItem {
   content_type: string;
   creation_time: string;
   last_modified: string;
-  metadata?: Record<string, string>;
+  metadata?: AssetMetadata;
 }
 
 export interface GalleryResponse {
@@ -119,7 +110,7 @@ export interface GalleryUploadResponse {
   size: number;
   content_type: string;
   original_filename: string;
-  metadata?: Record<string, string>;
+  metadata?: AssetMetadata;
 }
 
 /**
@@ -127,12 +118,19 @@ export interface GalleryUploadResponse {
  */
 export interface AssetMetadata {
   [key: string]: string | number | boolean | string[] | object | undefined;
+  prompt?: string;
+  description?: string;
+  tags?: string[];
+  width?: string;
+  height?: string;
+  has_transparency?: string;
   analysis?: {
     summary?: string;
     products?: string;
     tags?: string[];
     feedback?: string;
     analyzed_at?: string;
+    analyzed?: boolean;
   };
   has_analysis?: boolean;
 }

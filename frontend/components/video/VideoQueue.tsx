@@ -1,6 +1,7 @@
 import React from 'react';
-import { useVideoQueue, VideoQueueItem } from '../../hooks/useVideoQueue';
-import { useToast } from '../../hooks/useToast';
+import { useVideoQueue, type VideoQueueItem } from '../../context/video-queue-context';
+import { generateVideoFilename, getVideoDownloadUrl } from '../../services/api';
+import { toast } from 'sonner';
 import { VideoGenerationProgress } from './VideoGenerationProgress';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -15,8 +16,7 @@ export interface VideoSettings {
 export function VideoQueue() {
   // The useVideoQueue hook is now re-exported from our standalone implementation
   // This ensures it will use the context if available
-  const { queueItems, removeFromQueue, downloadVideo } = useVideoQueue();
-  const { toast } = useToast();
+  const { queueItems, removeFromQueue } = useVideoQueue();
 
   // Filter videos by status
   const activeVideos = queueItems.filter(
@@ -26,50 +26,41 @@ export function VideoQueue() {
   const failedVideos = queueItems.filter(video => video.status === 'failed');
 
   // Handle download button click
-  const handleDownload = async (video: VideoQueueItem) => {
+  const handleDownload = (video: VideoQueueItem) => {
     try {
-      // Check if the downloadVideo function is available (it might not be in the context-based implementation)
-      if (typeof downloadVideo === 'function') {
-        await downloadVideo(video.id);
-        toast({
-          title: 'Download started',
-          description: 'Your video is being downloaded',
-        });
-      } else {
-        // Fallback for context-based implementation that might not have downloadVideo
-        toast({
-          title: 'Download feature unavailable',
-          description: 'The download functionality is not implemented in this version',
-          variant: 'destructive',
-        });
+      const generation = video.job?.generations?.[0];
+      if (!generation) {
+        throw new Error('No generated video is available');
       }
+
+      const fileName = generateVideoFilename(
+        generation.prompt || video.prompt,
+        generation.id,
+      );
+      const link = document.createElement('a');
+      link.href = getVideoDownloadUrl(generation.id, fileName);
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success('Download started', {
+        description: 'Your video is being downloaded',
+      });
     } catch (error) {
-      toast({
-        title: 'Download failed',
+      toast.error('Download failed', {
         description: error instanceof Error ? error.message : 'An unknown error occurred',
-        variant: 'destructive',
       });
     }
   };
 
   // Handle cancel/remove button click
   const handleCancel = (video: VideoQueueItem) => {
-    // Use either removeFromQueue (context) or removeVideoQueueItem (standalone)
-    if (typeof removeFromQueue === 'function') {
-      removeFromQueue(video.id);
-    } else if (typeof (window as VideoQueueExtensions).removeVideoQueueItem === 'function') {
-      (window as VideoQueueExtensions).removeVideoQueueItem(video.id);
-    }
+    removeFromQueue(video.id);
     
-    toast({
-      title: 'Generation cancelled',
+    toast.success('Generation cancelled', {
       description: `Video "${video.prompt.substring(0, 20)}${video.prompt.length > 20 ? '...' : ''}" removed from queue`,
     });
   };
-
-  interface VideoQueueExtensions extends Window {
-    removeVideoQueueItem?: (id: string) => void;
-  }
 
   if (queueItems.length === 0) {
     return (
@@ -163,4 +154,4 @@ export function VideoQueue() {
       </CardContent>
     </Card>
   );
-} 
+}

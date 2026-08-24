@@ -1,3 +1,5 @@
+import asyncio
+import inspect
 import os
 import uuid
 import logging
@@ -5,7 +7,9 @@ import threading
 from typing import Dict, Optional, List, Tuple
 from fastapi import UploadFile
 from azure.identity import DefaultAzureCredential
+from azure.identity.aio import DefaultAzureCredential as AsyncDefaultAzureCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.storage.blob.aio import BlobServiceClient as AsyncBlobServiceClient
 from azure.core.exceptions import ResourceNotFoundError
 
 from backend.core.config import settings
@@ -25,24 +29,111 @@ class AzureBlobStorageService:
         self.image_container = settings.AZURE_BLOB_IMAGE_CONTAINER
         self.video_container = settings.AZURE_BLOB_VIDEO_CONTAINER
 
-        account_url = settings.AZURE_BLOB_SERVICE_URL
-        if not account_url and settings.AZURE_STORAGE_ACCOUNT_NAME:
-            account_url = f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
+        self._account_url = settings.AZURE_BLOB_SERVICE_URL
+        if not self._account_url and settings.AZURE_STORAGE_ACCOUNT_NAME:
+            self._account_url = (
+                f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
+            )
 
+        self._sync_credential = DefaultAzureCredential()
         self.blob_service_client = BlobServiceClient(
-            account_url=account_url,
-            credential=DefaultAzureCredential(),
+            account_url=self._account_url,
+            credential=self._sync_credential,
         )
+        self._async_credential = None
+        self._async_blob_service_client = None
+        self._async_setup_lock = asyncio.Lock()
+        self._async_ready = False
+        self._closed = False
 
-        # Ensure containers exist
-        self._ensure_container_exists(self.image_container)
-        self._ensure_container_exists(self.video_container)
+        # Container/CORS setup used to perform synchronous network calls here.
+        # The upload path now initializes those resources through the aio SDK,
+        # keeping construction safe when it happens on the application event loop.
 
-        # Configure CORS for direct access from frontend (only once per application lifecycle)
-        with self._cors_lock:
-            if not AzureBlobStorageService._cors_configured:
-                self._configure_cors()
-                AzureBlobStorageService._cors_configured = True
+    def _get_async_blob_service_client(self) -> AsyncBlobServiceClient:
+        """Lazily create the native async client used by upload operations."""
+        client = getattr(self, "_async_blob_service_client", None)
+        if client is None:
+            credential = AsyncDefaultAzureCredential()
+            client = AsyncBlobServiceClient(
+                account_url=self._account_url,
+                credential=credential,
+            )
+            self._async_credential = credential
+            self._async_blob_service_client = client
+        return client
+
+    async def _ensure_async_storage_ready(self) -> None:
+        """Finish lazy async-client setup; infrastructure owns containers/CORS."""
+        if getattr(self, "_async_ready", False):
+            return
+
+        setup_lock = getattr(self, "_async_setup_lock", None)
+        if setup_lock is None:
+            setup_lock = asyncio.Lock()
+            self._async_setup_lock = setup_lock
+
+        async with setup_lock:
+            if self._async_ready:
+                return
+            self._get_async_blob_service_client()
+            self._async_ready = True
+
+    async def _configure_cors_async(
+        self, service_client: AsyncBlobServiceClient
+    ) -> None:
+        """Configure frontend access through the async Blob service client."""
+        try:
+            from azure.storage.blob import CorsRule
+
+            origins_str = settings.CORS_ALLOWED_ORIGINS.strip()
+            allowed_origins = (
+                ["*"]
+                if origins_str == "*"
+                else [origin.strip() for origin in origins_str.split(",") if origin.strip()]
+            )
+            cors_rules = [
+                CorsRule(
+                    allowed_origins=allowed_origins,
+                    allowed_methods=["GET", "HEAD", "OPTIONS"],
+                    allowed_headers=["*"],
+                    exposed_headers=["*"],
+                    max_age_in_seconds=3600,
+                )
+            ]
+            await service_client.set_service_properties(cors=cors_rules)
+            logger.info("Configured CORS with origins: %s", allowed_origins)
+        except Exception as exc:
+            logger.warning("Could not configure CORS for Azure Blob Storage: %s", exc)
+
+    async def close(self) -> None:
+        """Release async and legacy sync Azure client resources."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
+
+        for resource_name in (
+            "_async_blob_service_client",
+            "_async_credential",
+        ):
+            resource = getattr(self, resource_name, None)
+            close = getattr(resource, "close", None)
+            if close is not None:
+                result = close()
+                if inspect.isawaitable(result):
+                    await result
+
+        for resource_name in ("blob_service_client", "_sync_credential"):
+            resource = getattr(self, resource_name, None)
+            close = getattr(resource, "close", None)
+            if close is not None:
+                close()
+
+    async def __aenter__(self) -> "AzureBlobStorageService":
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
+        await self.close()
 
     def _configure_cors(self) -> None:
         """Configure CORS on the Azure Storage account for frontend access."""
@@ -206,9 +297,15 @@ class AzureBlobStorageService:
         ).strip()
         return sanitized or "_"
 
-    async def upload_asset(self, file: UploadFile, asset_type: str = "image",
-                           metadata: Optional[Dict[str, str]] = None,
-                           folder_path: Optional[str] = None) -> Dict[str, str]:
+    async def upload_asset(
+        self,
+        file: UploadFile,
+        asset_type: str = "image",
+        metadata: Optional[Dict[str, str]] = None,
+        folder_path: Optional[str] = None,
+        *,
+        overwrite_existing: bool = False,
+    ) -> Dict[str, str]:
         """
         Upload an asset (image or video) to Azure Blob Storage
 
@@ -234,6 +331,11 @@ class AzureBlobStorageService:
             # Normalize folder path
             normalized_folder_path = self.normalize_folder_path(folder_path)
 
+            await self._ensure_async_storage_ready()
+            container_client = self._get_async_blob_service_client().get_container_client(
+                container_name
+            )
+
             # Use the provided filename if available, otherwise generate UUID
             if file.filename and file.filename.strip():
                 # Remove the extension from the filename to avoid double extensions
@@ -242,12 +344,11 @@ class AzureBlobStorageService:
                 blob_name = f"{normalized_folder_path}{filename_without_ext}{ext}"
                 file_id = filename_without_ext  # For backward compatibility in response
                 # Check if blob already exists and handle conflicts
-                container_client = self.blob_service_client.get_container_client(
-                    container_name)
                 blob_client = container_client.get_blob_client(blob_name)
 
-                # If blob exists, append a UUID suffix to make it unique
-                if blob_client.exists():
+                # Job retries intentionally overwrite deterministic names. Other
+                # uploads retain the historical collision-avoidance behavior.
+                if not overwrite_existing and await blob_client.exists():
                     # Use first 8 chars of UUID
                     unique_suffix = str(uuid.uuid4())[:8]
                     blob_name = f"{normalized_folder_path}{filename_without_ext}_{unique_suffix}{ext}"
@@ -257,10 +358,6 @@ class AzureBlobStorageService:
                 file_id = str(uuid.uuid4())
                 blob_name = f"{normalized_folder_path}{file_id}{ext}"
 
-            # Create blob client (container_client already created above for conflict checking)
-            if 'container_client' not in locals():
-                container_client = self.blob_service_client.get_container_client(
-                    container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             # Set content settings
@@ -273,20 +370,17 @@ class AzureBlobStorageService:
             width, height = None, None
             if asset_type == "image":
                 try:
-                    from PIL import Image
-                    import io
-
-                    # Get image dimensions using PIL
-                    with Image.open(io.BytesIO(file_content)) as img:
-                        width, height = img.width, img.height
+                    width, height = await asyncio.to_thread(
+                        self._get_image_dimensions, file_content
+                    )
                 except Exception as e:
                     # If we can't get dimensions, log but continue
                     logger.warning(f"Could not get image dimensions: {str(e)}")
 
-            blob_client.upload_blob(
+            await blob_client.upload_blob(
                 data=file_content,
                 content_settings=content_settings,
-                overwrite=True
+                overwrite=True,
             )
 
             # Get the blob URL
@@ -312,6 +406,40 @@ class AzureBlobStorageService:
             return return_data
         except Exception:
             raise
+
+    async def delete_asset_async(self, blob_name: str, container_name: str) -> bool:
+        """Delete a blob through the shared async client."""
+        await self._ensure_async_storage_ready()
+        blob_client = self._get_async_blob_service_client().get_blob_client(
+            container=container_name,
+            blob=blob_name,
+        )
+        try:
+            await blob_client.delete_blob()
+            return True
+        except ResourceNotFoundError:
+            return False
+
+    async def download_asset_async(
+        self, blob_name: str, container_name: str
+    ) -> tuple[bytes, str | None]:
+        """Download a blob with managed identity through the shared aio client."""
+        await self._ensure_async_storage_ready()
+        blob_client = self._get_async_blob_service_client().get_blob_client(
+            container=container_name,
+            blob=blob_name,
+        )
+        properties = await blob_client.get_blob_properties()
+        stream = await blob_client.download_blob()
+        return await stream.readall(), properties.content_settings.content_type
+
+    @staticmethod
+    def _get_image_dimensions(file_content: bytes) -> Tuple[int, int]:
+        import io
+        from PIL import Image
+
+        with Image.open(io.BytesIO(file_content)) as img:
+            return img.width, img.height
 
     def _get_content_type(self, extension: str, asset_type: str) -> str:
         """

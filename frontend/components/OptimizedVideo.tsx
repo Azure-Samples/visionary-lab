@@ -50,6 +50,7 @@ export const OptimizedVideo = forwardRef<HTMLVideoElement, OptimizedVideoProps>(
     const [isLoading, setIsLoading] = useState(true);
     const [shouldLoad, setShouldLoad] = useState(!shouldLazyLoadVideo(index, isAboveFold));
     const videoRef = useRef<HTMLVideoElement>(null);
+    const lazyLoadTargetRef = useRef<HTMLDivElement>(null);
     const observerRef = useRef<IntersectionObserver | null>(null);
 
     // Get loading configuration
@@ -61,15 +62,18 @@ export const OptimizedVideo = forwardRef<HTMLVideoElement, OptimizedVideoProps>(
     const finalControls = customControls !== undefined ? customControls : config.controls;
     
     // Generate poster URL if not provided and config requires it
-    const posterUrl = customPoster || 
-      (config.poster && isAzureBlobStorageUrl(src) ? generatePosterUrl(src) : undefined);
+    const posterUrl = customPoster ??
+      (config.poster && isAzureBlobStorageUrl(src)
+        ? generatePosterUrl(src) ?? undefined
+        : undefined);
     
     // Generate video sources for Azure Blob Storage
     const videoSources = isAzureBlobStorageUrl(src) ? generateVideoSources(src) : [{ src, type: 'video/mp4' }];
 
     // Set up intersection observer for lazy loading
     useEffect(() => {
-      if (shouldLoad || !videoRef.current) return;
+      const target = lazyLoadTargetRef.current;
+      if (shouldLoad || !target) return;
 
       observerRef.current = new IntersectionObserver(
         (entries) => {
@@ -86,7 +90,7 @@ export const OptimizedVideo = forwardRef<HTMLVideoElement, OptimizedVideoProps>(
         }
       );
 
-      observerRef.current.observe(videoRef.current);
+      observerRef.current.observe(target);
 
       return () => {
         observerRef.current?.disconnect();
@@ -122,7 +126,7 @@ export const OptimizedVideo = forwardRef<HTMLVideoElement, OptimizedVideoProps>(
     if (!shouldLoad) {
       return (
         <div 
-          ref={videoRef}
+          ref={lazyLoadTargetRef}
           className={`bg-gray-200 dark:bg-gray-800 flex items-center justify-center ${className}`}
           style={{ width, height }}
         >
@@ -190,4 +194,4 @@ export const OptimizedVideo = forwardRef<HTMLVideoElement, OptimizedVideoProps>(
   }
 );
 
-OptimizedVideo.displayName = 'OptimizedVideo'; 
+OptimizedVideo.displayName = 'OptimizedVideo';

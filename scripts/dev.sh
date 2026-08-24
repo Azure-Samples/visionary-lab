@@ -54,6 +54,7 @@ ensure_env() {
     "AZURE_STORAGE_ACCOUNT_NAME:Azure Storage account name"
     "AZURE_STORAGE_ACCOUNT_KEY:Azure Storage account key"
     "AZURE_BLOB_SERVICE_URL:Azure Blob service URL"
+    "AZURE_STORAGE_QUEUE_URL:Azure Storage Queue service URL"
     "AZURE_COSMOS_DB_ENDPOINT:Cosmos DB endpoint"
     "AZURE_COSMOS_DB_KEY:Cosmos DB key"
     "AZURE_COSMOS_DB_ID:Cosmos DB database ID"

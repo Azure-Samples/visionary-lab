@@ -11,9 +11,10 @@ import { JobsProvider } from "@/context/jobs-context";
 import { ImageSettingsProvider } from "@/context/image-settings-context";
 import { FolderProvider } from "@/context/folder-context";
 import { VideoQueueClient } from "@/components/video-queue-client";
+import { ImageJobsButton } from "@/components/image-jobs-activity";
+import { ImageJobsProvider } from "@/context/image-jobs-context";
 import { RefreshJobsButton } from "@/components/refresh-jobs-button";
 import { Toaster } from "@/components/ui/sonner";
-import dynamic from "next/dynamic";
 import { AnimatedLayout } from "@/components/animated-layout";
 import Script from "next/script";
 
@@ -65,7 +66,6 @@ export default async function RootLayout({ children }: RootLayoutProps) {
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_API_HOSTNAME || "localhost"} />
         <meta name="format-detection" content="telephone=no" />
       </head>
       <body className="overflow-hidden">
@@ -77,8 +77,9 @@ export default async function RootLayout({ children }: RootLayoutProps) {
           >
             <VideoQueueProvider>
                 <JobsProvider>
-                  <ImageSettingsProvider>
-                    <FolderProvider>
+                  <ImageJobsProvider>
+                    <ImageSettingsProvider>
+                      <FolderProvider>
                     {/* Main layout with sidebar */}
                     <div className="relative flex min-h-screen h-screen">              
                       {/* Content area with sidebar */}
@@ -102,6 +103,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                             <Separator orientation="vertical" className="mx-2 h-4" />
                             <div className="ml-auto flex items-center space-x-2">
                               <RefreshJobsButton />
+                              <ImageJobsButton />
                               <VideoQueueClient />
                             </div>
                           </div>
@@ -114,8 +116,9 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                       </SidebarProvider>
                     </div>
                     <Toaster />
-                    </FolderProvider>
-                  </ImageSettingsProvider>
+                      </FolderProvider>
+                    </ImageSettingsProvider>
+                  </ImageJobsProvider>
                 </JobsProvider>
               </VideoQueueProvider>
           </ThemeProvider>

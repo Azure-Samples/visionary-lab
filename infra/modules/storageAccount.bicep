@@ -20,7 +20,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2024-01-01' = if(depl
   }
 }
 
-output storageAccountPrimaryEndpoint string = storageAccount.properties.primaryEndpoints.blob
-output storageAccountId string = storageAccount.id
-output storageAccountName string = storageAccount.name
-
+output storageAccountPrimaryEndpoint string = deployNew ? storageAccount!.properties.primaryEndpoints.blob : ''
+output storageAccountQueueEndpoint string = deployNew ? storageAccount!.properties.primaryEndpoints.queue : ''
+output storageAccountId string = deployNew ? storageAccount!.id : ''
+output storageAccountName string = storageAccountName

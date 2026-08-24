@@ -9,7 +9,6 @@ import {
   downloadThenUploadToGallery, 
   generateVideoFilename, 
   analyzeAndUpdateVideoMetadata, 
-  createVideoGenerationWithAnalysis, 
   VideoGenerationWithAnalysisRequest,
   streamVideoGenerationWithAnalysis,
   VideoStreamEvent,
@@ -466,12 +465,6 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   
                 case 'processing':
                   // Post-generation processing (downloading, analyzing, uploading)
-                  const stepMessages: Record<string, string> = {
-                    'downloading': 'Downloading video...',
-                    'analyzing': 'Analyzing with AI...',
-                    'uploading': 'Uploading to gallery...',
-                  };
-                  // Could show toast or update UI with current step
                   console.log(`Processing step: ${event.step}`);
                   break;
                   

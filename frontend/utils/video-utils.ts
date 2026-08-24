@@ -140,7 +140,7 @@ export function generateVideoSources(baseUrl: string): Array<{ src: string; type
     return [{ src: baseUrl, type: `video/${getVideoFormat(baseUrl) || 'mp4'}` }];
   }
   
-  const sources = [];
+  const sources: Array<{ src: string; type: string }> = [];
   const baseWithoutExt = getAzureBlobBaseUrl(baseUrl).replace(/\.[^.]+$/, '');
   const sasToken = extractSasToken(baseUrl);
   

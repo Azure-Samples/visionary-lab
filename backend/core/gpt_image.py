@@ -1,571 +1,302 @@
+from __future__ import annotations
+
 import asyncio
-import os
+import inspect
 import logging
-import io
-import tempfile
-import requests
-from typing import List, Optional
-from openai import OpenAI, AzureOpenAI
-from PIL import Image
+from typing import Any, Optional
+
+from openai import AsyncAzureOpenAI, AsyncOpenAI
+
 from backend.core.config import settings
 
-from tempfile import SpooledTemporaryFile
-
-# Set up logging
 logger = logging.getLogger(__name__)
+
+_AZURE_OPENAI_SCOPE = "https://cognitiveservices.azure.com/.default"
 
 
 class GPTImageClient:
-    """
-    Client for GPT-Image-1.5 generation and editing using the official OpenAI or Azure OpenAI Python client.
-    """
+    """Native async client for GPT image generation and editing."""
 
-    def __init__(self, api_key: Optional[str] = None, organization_id: Optional[str] = None,
-                 provider: Optional[str] = None, deployment_name: Optional[str] = None,
-                 model: Optional[str] = None, credential=None, token_provider=None):
-        """
-        Initialize the GPT Image client with either OpenAI or Azure OpenAI client
-
-        Args:
-            api_key: The API key to use (for OpenAI provider only)
-            organization_id: The organization ID for OpenAI (optional)
-            provider: The provider to use ('openai' or 'azure', defaults to settings.MODEL_PROVIDER)
-            deployment_name: Specific deployment name to use (for Azure, optional)
-            model: Model name to use (gpt-image-1.5, gpt-image-1, gpt-image-1-mini)
-            credential: DefaultAzureCredential instance (for Azure provider)
-            token_provider: Bearer token provider from get_bearer_token_provider (for Azure provider)
-        """
-        provider = provider or settings.MODEL_PROVIDER
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        organization_id: Optional[str] = None,
+        provider: Optional[str] = None,
+        deployment_name: Optional[str] = None,
+        model: Optional[str] = None,
+        credential: Any = None,
+        token_provider: Any = None,
+        client: Any = None,
+    ) -> None:
+        self.provider = (provider or settings.MODEL_PROVIDER).lower()
         self.model = model or settings.DEFAULT_IMAGE_MODEL
+        self.deployment_name = (
+            deployment_name or self._get_deployment_for_model(self.model)
+            if self.provider == "azure"
+            else None
+        )
+        self.credential = credential
+        self.token_provider = token_provider
+        self._owns_credential = False
+        self._closed = False
 
-        if provider.lower() == "azure":
-            # Use Azure OpenAI with managed identity
-            if credential is None:
-                from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-                credential = DefaultAzureCredential()
-                token_provider = get_bearer_token_provider(
-                    credential, "https://cognitiveservices.azure.com/.default"
+        if client is not None:
+            self.client = client
+            return
+
+        if self.provider == "azure":
+            if self.credential is None:
+                from azure.identity.aio import (
+                    DefaultAzureCredential,
+                    get_bearer_token_provider,
                 )
-            self.credential = credential
-            self.token_provider = token_provider
-            self.endpoint = settings.AI_FOUNDRY_ENDPOINT.rstrip('/') if settings.AI_FOUNDRY_ENDPOINT else ''
-            self.client = AzureOpenAI(
-                azure_ad_token_provider=token_provider,
-                azure_endpoint=self.endpoint,
-                api_version=settings.AOAI_API_VERSION
-            )
-            # Set deployment name: use provided or map from model
-            self.deployment_name = deployment_name or self._get_deployment_for_model(self.model)
-            self.provider = "azure"
-            logger.info(
-                f"Initialized GPT Image client with Azure OpenAI Python SDK (model: {self.model}, deployment: {self.deployment_name})")
-        else:
-            # Use direct OpenAI
-            self.api_key = api_key or settings.OPENAI_API_KEY
-            if not self.api_key:
-                raise ValueError("API key must be provided for OpenAI")
 
-            self.client = OpenAI(
-                api_key=self.api_key,
-                organization=organization_id or settings.OPENAI_ORG_ID
+                self.credential = DefaultAzureCredential()
+                self.token_provider = get_bearer_token_provider(
+                    self.credential, _AZURE_OPENAI_SCOPE
+                )
+                self._owns_credential = True
+            elif self.token_provider is None:
+                self.token_provider = self._token_provider_for(self.credential)
+            else:
+                self.token_provider = self._ensure_async_token_provider(
+                    self.token_provider
+                )
+
+            self.endpoint = (
+                settings.AI_FOUNDRY_ENDPOINT.rstrip("/")
+                if settings.AI_FOUNDRY_ENDPOINT
+                else ""
             )
-            self.provider = "openai"
-            self.deployment_name = None  # Not used for OpenAI
+            self.client = AsyncAzureOpenAI(
+                azure_ad_token_provider=self.token_provider,
+                azure_endpoint=self.endpoint,
+                api_version=settings.AOAI_API_VERSION,
+            )
             logger.info(
-                f"Initialized GPT Image client with OpenAI Python SDK (model: {self.model})")
-    
+                "Initialized async Azure GPT Image client (model: %s, deployment: %s)",
+                self.model,
+                self.deployment_name,
+            )
+            return
+
+        self.api_key = api_key or settings.OPENAI_API_KEY
+        if not self.api_key:
+            raise ValueError("API key must be provided for OpenAI")
+
+        self.client = AsyncOpenAI(
+            api_key=self.api_key,
+            organization=organization_id or settings.OPENAI_ORG_ID,
+        )
+        logger.info("Initialized async OpenAI GPT Image client (model: %s)", self.model)
+
+    @staticmethod
+    def _token_provider_for(credential: Any):
+        """Adapt either an async or sync Azure credential for AsyncAzureOpenAI."""
+        get_token = credential.get_token
+        if inspect.iscoroutinefunction(get_token):
+
+            async def async_token_provider() -> str:
+                token = await get_token(_AZURE_OPENAI_SCOPE)
+                return token.token
+
+            return async_token_provider
+
+        async def sync_token_provider() -> str:
+            # Compatibility for callers that inject a synchronous Azure credential.
+            token = await asyncio.to_thread(get_token, _AZURE_OPENAI_SCOPE)
+            return token.token
+
+        return sync_token_provider
+
+    @staticmethod
+    def _ensure_async_token_provider(token_provider: Any):
+        """Keep legacy sync token providers off the application event loop."""
+        if inspect.iscoroutinefunction(token_provider):
+            return token_provider
+
+        async def async_token_provider() -> str:
+            token = await asyncio.to_thread(token_provider)
+            if inspect.isawaitable(token):
+                token = await token
+            return token
+
+        return async_token_provider
+
     def _get_deployment_for_model(self, model: str) -> str:
-        """
-        Map model name to Azure deployment name
-        
-        Args:
-            model: Model identifier (gpt-image-1.5, gpt-image-1, gpt-image-1-mini)
-            
-        Returns:
-            Deployment name from settings
-        """
         mapping = {
-            "gpt-image-1.5": settings.IMAGEGEN_DEPLOYMENT,
-            "gpt-image-1": settings.IMAGEGEN_DEPLOYMENT,  # legacy alias
+            "gpt-image-1.5": (
+                settings.IMAGEGEN_15_DEPLOYMENT or settings.IMAGEGEN_DEPLOYMENT
+            ),
+            "gpt-image-1": settings.IMAGEGEN_DEPLOYMENT,
             "gpt-image-1-mini": settings.IMAGEGEN_1_MINI_DEPLOYMENT,
             "flux-kontext-pro": settings.FLUX_KONTEXT_DEPLOYMENT,
         }
         deployment = mapping.get(model)
-        
         if not deployment:
-            logger.warning(f"No deployment configured for model {model}, falling back to default")
+            logger.warning(
+                "No deployment configured for model %s; falling back to IMAGEGEN_DEPLOYMENT",
+                model,
+            )
             deployment = settings.IMAGEGEN_DEPLOYMENT
-            
         return deployment
 
-    def generate_image(self, prompt: str, model: str = None, n: int = 1,
-                       size: str = "auto", response_format: str = "b64_json",
-                       quality: str = "auto", background: str = "auto",
-                       output_format: str = "png", output_compression: int = 100,
-                       moderation: str = "auto", user: str = None) -> dict:
-        """
-        Generate images using the model
+    async def generate_image(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        n: int = 1,
+        size: str = "auto",
+        response_format: str = "b64_json",
+        quality: str = "auto",
+        background: str = "auto",
+        output_format: str = "png",
+        output_compression: int = 100,
+        moderation: str = "auto",
+        user: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Generate images without blocking the event loop."""
+        requested_model = model or self.model
+        provider_model = (
+            self.deployment_name if self.provider == "azure" else requested_model
+        )
+        if not provider_model:
+            raise ValueError("An image model deployment must be configured")
 
-        Args:
-            prompt: A text description of the desired image (max 32000 chars for gpt-image-1.5)
-            model: The model to use for image generation (defaults to IMAGEGEN_DEPLOYMENT for Azure or gpt-image-1.5 for OpenAI)
-            n: The number of images to generate (1-10)
-            size: The size of the generated images
-            response_format: The format in which the generated images are returned
-            quality: The quality of the image generation (low, medium, high, auto)
-            background: Background setting (transparent, opaque, auto)
-            output_format: Output format (png, webp, jpeg)
-            output_compression: Compression rate percentage for webp and jpeg (0-100)
-            moderation: Moderation strictness (auto, low)
-            user: A unique identifier for tracking and abuse prevention
+        params: dict[str, Any] = {
+            "prompt": prompt,
+            "model": provider_model,
+            "n": n,
+            "size": size,
+        }
+        if user:
+            params["user"] = user
 
-        Returns:
-            A dictionary containing the generated images and token usage
-        """
-        try:
-            # Create a parameter dictionary with all supported parameters
-            params = {
-                "prompt": prompt,
-                "n": n,
-                "size": size,
+        is_flux = "flux" in requested_model.lower()
+        if not is_flux:
+            params["quality"] = quality
+            if background != "auto":
+                params["background"] = background
+            if output_format != "png":
+                params["output_format"] = output_format
+            if output_format in {"webp", "jpeg"} and output_compression != 100:
+                params["output_compression"] = output_compression
+            if moderation != "auto":
+                params["moderation"] = moderation
+        elif output_format != "png":
+            params["output_format"] = output_format
+
+        # GPT image models always return base64. Preserve response_format in the
+        # public signature for compatibility without sending an unsupported field.
+        _ = response_format
+
+        logger.info(
+            "Generating %s image(s) with provider %s, model %s, quality %s, size %s",
+            n,
+            self.provider,
+            provider_model,
+            quality,
+            size,
+        )
+        response = await self.client.images.generate(**params)
+        return self._format_response(response)
+
+    async def edit_image(self, **kwargs: Any) -> dict[str, Any]:
+        """Edit one or more images through the async OpenAI SDK."""
+        params = {key: value for key, value in kwargs.items() if value is not None}
+        requested_model = str(params.get("model") or self.model)
+        provider_model = (
+            self.deployment_name if self.provider == "azure" else requested_model
+        )
+        if not provider_model:
+            raise ValueError("An image model deployment must be configured")
+        params["model"] = provider_model
+
+        # openai-python 1.91 supports this preview field through extra_body even
+        # though it is not yet present in the generated method signature.
+        input_fidelity = params.pop("input_fidelity", None)
+        if input_fidelity and input_fidelity != "low":
+            extra_body = dict(params.pop("extra_body", {}) or {})
+            extra_body["input_fidelity"] = input_fidelity
+            params["extra_body"] = extra_body
+
+        image_count = (
+            len(params["image"]) if isinstance(params.get("image"), list) else 1
+        )
+        logger.info(
+            "Editing with provider %s, model %s, %s reference image(s), quality %s, size %s",
+            self.provider,
+            provider_model,
+            image_count,
+            params.get("quality", "auto"),
+            params.get("size", "auto"),
+        )
+        response = await self.client.images.edit(**params)
+        return self._format_response(response)
+
+    def _format_response(self, response: Any) -> dict[str, Any]:
+        if isinstance(response, dict):
+            result = dict(response)
+        elif hasattr(response, "model_dump"):
+            result = response.model_dump(exclude_none=True)
+        else:
+            result = {
+                "created": getattr(response, "created", None),
+                "data": [
+                    self._dump_response_item(item)
+                    for item in (getattr(response, "data", None) or [])
+                ],
             }
-
-            # Use the appropriate model parameter based on provider
-            if self.provider == "azure":
-                if not self.deployment_name:
-                    raise ValueError(
-                        "IMAGEGEN_DEPLOYMENT must be set for Azure OpenAI")
-                params["model"] = self.deployment_name
-            else:
-                params["model"] = model or "gpt-image-1.5"
-
-            # Add user parameter if provided
-            if user:
-                params["user"] = user
-
-            # FLUX models only support basic params (prompt, model, n, size, output_format)
-            is_flux = model and "flux" in model.lower()
-
-            if not is_flux:
-                # Add quality for gpt-image models
-                params["quality"] = quality
-
-            # Add gpt-image-1.5 specific parameters
-            if not is_flux and model in ("gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"):
-                if background != "auto":
-                    params["background"] = background
-                try:
-                    if output_format != "png":
-                        params["output_format"] = output_format
-                    if output_format in ["webp", "jpeg"] and output_compression != 100:
-                        params["output_compression"] = output_compression
-                    if moderation != "auto":
-                        params["moderation"] = moderation
-                except Exception as e:
-                    logger.warning(
-                        f"Some parameters may not be supported by the current client version: {str(e)}")
-
-            logger.info(
-                f"Generating {n} image(s) with provider {self.provider}, model: {params['model']}, quality: {quality}, size: {size}")
-
-            # Make the API call
-            response = self.client.images.generate(**params)
-
-            # Format the response to match our expected format
-            formatted_response = {
-                "created": response.created,
-                "data": []
-            }
-
-            # Extract token usage if available (for gpt-image-1.5 only)
-            if hasattr(response, "usage"):
-                formatted_response["usage"] = {
-                    "total_tokens": getattr(response.usage, "total_tokens", 0),
-                    "input_tokens": getattr(response.usage, "input_tokens", 0),
-                    "output_tokens": getattr(response.usage, "output_tokens", 0),
-                }
-
-                # Extract detailed input token information if available
-                if hasattr(response.usage, "input_tokens_details"):
-                    formatted_response["usage"]["input_tokens_details"] = {
-                        "text_tokens": getattr(response.usage.input_tokens_details, "text_tokens", 0),
-                        "image_tokens": getattr(response.usage.input_tokens_details, "image_tokens", 0)
-                    }
-
-            for image in response.data:
-                image_data = {}
-                if hasattr(image, "url") and image.url:
-                    image_data["url"] = image.url
-                if hasattr(image, "b64_json") and image.b64_json:
-                    image_data["b64_json"] = image.b64_json
-                if hasattr(image, "revised_prompt") and image.revised_prompt:
-                    image_data["revised_prompt"] = image.revised_prompt
-
-                formatted_response["data"].append(image_data)
-
-            # Add deployment metadata for tracking
-            formatted_response["_deployment_name"] = self.deployment_name
-            formatted_response["_model"] = self.model
-
-            return formatted_response
-
-        except Exception as e:
-            logger.error(f"Error generating image: {str(e)}")
-            raise
-
-    def edit_image(self, **kwargs):
-        """
-        Edit an image based on the provided prompt, mask (optional), and settings
-
-        For Azure OpenAI, this will use the REST API since the Python SDK doesn't support edits
-        For direct OpenAI, this will use the model provided or default to gpt-image-1.5
-        """
-        try:
-            # Extract key parameters for easier access
-            prompt = kwargs.get("prompt")
-            image = kwargs.get("image")
-            mask = kwargs.get("mask")
-            n = kwargs.get("n", 1)
-            size = kwargs.get("size", "auto")
-            quality = kwargs.get("quality", "auto")
-            input_fidelity = kwargs.get("input_fidelity", "low")
-
-            # Azure OpenAI requires REST API for image edits
-            if self.provider == "azure":
-                if not self.deployment_name:
-                    raise ValueError(
-                        "IMAGEGEN_DEPLOYMENT must be set for Azure OpenAI")
-
-                # Prepare the URL for the REST API
-                url = f"{self.endpoint}/openai/deployments/{self.deployment_name}/images/edits?api-version={settings.AOAI_API_VERSION}"
-
-                # Prepare headers with Bearer token from managed identity
-                token = self.credential.get_token("https://cognitiveservices.azure.com/.default")
-                headers = {
-                    "Authorization": f"Bearer {token.token}"
-                }
-
-                # Prepare files dictionary exactly as in the notebook
-                files = {}
-
-                # Handle single image or multiple images in the same way as notebook
-                if isinstance(image, list):
-                    # Multiple images case - following notebook pattern for image[]
-                    files = [("image[]", img) for img in image]
-                else:
-                    # Single image case
-                    files["image"] = image
-
-                # Add mask if provided
-                if mask:
-                    files["mask"] = mask
-
-                # Prepare data dictionary with parameters exactly as notebook does
-                data = {
-                    "prompt": prompt,
-                }
-
-                # Add n if not default
-                if n != 1:
-                    data["n"] = n
-
-                # Add size if not default
-                if size != "auto":
-                    data["size"] = size
-
-                # Add quality if not auto
-                if quality != "auto":
-                    data["quality"] = quality
-
-                # Add input_fidelity if not default
-                if input_fidelity != "low":
-                    data["input_fidelity"] = input_fidelity
-
-                # Add any other supported parameters (excluding image/mask which are in files)
-                for key, value in kwargs.items():
-                    if key not in ["prompt", "image", "mask", "n", "size", "quality", "input_fidelity", "model"] and value is not None:
-                        data[key] = value
-
-                logger.info(
-                    f"Editing image with Azure REST API, deployment: {self.deployment_name}, "
-                    f"{'multiple' if isinstance(image, list) else 'single'} image(s), "
-                    f"quality: {quality}, size: {size}, input_fidelity: {input_fidelity}"
-                )
-
-                # Send the request
-                response = requests.post(
-                    url, headers=headers, files=files, data=data)
-                response.raise_for_status()
-
-                # Parse the response and add deployment metadata
-                result = response.json()
-                result["_deployment_name"] = self.deployment_name
-                result["_model"] = self.model
-                return result
-            else:
-                # Handle model parameter for OpenAI provider
-                if "model" not in kwargs:
-                    kwargs["model"] = "gpt-image-1.5"
-
-                # Get model for logging
-                model = kwargs.get("model")
-
-                # Log request details
-                logger.info(
-                    f"Editing image with OpenAI SDK, model {model}, "
-                    f"{len(kwargs.get('image', [])) if isinstance(kwargs.get('image', []), list) else '1'} "
-                    f"reference image(s), quality: {kwargs.get('quality', 'auto')}, size: {size}, "
-                    f"input_fidelity: {input_fidelity}"
-                )
-
-                # Call the OpenAI API to edit the image
-                response = self.client.images.edit(**kwargs)
-                result = response.model_dump()
-                # Add deployment metadata
-                result["_deployment_name"] = self.deployment_name
-                result["_model"] = self.model
-                return result
-
-        except Exception as e:
-            logger.error(f"Error editing image: {str(e)}")
-            raise
-
-    async def process_edit_image_upload(self, prompt: str, model: str = None, n: int = 1, size: str = "auto",
-                                        quality: str = "auto", image_files: List[SpooledTemporaryFile] = None,
-                                        mask_file: Optional[SpooledTemporaryFile] = None):
-        """
-        Process uploaded image files for editing.
-
-        Args:
-            prompt: Text prompt for image editing
-            model: Model to use (defaults to IMAGEGEN_DEPLOYMENT for Azure or gpt-image-1.5 for OpenAI)
-            n: Number of images to generate
-            size: Image size
-            quality: Image quality
-            image_files: List of uploaded image files
-            mask_file: Optional mask file for editing
-
-        Returns:
-            The response from the image editing API
-        """
-        # Validate file size for all images
-        max_file_size_mb = 4  # Default to 4MB if not specified in settings
-        temp_files = []
-
-        try:
-            # Process each uploaded image
-            image_file_objs = []
-            for idx, img_file in enumerate(image_files):
-                # Check file size
-                img_file.seek(0, 2)  # Seek to end
-                file_size_mb = img_file.tell() / (1024 * 1024)
-                img_file.seek(0)  # Reset pointer to beginning
-
-                if file_size_mb > max_file_size_mb:
-                    raise ValueError(
-                        f"Image {idx+1} exceeds maximum size of {max_file_size_mb}MB")
-
-                # Read image content
-                contents = img_file.read()
-
-                # Determine file format
-                try:
-                    with Image.open(io.BytesIO(contents)) as pil_img:
-                        ext = pil_img.format.lower() if pil_img.format else "png"
-                except Exception:
-                    ext = "png"  # Default to PNG if we can't determine format
-
-                # Ensure proper extension
-                if ext == "jpg":
-                    ext = "jpeg"
-
-                # Create a named temporary file with the correct extension
-                temp_fd, temp_path = tempfile.mkstemp(suffix=f".{ext}")
-                temp_files.append((temp_fd, temp_path))
-
-                # Write the contents and close the file descriptor
-                with os.fdopen(temp_fd, 'wb') as f:
-                    f.write(contents)
-
-                # Store the file path for the API call
-                image_file_objs.append(temp_path)
-
-                logger.info(
-                    f"Saved image {idx+1} to {temp_path} with format {ext}")
-
-            # Process mask if provided
-            mask_file_obj = None
-            if mask_file:
-                # Read mask content
-                mask_file.seek(0)
-                mask_contents = mask_file.read()
-
-                # Determine mask format
-                try:
-                    with Image.open(io.BytesIO(mask_contents)) as pil_img:
-                        mask_ext = pil_img.format.lower() if pil_img.format else "png"
-                except Exception:
-                    mask_ext = "png"  # Default to PNG
-
-                # Ensure proper extension
-                if mask_ext == "jpg":
-                    mask_ext = "jpeg"
-
-                # Create a named temporary file for the mask
-                mask_fd, mask_path = tempfile.mkstemp(suffix=f".{mask_ext}")
-                temp_files.append((mask_fd, mask_path))
-
-                # Write the mask contents
-                with os.fdopen(mask_fd, 'wb') as f:
-                    f.write(mask_contents)
-
-                mask_file_obj = mask_path
-                logger.info(
-                    f"Saved mask to {mask_path} with format {mask_ext}")
-
-            # Prepare parameters for the API call
-            logger.info(
-                f"Editing {len(image_file_objs)} image(s) using provider {self.provider}, model: {model or self.deployment_name}, quality: {quality}, size: {size}")
-
-            # Create a dictionary of parameters for the API call
-            params = {
-                "prompt": prompt,
-                "n": n,
-                "size": size,
-            }
-
-            # Use the appropriate model parameter based on provider
-            if self.provider == "azure":
-                if not self.deployment_name:
-                    raise ValueError(
-                        "IMAGEGEN_DEPLOYMENT must be set for Azure OpenAI")
-                params["model"] = self.deployment_name
-            else:
-                params["model"] = model or "gpt-image-1.5"
-
-            # Add quality parameter
-            if quality != "auto":
-                params["quality"] = quality
-
-            # For Azure provider, we need to use the REST API directly
-            if self.provider == "azure":
-                # Prepare the URL for the REST API
-                url = f"{self.endpoint}/openai/deployments/{self.deployment_name}/images/edits?api-version={settings.AOAI_API_VERSION}"
-
-                # Prepare headers with Bearer token from managed identity
-                token = self.credential.get_token("https://cognitiveservices.azure.com/.default")
-                headers = {
-                    "Authorization": f"Bearer {token.token}"
-                }
-
-                # Prepare files exactly as the notebook does
-                files = {}
-
-                # Handle multiple images vs single image
-                if len(image_file_objs) > 1:
-                    # Multiple images - for REST API, following notebook pattern
-                    files = [("image[]", open(path, "rb"))
-                             for path in image_file_objs]
-                else:
-                    # Single image - for REST API, following notebook pattern
-                    files = {
-                        "image": open(image_file_objs[0], "rb")
-                    }
-
-                # Add mask if provided, exactly as notebook does
-                if mask_file_obj:
-                    files["mask"] = open(mask_file_obj, "rb")
-
-                # Prepare data dictionary with parameters, exactly as notebook does
-                data = {
-                    "prompt": prompt
-                }
-
-                # Add n if not default
-                if n != 1:
-                    data["n"] = n
-
-                # Add size if not default
-                if size != "auto":
-                    data["size"] = size
-
-                # Add quality if not auto
-                if quality != "auto":
-                    data["quality"] = quality
-
-                logger.info(
-                    f"Editing image with Azure REST API, deployment: {self.deployment_name}, "
-                    f"using {len(image_file_objs)} image(s), quality: {quality}, size: {size}"
-                )
-
-                try:
-                    # Send the request (run in thread pool to avoid blocking)
-                    def _sync_post():
-                        resp = requests.post(url, headers=headers, files=files, data=data)
-                        resp.raise_for_status()
-                        result = resp.json()
-                        # Add deployment metadata
-                        result["_deployment_name"] = self.deployment_name
-                        result["_model"] = self.model
-                        return result
-
-                    return await asyncio.to_thread(_sync_post)
-                finally:
-                    # No need to explicitly close files - requests will handle it
-                    pass
-            else:
-                # OpenAI SDK approach (original implementation)
-                # Wrap sync edit_image calls in thread pool to avoid blocking
-                if len(image_file_objs) == 1:
-                    # Single image case
-                    def _sync_edit_single():
-                        with open(image_file_objs[0], "rb") as image_file:
-                            params["image"] = image_file
-                            if mask_file_obj:
-                                with open(mask_file_obj, "rb") as mask_file:
-                                    params["mask"] = mask_file
-                                    return self.edit_image(**params)
-                            else:
-                                return self.edit_image(**params)
-
-                    response = await asyncio.to_thread(_sync_edit_single)
-                else:
-                    # Multiple images case (only for gpt-image-1)
-                    def _sync_edit_multiple():
-                        open_files = []
-                        try:
-                            image_files = []
-                            for path in image_file_objs:
-                                f = open(path, "rb")
-                                open_files.append(f)
-                                image_files.append(f)
-
-                            params["image"] = image_files
-
-                            if mask_file_obj:
-                                mask_f = open(mask_file_obj, "rb")
-                                open_files.append(mask_f)
-                                params["mask"] = mask_f
-
-                            return self.edit_image(**params)
-                        finally:
-                            for f in open_files:
-                                f.close()
-
-                    response = await asyncio.to_thread(_sync_edit_multiple)
-
-                return response
-        finally:
-            # Cleanup temporary files
-            for fd, path in temp_files:
-                try:
-                    # The file descriptor is already closed, just remove the file
-                    if os.path.exists(path):
-                        os.remove(path)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to remove temp file {path}: {str(e)}")
-
-
-# Alias to maintain backward compatibility during migration
-DALLEClient = GPTImageClient
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                result["usage"] = self._dump_response_item(usage)
+
+        result.setdefault("data", [])
+        result["_deployment_name"] = self.deployment_name
+        result["_model"] = self.model
+        return result
+
+    @staticmethod
+    def _dump_response_item(value: Any) -> Any:
+        if isinstance(value, dict):
+            return dict(value)
+        if hasattr(value, "model_dump"):
+            return value.model_dump(exclude_none=True)
+        return {
+            key: item
+            for key in (
+                "url",
+                "b64_json",
+                "revised_prompt",
+                "total_tokens",
+                "input_tokens",
+                "output_tokens",
+                "input_tokens_details",
+            )
+            if (item := getattr(value, key, None)) is not None
+        }
+
+    async def close(self) -> None:
+        """Release HTTP and credential resources owned by this client."""
+        if self._closed:
+            return
+        self._closed = True
+
+        close_client = getattr(self.client, "close", None)
+        if close_client is not None:
+            result = close_client()
+            if inspect.isawaitable(result):
+                await result
+
+        if self._owns_credential and self.credential is not None:
+            close_credential = getattr(self.credential, "close", None)
+            if close_credential is not None:
+                result = close_credential()
+                if inspect.isawaitable(result):
+                    await result
+
+    async def __aenter__(self) -> "GPTImageClient":
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        await self.close()

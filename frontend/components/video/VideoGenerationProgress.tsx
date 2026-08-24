@@ -1,7 +1,7 @@
 import React from 'react';
 import { Progress } from '../ui/progress';
 import { Button } from '../ui/button';
-import { VideoQueueItem } from '../../hooks/useVideoQueue';
+import type { VideoQueueItem } from '../../context/video-queue-context';
 import { Clock, CheckCircle, AlertCircle, Film } from 'lucide-react';
 
 interface VideoGenerationProgressProps {
@@ -15,7 +15,7 @@ export function VideoGenerationProgress({
   onDownload, 
   onCancel 
 }: VideoGenerationProgressProps) {
-  const { status, progress, prompt } = queueItem;
+  const { status, progress = 0, prompt } = queueItem;
   
   // Get appropriate status icon
   function StatusIcon() {
@@ -113,16 +113,13 @@ export function VideoGenerationProgress({
           />
           
           {/* Metadata display if available */}
-          {queueItem.metadata && (
+          {queueItem.job && (
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground mb-3">
-              {queueItem.metadata.width && queueItem.metadata.height && (
-                <span>{queueItem.metadata.width}×{queueItem.metadata.height}</span>
+              {queueItem.job.width && queueItem.job.height && (
+                <span>{queueItem.job.width}×{queueItem.job.height}</span>
               )}
-              {queueItem.metadata.duration && (
-                <span>{queueItem.metadata.duration}s</span>
-              )}
-              {queueItem.metadata.fps && (
-                <span>{queueItem.metadata.fps} FPS</span>
+              {queueItem.job.n_seconds && (
+                <span>{queueItem.job.n_seconds}s</span>
               )}
             </div>
           )}

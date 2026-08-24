@@ -38,6 +38,21 @@ class Settings(BaseSettings):
     AZURE_BLOB_IMAGE_CONTAINER: str = "images"
     AZURE_BLOB_VIDEO_CONTAINER: str = "videos"
 
+    # Durable image-generation jobs (managed identity — no queue keys)
+    AZURE_STORAGE_QUEUE_URL: Optional[str] = None
+    AZURE_STORAGE_QUEUE_NAME: str = "image-generation-jobs"
+    AZURE_STORAGE_POISON_QUEUE_NAME: str = "image-generation-jobs-poison"
+    IMAGE_JOB_MODE: str = "auto"  # auto, azure, or memory
+    IMAGE_JOB_ROLE: str = "all"  # api, worker, or all (local development)
+    IMAGE_JOB_CONCURRENCY: int = 2
+    IMAGE_JOB_POLL_INTERVAL_SECONDS: float = 1.0
+    IMAGE_JOB_CANCELLATION_POLL_SECONDS: float = 2.0
+    IMAGE_JOB_VISIBILITY_TIMEOUT_SECONDS: int = 600
+    IMAGE_JOB_HEARTBEAT_INTERVAL_SECONDS: float = 0.0  # 0 = visibility / 3
+    IMAGE_JOB_RECONCILE_INTERVAL_SECONDS: float = 5.0
+    IMAGE_JOB_MAX_ATTEMPTS: int = 3
+    IMAGE_JOB_RETENTION_SECONDS: int = 60 * 60 * 24 * 30
+
     # CORS Configuration
     CORS_ALLOWED_ORIGINS: str = Field(
         default="*",

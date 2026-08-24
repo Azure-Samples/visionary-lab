@@ -2,6 +2,7 @@
 
 import os
 import pytest
+import pytest_asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -29,14 +30,21 @@ def azure_settings():
     }
 
 
-@pytest.fixture(scope="session")
-def image_client(azure_settings):
+@pytest_asyncio.fixture(scope="session")
+async def image_client(azure_settings):
     """Real GPTImageClient using Azure credentials."""
     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
     from backend.core.gpt_image import GPTImageClient
     credential = DefaultAzureCredential()
     token_provider = get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
-    return GPTImageClient(credential=credential, token_provider=token_provider, provider="azure")
+    client = GPTImageClient(
+        credential=credential,
+        token_provider=token_provider,
+        provider="azure",
+    )
+    yield client
+    await client.close()
+    credential.close()
 
 
 @pytest.fixture

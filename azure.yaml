@@ -11,6 +11,118 @@ services:
     docker:
       path: ./backend/Dockerfile
       context: .
+    hooks:
+      postdeploy:
+        posix:
+          shell: sh
+          interactive: false
+          continueOnError: false
+          run: |
+            set -eu
+
+            resource_group=$(azd env get-value AZURE_RESOURCE_GROUP)
+            backend_app=$(azd env get-value BACKEND_CONTAINER_APP_NAME)
+            worker_app=$(azd env get-value IMAGE_WORKER_CONTAINER_APP_NAME)
+
+            backend_image=$(az containerapp show \
+              --resource-group "$resource_group" \
+              --name "$backend_app" \
+              --query 'properties.template.containers[0].image' \
+              --output tsv \
+              --only-show-errors)
+            worker_image=$(az containerapp show \
+              --resource-group "$resource_group" \
+              --name "$worker_app" \
+              --query 'properties.template.containers[0].image' \
+              --output tsv \
+              --only-show-errors)
+
+            if [ -z "$backend_image" ]; then
+              echo "Backend deployment did not expose a container image." >&2
+              exit 1
+            fi
+
+            if [ "$worker_image" = "$backend_image" ]; then
+              echo "Image worker already uses backend image $backend_image"
+              exit 0
+            fi
+
+            echo "Updating $worker_app to backend image $backend_image"
+            az containerapp update \
+              --resource-group "$resource_group" \
+              --name "$worker_app" \
+              --container-name "$worker_app" \
+              --image "$backend_image" \
+              --output none \
+              --only-show-errors
+
+            synchronized_image=$(az containerapp show \
+              --resource-group "$resource_group" \
+              --name "$worker_app" \
+              --query 'properties.template.containers[0].image' \
+              --output tsv \
+              --only-show-errors)
+            if [ "$synchronized_image" != "$backend_image" ]; then
+              echo "Worker image synchronization did not converge." >&2
+              exit 1
+            fi
+        windows:
+          shell: pwsh
+          interactive: false
+          continueOnError: false
+          run: |
+            $ErrorActionPreference = 'Stop'
+
+            $resourceGroup = azd env get-value AZURE_RESOURCE_GROUP
+            $backendApp = azd env get-value BACKEND_CONTAINER_APP_NAME
+            $workerApp = azd env get-value IMAGE_WORKER_CONTAINER_APP_NAME
+
+            $backendImage = az containerapp show `
+              --resource-group $resourceGroup `
+              --name $backendApp `
+              --query 'properties.template.containers[0].image' `
+              --output tsv `
+              --only-show-errors
+            if ($LASTEXITCODE -ne 0 -or -not $backendImage) {
+              throw 'Backend deployment did not expose a container image.'
+            }
+
+            $workerImage = az containerapp show `
+              --resource-group $resourceGroup `
+              --name $workerApp `
+              --query 'properties.template.containers[0].image' `
+              --output tsv `
+              --only-show-errors
+            if ($LASTEXITCODE -ne 0) {
+              throw "Unable to inspect image worker $workerApp."
+            }
+
+            if ($workerImage -eq $backendImage) {
+              Write-Host "Image worker already uses backend image $backendImage"
+              exit 0
+            }
+
+            Write-Host "Updating $workerApp to backend image $backendImage"
+            az containerapp update `
+              --resource-group $resourceGroup `
+              --name $workerApp `
+              --container-name $workerApp `
+              --image $backendImage `
+              --output none `
+              --only-show-errors
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to update image worker $workerApp."
+            }
+
+            $synchronizedImage = az containerapp show `
+              --resource-group $resourceGroup `
+              --name $workerApp `
+              --query 'properties.template.containers[0].image' `
+              --output tsv `
+              --only-show-errors
+            if ($LASTEXITCODE -ne 0 -or $synchronizedImage -ne $backendImage) {
+              throw 'Worker image synchronization did not converge.'
+            }
   frontend:
     project: ./frontend
     language: js

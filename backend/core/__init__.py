@@ -1,106 +1,48 @@
-import logging
-from datetime import datetime, timedelta, timezone
+"""Core package exports without import-time network or client construction."""
 
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from azure.storage.blob import BlobServiceClient, generate_container_sas, ContainerSasPermissions
-from openai import AzureOpenAI, AsyncAzureOpenAI
+from __future__ import annotations
 
-from .config import settings
-from .sora import Sora
-from .gpt_image import GPTImageClient
+from .resources import close_core_clients, get_core_clients, warm_core_clients
+from .sas import get_container_sas_token
 
-logger = logging.getLogger(__name__)
-
-# Shared credential for all Azure services
-credential = DefaultAzureCredential()
-token_provider = get_bearer_token_provider(
-    credential, "https://cognitiveservices.azure.com/.default"
-)
-
-# Initialize Sora 2 client
-try:
-    sora_client = Sora(
-        endpoint=settings.AI_FOUNDRY_ENDPOINT,
-        deployment_name=settings.SORA_DEPLOYMENT,
-        credential=credential,
-        token_provider=token_provider,
-    )
-    logger.info(f"Initialized Sora 2 client with Foundry endpoint, deployment: {settings.SORA_DEPLOYMENT}")
-except Exception as e:
-    logger.error(f"Failed to initialize Sora 2 client: {str(e)}")
-    sora_client = None
-
-# Initialize GPT-Image client (using default model)
-try:
-    image_client = GPTImageClient(
-        credential=credential,
-        token_provider=token_provider,
-        model=settings.DEFAULT_IMAGE_MODEL,
-    )
-    logger.info(f"Initialized GPT-Image client with managed identity (model: {settings.DEFAULT_IMAGE_MODEL})")
-except Exception as e:
-    logger.error(f"Failed to initialize GPT-Image client: {str(e)}")
-    image_client = None
-
-# Initialize LLM client (sync)
-try:
-    llm_client = AzureOpenAI(
-        azure_endpoint=settings.AI_FOUNDRY_ENDPOINT,
-        azure_ad_token_provider=token_provider,
-        api_version="2025-01-01-preview",
-    )
-    logger.info("Initialized LLM client with managed identity")
-except Exception as e:
-    logger.error(f"Failed to initialize LLM client: {str(e)}")
-    llm_client = None
-
-# Initialize async LLM client
-try:
-    async_llm_client = AsyncAzureOpenAI(
-        azure_endpoint=settings.AI_FOUNDRY_ENDPOINT,
-        azure_ad_token_provider=token_provider,
-        api_version="2025-01-01-preview",
-    )
-    logger.info("Initialized async LLM client with managed identity")
-except Exception as e:
-    logger.error(f"Failed to initialize async LLM client: {str(e)}")
-    async_llm_client = None
+_CLIENT_EXPORTS = {
+    "credential",
+    "async_credential",
+    "sora_client",
+    "image_client",
+    "llm_client",
+    "async_llm_client",
+}
 
 
-def _get_blob_service_client() -> BlobServiceClient:
-    """Get a BlobServiceClient using managed identity."""
-    account_url = settings.AZURE_BLOB_SERVICE_URL
-    if not account_url and settings.AZURE_STORAGE_ACCOUNT_NAME:
-        account_url = f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
-    return BlobServiceClient(account_url=account_url, credential=credential)
+class _LazyClientProxy:
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def __getattr__(self, attribute: str):
+        client = getattr(get_core_clients(), self._name)
+        return getattr(client, attribute)
+
+    def __bool__(self) -> bool:
+        return True
+
+    def __repr__(self) -> str:
+        return f"<lazy core client {self._name}>"
 
 
-def _generate_sas(container_name: str) -> str | None:
-    """Generate a 4-hour read/list SAS token using User Delegation Key."""
-    try:
-        blob_client = _get_blob_service_client()
-        start_time = datetime.now(timezone.utc)
-        expiry_time = start_time + timedelta(hours=4)
-
-        user_delegation_key = blob_client.get_user_delegation_key(
-            key_start_time=start_time,
-            key_expiry_time=expiry_time,
-        )
-
-        token = generate_container_sas(
-            account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
-            container_name=container_name,
-            user_delegation_key=user_delegation_key,
-            permission=ContainerSasPermissions(read=True, list=True),
-            expiry=expiry_time,
-            start=start_time,
-        )
-        logger.info(f"Generated User Delegation SAS token for {container_name} container.")
-        return token
-    except Exception as e:
-        logger.error(f"Failed to generate SAS token for {container_name}: {e}")
-        return None
+_CLIENT_PROXIES = {name: _LazyClientProxy(name) for name in _CLIENT_EXPORTS}
 
 
-video_sas_token = _generate_sas(settings.AZURE_BLOB_VIDEO_CONTAINER)
-image_sas_token = _generate_sas(settings.AZURE_BLOB_IMAGE_CONTAINER)
+def __getattr__(name: str):
+    if name in _CLIENT_EXPORTS:
+        return _CLIENT_PROXIES[name]
+    raise AttributeError(name)
+
+
+__all__ = [
+    "close_core_clients",
+    "get_container_sas_token",
+    "get_core_clients",
+    "warm_core_clients",
+    *_CLIENT_EXPORTS,
+]

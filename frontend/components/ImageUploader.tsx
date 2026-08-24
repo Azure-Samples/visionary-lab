@@ -7,9 +7,14 @@ import { toast } from "sonner";
 interface ImageUploaderProps {
   onImageSelected: (image: File | null) => void;
   disabled?: boolean;
+  maxSize?: number;
 }
 
-export function ImageUploader({ onImageSelected, disabled = false }: ImageUploaderProps) {
+export function ImageUploader({
+  onImageSelected,
+  disabled = false,
+  maxSize = 25 * 1024 * 1024,
+}: ImageUploaderProps) {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -26,10 +31,9 @@ export function ImageUploader({ onImageSelected, disabled = false }: ImageUpload
         return;
       }
       
-      // Check file size (25MB max for gpt-image-1.5)
-      if (file.size > 25 * 1024 * 1024) {
+      if (file.size > maxSize) {
         toast.error("File too large", {
-          description: "Image must be less than 25MB"
+          description: `Image must be less than ${Math.round(maxSize / 1024 / 1024)}MB`
         });
         return;
       }

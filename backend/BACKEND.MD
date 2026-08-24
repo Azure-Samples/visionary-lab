@@ -17,6 +17,8 @@ backend/
 ├── Dockerfile           # Instructions to build the Docker image
 ├── __init__.py
 ├── main.py              # FastAPI application entry point
+├── worker.py            # Standalone durable image-job worker entry point
+├── jobs/                # Queue, Cosmos store, dispatcher, and worker lifecycle
 ├── api/                 # API endpoint definitions
 │   ├── __init__.py
 │   └── endpoints/       # Routers for different API resources
@@ -31,6 +33,8 @@ backend/
 │   ├── azure_storage.py # Client for Azure Blob Storage interaction
 │   ├── config.py        # Application configuration settings
 │   ├── gpt_image.py     # Logic for OpenAI GPT-Image-1 API
+│   ├── resources.py     # Lazy process-owned AI clients and shutdown
+│   ├── sas.py           # Renewable on-demand browser SAS tokens
 │   ├── instructions.py  # Handling instructions/prompts for AI models
 │   ├── sora.py          # Logic for OpenAI Sora video generation API
 │   └── storage.py       # Abstraction layer for storage operations
@@ -39,13 +43,16 @@ backend/
 │   ├── common.py        # Common/shared Pydantic models
 │   ├── gallery.py       # Pydantic models for gallery features
 │   ├── images.py        # Pydantic models for image generation/data
+│   ├── image_jobs.py    # Batch, output-slot, progress, and retry contracts
 │   └── videos.py        # Pydantic models for video generation/data
 └── static/              # Static files (if any, served by the backend)
 ```
 
 ### Key Files and Directories:
 
-*   **`main.py`**: This is the main entry point of the application. It initializes the FastAPI app, includes routers from the `api/endpoints/` directory, and sets up any middleware or global dependencies.
+*   **`main.py`**: FastAPI API entry point. In production it opens the durable store/queue but does not consume image work.
+*   **`worker.py`**: No-ingress process that consumes Azure Storage Queue messages and owns long-running generation pipelines.
+*   **`jobs/`**: Implements idempotent submission, outbox reconciliation, leases, cancellation, retries/dead-lettering, and progressive per-image outputs.
 *   **`api/`**: This directory contains all API-related code.
     *   **`api/endpoints/`**: Each file in this subdirectory typically defines a FastAPI `APIRouter` for a specific resource or functionality (e.g., `images.py` for image-related endpoints, `videos.py` for video-related endpoints). This is the first place to look when trying to understand or modify an API endpoint.
 *   **`core/`**: This directory houses the core business logic of the application.
@@ -62,6 +69,24 @@ backend/
 *   **`.env`**: Used locally to store environment variables. This file should not be committed to version control.
 
 ## 3. Key Design Decisions & Conventions
+
+### Durable image jobs
+
+Image generation does not use FastAPI `BackgroundTasks`. FastAPI recommends a
+real queue/worker system for heavy work that must survive multiple processes or
+servers, while application lifespan is reserved for owning process-local
+resources and supervised tasks:
+
+- [FastAPI concurrency and async I/O](https://fastapi.tiangolo.com/async/)
+- [FastAPI BackgroundTasks caveat](https://fastapi.tiangolo.com/tutorial/background-tasks/#caveat)
+- [FastAPI lifespan events](https://fastapi.tiangolo.com/advanced/events/)
+- [Azure Container Apps scaling](https://learn.microsoft.com/azure/container-apps/scale-app)
+
+The API persists a Cosmos job/outbox record and dispatches only a job ID to
+Azure Storage Queue. A separate no-ingress Container App consumes messages,
+renews leases, publishes per-output progress, and can scale to zero. This keeps
+HTTP and model capacity independent and makes API restarts harmless to running
+jobs.
 
 *   **Multiple AI Services Integration**: The backend integrates with multiple OpenAI services:
     * **Sora** for video generation
@@ -81,7 +106,7 @@ backend/
     * Azure Blob Storage configuration with multiple authentication options
     * Default parameters for image generation (size, quality, format)
 *   **AI Model Integration (`gpt_image.py`, `sora.py`)**:
-    *   The backend initializes connections to AI services in the `core/__init__.py` file, creating clients for Sora, GPT-Image-1, and LLM services.
+    *   `core/__init__.py` has no network side effects. SDK clients are created lazily through `core/resources.py`, warmed from application/worker lifespan, and closed on shutdown.
     *   Specific modules are dedicated to each AI service to encapsulate their unique APIs and data handling requirements.
     *   **Flexible API Response Handling**: The system is designed to robustly handle variations in OpenAI API response structures, especially for usage information. This involves checking if usage is a dict or an object, using `getattr()` with default values to safely access attributes, wrapping usage processing in try/except blocks, and including proper logging for debugging response structure issues.
     *   **Parameter Support**: The backend supports parameters for AI models including `model`, `prompt`, `n`, `size`, `quality`, and `user`. For image editing, it additionally supports `image` and `mask` parameters. The backend also includes models for parameters not yet supported by the client (like `output_format`, `output_compression`, `background`, and `moderation`) for future compatibility.
@@ -94,8 +119,8 @@ backend/
         * Individual credential components (account name, key, service URL)
     *   Separate containers are defined for images (`AZURE_BLOB_IMAGE_CONTAINER`) and videos (`AZURE_BLOB_VIDEO_CONTAINER`)
     *   The `core/azure_storage.py` module handles direct interactions with Azure, while `core/storage.py` provides a higher-level abstraction.
-*   **Asynchronous Operations**: FastAPI's async capabilities are utilized for I/O-bound operations (like API calls to OpenAI or Azure Storage) to ensure the backend remains responsive under load.
-*   **Testing Approach**: The code includes robust error handling and logging to help diagnose issues. While there isn't a visible test directory in the current structure, the codebase is designed with testability in mind - using dependency injection patterns and clear separation of concerns that would facilitate testing.
+*   **Asynchronous Operations**: Provider, Blob, Queue, and job-state calls use native async SDKs. The HTTP API returns `202 Accepted`; durable work runs outside the API in queue-scaled workers. Remaining synchronous metadata boundaries are isolated with `asyncio.to_thread()` and reused for the worker lifetime.
+*   **Testing Approach**: Unit and contract tests live in `tests/`, including concurrent workers, output progress, dispatch-gap repair, cancellation races, dead-lettering, native async SDK use, and partial saves. Azure integration tests are marked `integration`.
 
 ## 4. Directory Structure Details
 

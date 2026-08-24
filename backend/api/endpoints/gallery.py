@@ -15,10 +15,9 @@ import io
 import re
 import uuid
 import logging
-from datetime import datetime, timedelta, timezone
-from azure.identity import DefaultAzureCredential
-from azure.storage.blob import BlobServiceClient, generate_container_sas, ContainerSasPermissions
+from datetime import datetime
 
+from backend.core import get_container_sas_token
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.cosmos_client import CosmosDBService
 from backend.core.config import settings
@@ -124,13 +123,25 @@ def _build_additional_custom_metadata(
 
 def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
+    service = None
     try:
         if settings.AZURE_COSMOS_DB_ENDPOINT:
-            return CosmosDBService()
-        return None
+            service = CosmosDBService()
     except Exception as e:
         logger.warning(f"Cosmos DB service unavailable: {e}")
-        return None
+    try:
+        yield service
+    finally:
+        if service is not None:
+            service.close()
+
+
+async def get_azure_storage_service():
+    service = AzureBlobStorageService()
+    try:
+        yield service
+    finally:
+        await service.close()
 
 
 @router.get("/images", response_model=GalleryResponse)
@@ -404,7 +415,7 @@ async def upload_asset(
     metadata: Optional[str] = Form(None),
     folder_path: Optional[str] = Form(None),
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
@@ -515,7 +526,7 @@ async def delete_asset(
         description="Container name (images or videos) - overrides media_type if provided",
     ),
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
@@ -591,7 +602,7 @@ async def get_asset_content(
     media_type: MediaType,
     blob_name: str,
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
 ):
     """Stream asset content directly from Azure Blob Storage"""
@@ -624,34 +635,11 @@ async def get_asset_content(
 async def get_sas_tokens():
     """Generate and return SAS tokens for frontend direct access to blob storage"""
     try:
-        credential = DefaultAzureCredential()
-        account_url = f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
-        blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
-
-        start_time = datetime.now(timezone.utc)
-        expiry_time = start_time + timedelta(hours=1)
-        user_delegation_key = blob_service_client.get_user_delegation_key(
-            key_start_time=start_time,
-            key_expiry_time=expiry_time,
+        (video_token, video_expiry), (image_token, image_expiry) = await asyncio.gather(
+            get_container_sas_token(settings.AZURE_BLOB_VIDEO_CONTAINER),
+            get_container_sas_token(settings.AZURE_BLOB_IMAGE_CONTAINER),
         )
-
-        video_token = generate_container_sas(
-            account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
-            container_name=settings.AZURE_BLOB_VIDEO_CONTAINER,
-            user_delegation_key=user_delegation_key,
-            permission=ContainerSasPermissions(read=True),
-            expiry=expiry_time,
-            start=start_time,
-        )
-
-        image_token = generate_container_sas(
-            account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
-            container_name=settings.AZURE_BLOB_IMAGE_CONTAINER,
-            user_delegation_key=user_delegation_key,
-            permission=ContainerSasPermissions(read=True),
-            expiry=expiry_time,
-            start=start_time,
-        )
+        expiry_time = min(video_expiry, image_expiry)
         base_url = settings.CDN_BLOB_URL or f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
         return {
             "success": True,
@@ -670,7 +658,7 @@ async def get_sas_tokens():
 async def health_check(
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
     azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService()
+        get_azure_storage_service
     ),
 ):
     """

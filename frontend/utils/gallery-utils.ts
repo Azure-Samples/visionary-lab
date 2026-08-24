@@ -340,6 +340,6 @@ export async function fetchImages(
     }
   } catch (error) {
     console.error("Error fetching images from gallery API:", error);
-    return [];
+    throw error;
   }
 } 

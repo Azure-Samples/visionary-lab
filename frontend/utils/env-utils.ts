@@ -1,5 +1,7 @@
 // Environment variable utilities
 
+import { API_BASE_URL } from '@/services/api';
+
 interface EnvVariables {
   NODE_ENV: string;
   API_URL: string;
@@ -38,15 +40,7 @@ export async function getEnvironmentVariables(): Promise<EnvVariables> {
 
 export async function getApiStatus(): Promise<ApiStatus | null> {
   try {
-    const API_PROTOCOL = process.env.NEXT_PUBLIC_API_PROTOCOL || 'http';
-    const API_HOSTNAME = process.env.NEXT_PUBLIC_API_HOSTNAME || '127.0.0.1';
-    // For GitHub Codespaces, port is part of the hostname, so this might be empty
-    const API_PORT = process.env.NEXT_PUBLIC_API_PORT || '8000';
-    
-    // Build URL conditionally based on whether port is specified
-    const url = API_PORT 
-      ? `${API_PROTOCOL}://${API_HOSTNAME}:${API_PORT}/api/v1/env/status`
-      : `${API_PROTOCOL}://${API_HOSTNAME}/api/v1/env/status`;
+    const url = `${API_BASE_URL}/env/status`;
     
     console.log(`Checking API status at: ${url}`);
     
@@ -59,4 +53,4 @@ export async function getApiStatus(): Promise<ApiStatus | null> {
     console.error('Error fetching API status:', error);
     return null;
   }
-} 
+}

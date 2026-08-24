@@ -18,7 +18,12 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 
-from backend.core import llm_client, async_llm_client, sora_client, video_sas_token
+from backend.core import (
+    async_llm_client,
+    get_container_sas_token,
+    llm_client,
+    sora_client,
+)
 from backend.core.analyze import VideoAnalyzer, VideoExtractor
 from backend.core.config import settings
 from backend.core.instructions import (
@@ -48,13 +53,17 @@ logger = logging.getLogger(__name__)
 
 def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
+    service = None
     try:
         if settings.AZURE_COSMOS_DB_ENDPOINT:
-            return CosmosDBService()
-        return None
+            service = CosmosDBService()
     except Exception as e:
         logger.warning(f"Cosmos DB service unavailable: {e}")
-        return None
+    try:
+        yield service
+    finally:
+        if service is not None:
+            service.close()
 
 
 # Log video directory setting
@@ -1186,6 +1195,9 @@ async def analyze_video(req: VideoAnalyzeRequest):
         else:
             # check if the path contains a SAS token
             if "?" not in file_path:
+                video_sas_token, _ = await get_container_sas_token(
+                    settings.AZURE_BLOB_VIDEO_CONTAINER
+                )
                 file_path += f"?{video_sas_token}"
 
         # Download the video file to a temporary location with retry logic

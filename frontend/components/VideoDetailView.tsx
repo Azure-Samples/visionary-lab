@@ -386,7 +386,7 @@ export function VideoDetailView({
       const metadata = video.originalItem.metadata;
       
       // Check if this video has already been analyzed (stored in metadata)
-      if (metadata.has_analysis === "true") {
+      if (metadata.has_analysis === true) {
         // Reconstruct analysis result from metadata
         const analysisFromMetadata: VideoAnalysisResponse = {
           summary: metadata.analysis_summary as string || "",
@@ -924,4 +924,4 @@ export function VideoDetailView({
       </div>
     </div>
   );
-} 
+}

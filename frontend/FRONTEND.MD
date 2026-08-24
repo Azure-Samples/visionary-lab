@@ -11,7 +11,7 @@ frontend/
 ├── .env.local               # Local environment variables
 ├── Dockerfile               # Container configuration
 ├── app/                     # Next.js App Router pages and layouts
-│   ├── api/                 # API routes (Next.js server-side endpoints)
+│   ├── api/                 # API routes, including the trusted backend proxy
 │   ├── auth/                # Authentication-related routes
 │   ├── edit-image/          # Image editing functionality
 │   ├── gallery/             # Gallery view for content
@@ -38,6 +38,7 @@ frontend/
 ├── services/                # API service integrations
 │   ├── api.ts               # Backend API client
 │   ├── imageService.ts      # Image-specific API functions
+│   ├── imageJobs.ts         # Durable image-job HTTP client
 │   └── sas-token.ts         # Azure storage SAS token management
 ├── types/                   # TypeScript type definitions
 └── utils/                   # Utility functions
@@ -47,7 +48,7 @@ frontend/
 
 The frontend is built with:
 
-- **Next.js 15.2.4**: App Router architecture with React 19
+- **Next.js 16.3.1**: App Router architecture with React 19
 - **TypeScript**: For type safety
 - **Tailwind CSS**: For styling
 - **NextAuth.js (next-auth v5)**: For authentication
@@ -70,15 +71,18 @@ The frontend is built with:
 
 ### API Communication
 
+- Browser API calls use the same-origin `/api/backend/*` proxy. The backend Container App remains environment-internal; the proxy strips caller-supplied identity headers and forwards either the Easy Auth principal or a server-issued HttpOnly anonymous owner ID.
 - Backend API is accessed via service modules in `services/` directory
 - `api.ts` contains the core API client functionality with:
   - Configurable API URL via environment variables (`NEXT_PUBLIC_API_PROTOCOL`, `NEXT_PUBLIC_API_HOSTNAME`, `NEXT_PUBLIC_API_PORT`)
-  - Default URL: `http://localhost:8000/api/v1`
+  - Browser URL: `/api/backend/api/v1`; server-side calls use the configured internal backend URL
   - Includes endpoints for image and video generation, editing, and management
 
 ### Content Generation UI
 
 - **Image Creation**: Implemented in `ImageCreationContainer.tsx` and accessed via `/new-image`
+- **Concurrent Image Jobs**: `image-jobs-context.tsx` persists optimistic submissions, reconciles monotonic job revisions, polls active/recent state independently, and centralizes cancel/retry actions.
+- **Per-image Results**: Reserved output cards appear immediately in the target gallery and progressively become ready, failed, cancelled, or analyzed without blocking the composer.
 - **Video Creation**: Implemented in `VideoCreationContainer.tsx` and accessed via `/new-video`
 - **Image Editing**: Available at `/edit-image` route
 - **Content Gallery**: Available at `/gallery` route
