@@ -12,11 +12,6 @@ services:
     volumes:
       - ./backend/static:/app/backend/static
     environment:
-      # Required Azure OpenAI for Sora Video Generation - MUST BE SET BY USER
-      - SORA_AOAI_RESOURCE=${SORA_AOAI_RESOURCE}
-      - SORA_DEPLOYMENT=${SORA_DEPLOYMENT}
-      - SORA_AOAI_API_KEY=${SORA_AOAI_API_KEY}
-      
       # Required Azure OpenAI for LLM - MUST BE SET BY USER
       - LLM_AOAI_RESOURCE=${LLM_AOAI_RESOURCE}
       - LLM_DEPLOYMENT=${LLM_DEPLOYMENT}
@@ -33,7 +28,6 @@ services:
       - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
       - AZURE_STORAGE_ACCOUNT_KEY=${AZURE_STORAGE_ACCOUNT_KEY}
       - AZURE_BLOB_IMAGE_CONTAINER=${AZURE_BLOB_IMAGE_CONTAINER:-images}
-      - AZURE_BLOB_VIDEO_CONTAINER=${AZURE_BLOB_VIDEO_CONTAINER:-videos}
       
       # Required Azure OpenAI API Version
       - AOAI_API_VERSION=${AOAI_API_VERSION:-2025-04-01-preview}
@@ -72,4 +66,4 @@ services:
 networks:
   default:
     name: ai-content-lab-network
-    driver: bridge 
+    driver: bridge

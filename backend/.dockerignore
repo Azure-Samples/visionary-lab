@@ -54,7 +54,6 @@ docker-compose.*.yml
 # Generated content
 static/uploads/*
 static/images/*
-static/videos/*
 
 # Log files
 *.log 

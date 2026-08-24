@@ -9,7 +9,7 @@
     "ghcr.io/devcontainers/features/git:1": {}
   },
   
-  "postCreateCommand": "bash -c 'echo \"Installing system dependencies...\" && sudo apt update && sudo apt install -y libgl1-mesa-glx && echo \"Installing UV package manager...\" && curl -LsSf https://astral.sh/uv/install.sh | sh && echo \"Installing Python dependencies...\" && cp .env.example .env && echo \"Installing frontend dependencies...\" && cd frontend && npm install --legacy-peer-deps'",
+  "postCreateCommand": "bash -c 'echo \"Installing UV package manager...\" && curl -LsSf https://astral.sh/uv/install.sh | sh && echo \"Installing Python dependencies...\" && cp .env.example .env && echo \"Installing frontend dependencies...\" && cd frontend && npm install --legacy-peer-deps'",
   
   "customizations": {
     "vscode": {

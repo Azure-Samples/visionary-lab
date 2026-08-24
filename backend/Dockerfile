@@ -1,11 +1,8 @@
 # Use Python 3.12 slim image
 FROM python:3.12-slim
 
-# Install system dependencies needed for OpenCV
+# Install runtime system dependencies.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
-    libglib2.0-0 \
-    libgthread-2.0-0 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -27,8 +24,8 @@ RUN uv sync --frozen --no-cache
 ENV PATH="/app/.venv/bin:${PATH}"
 
 # Create necessary directories
-RUN mkdir -p /app/static/uploads /app/static/images /app/static/videos
-RUN mkdir -p /app/backend/static/uploads /app/backend/static/images /app/backend/static/videos
+RUN mkdir -p /app/static/uploads /app/static/images
+RUN mkdir -p /app/backend/static/uploads /app/backend/static/images
 
 # Verify the fastapi command is available
 RUN ls -la /app/.venv/bin/ && /app/.venv/bin/fastapi --version
@@ -38,4 +35,4 @@ EXPOSE 80
 
 # Run the application using fastapi CLI with a shell wrapper to ensure PATH is set
 ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["exec /app/.venv/bin/fastapi run backend/main.py --port 80 --host 0.0.0.0"] 
+CMD ["exec /app/.venv/bin/fastapi run backend/main.py --port 80 --host 0.0.0.0"]

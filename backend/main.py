@@ -8,13 +8,12 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 import os  # noqa: E402
 import uvicorn  # noqa: E402
 from .core.config import settings  # noqa: E402
-from .api.endpoints import images, metadata_router, videos, gallery, env  # noqa: E402
+from .api.endpoints import images, metadata_router, gallery, env  # noqa: E402
 
 
 # Create directories if they don't exist
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 os.makedirs(settings.IMAGE_DIR, exist_ok=True)
-os.makedirs(settings.VIDEO_DIR, exist_ok=True)
 
 app = FastAPI(
     title=settings.PROJECT_NAME, openapi_url=f"{settings.API_V1_STR}/openapi.json"
@@ -34,7 +33,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include routers
 app.include_router(images.router, prefix=f"{settings.API_V1_STR}/images", tags=["images"])
-app.include_router(videos.router, prefix=f"{settings.API_V1_STR}/videos", tags=["videos"])
 app.include_router(gallery.router, prefix=f"{settings.API_V1_STR}/gallery", tags=["gallery"])
 app.include_router(metadata_router.router, prefix=f"{settings.API_V1_STR}/metadata", tags=["metadata"])
 app.include_router(env.router, prefix=f"{settings.API_V1_STR}", tags=["env"])

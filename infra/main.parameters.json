@@ -32,9 +32,6 @@
     "IMAGEGEN_1_MINI_DEPLOYMENT": {
       "value": "${IMAGEGEN_1_MINI_DEPLOYMENT}"
     },
-    "SORA_DEPLOYMENT": {
-      "value": "${SORA_DEPLOYMENT}"
-    },
     "FLUX_KONTEXT_DEPLOYMENT": {
       "value": "${FLUX_KONTEXT_DEPLOYMENT}"
     },

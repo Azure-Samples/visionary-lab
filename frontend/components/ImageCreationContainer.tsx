@@ -8,7 +8,6 @@ import {
   generateImages, 
   saveGeneratedImages, 
   analyzeImageFromBase64, 
-  MediaType, 
   fetchFolders, 
   editImage,
   protectImagePrompt,
@@ -125,7 +124,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
   useEffect(() => {
     const loadFolders = async () => {
       try {
-        const result = await fetchFolders(MediaType.IMAGE);
+        const result = await fetchFolders();
         setFolders(result.folders);
       } catch (error) {
         console.error("Error loading folders:", error);

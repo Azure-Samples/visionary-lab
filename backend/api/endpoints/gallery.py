@@ -37,7 +37,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 BASE_CUSTOM_METADATA_KEYS = {"width", "height", "prompt", "description", "analysis"}
-VIDEO_CUSTOM_METADATA_KEYS = BASE_CUSTOM_METADATA_KEYS | {"duration", "fps", "resolution"}
 
 
 def _parse_tags(tags: Optional[str]) -> Optional[list[str]]:
@@ -76,7 +75,6 @@ def _build_core_generation_metadata(
         "quality": metadata.get("quality"),
         "background": metadata.get("background"),
         "output_format": metadata.get("output_format"),
-        "generation_id": metadata.get("generation_id"),
     }
     if include_transparency:
         values["has_transparency"] = metadata.get("has_transparency")
@@ -91,16 +89,6 @@ def _build_dimensions_metadata(
             "width": custom_metadata.get("width") or metadata.get("width"),
             "height": custom_metadata.get("height") or metadata.get("height"),
             "created_at": metadata.get("created_at"),
-        }
-    )
-
-
-def _build_video_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
-    return _filter_non_null_values(
-        {
-            "duration": metadata.get("duration"),
-            "resolution": metadata.get("resolution"),
-            "fps": metadata.get("fps"),
         }
     )
 
@@ -218,85 +206,6 @@ async def get_gallery_images(
         )
 
 
-@router.get("/videos", response_model=GalleryResponse)
-async def get_gallery_videos(
-    limit: int = Query(
-        50, description="Maximum number of items to return", ge=1, le=100
-    ),
-    offset: int = Query(0, description="Offset for pagination"),
-    folder_path: Optional[str] = Query(
-        None, description="Optional folder path to filter assets"
-    ),
-    tags: Optional[str] = Query(
-        None, description="Comma-separated tags to filter by"),
-    cosmos_service: CosmosDBService = Depends(get_cosmos_service),
-):
-    """Get gallery videos from Cosmos DB metadata ONLY"""
-    try:
-        # Parse tags if provided
-        tag_list = _parse_tags(tags)
-
-        # Query Cosmos DB for videos only
-        result = await asyncio.to_thread(
-            cosmos_service.query_assets,
-            media_type="video",  # Videos only
-            folder_path=folder_path,
-            tags=tag_list,
-            limit=limit,
-            offset=offset,
-            order_by="created_at",
-            order_desc=True,
-        )
-
-        gallery_items = []
-        for metadata in result["items"]:
-            custom_meta = _extract_custom_metadata(metadata)
-
-            gallery_items.append(
-                GalleryItem(
-                    id=metadata["id"],
-                    name=metadata["blob_name"],
-                    media_type=MediaType.VIDEO,
-                    url=metadata["url"],
-                    container=metadata["container"],
-                    size=metadata["size"],
-                    content_type=metadata.get("content_type"),
-                    creation_time=metadata["created_at"],
-                    last_modified=metadata["updated_at"],
-                    metadata={
-                        **_build_core_generation_metadata(metadata),
-                        **_build_video_metadata(metadata),
-                        **_build_dimensions_metadata(metadata, custom_meta),
-                        **_build_analysis_metadata(metadata),
-                        **_build_additional_custom_metadata(
-                            custom_meta, VIDEO_CUSTOM_METADATA_KEYS
-                        ),
-                    },
-                    folder_path=metadata.get("folder_path", ""),
-                )
-            )
-
-        return GalleryResponse(
-            success=True,
-            message=f"Retrieved {len(gallery_items)} videos from metadata service",
-            total=result["total"],
-            limit=limit,
-            offset=offset,
-            items=gallery_items,
-            continuation_token=None,
-            folders=None,
-        )
-    except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error retrieving videos from metadata: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve videos from metadata service: {str(e)}",
-        )
-
-
 @router.get("/", response_model=GalleryResponse)
 async def get_gallery_items(
     limit: int = Query(
@@ -309,7 +218,7 @@ async def get_gallery_items(
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
     """
-    Get all gallery items (images and videos) from CosmosDB metadata
+    Get gallery images from CosmosDB metadata.
     """
     try:
         # Check if Cosmos DB service is available
@@ -340,6 +249,7 @@ async def _get_gallery_items_from_cosmos(
     try:
         result = await asyncio.to_thread(
             cosmos_service.query_assets,
+            media_type="image",
             folder_path=folder_path,
             limit=limit,
             offset=offset,
@@ -356,7 +266,7 @@ async def _get_gallery_items_from_cosmos(
                 GalleryItem(
                     id=metadata["id"],
                     name=metadata["blob_name"],
-                    media_type=MediaType(metadata["media_type"]),
+                    media_type=MediaType.IMAGE,
                     url=metadata["url"],
                     container=metadata["container"],
                     size=metadata["size"],
@@ -368,10 +278,9 @@ async def _get_gallery_items_from_cosmos(
                             metadata, include_transparency=True
                         ),
                         **_build_dimensions_metadata(metadata, custom_meta),
-                        **_build_video_metadata(metadata),
                         **_build_analysis_metadata(metadata),
                         **_build_additional_custom_metadata(
-                            custom_meta, VIDEO_CUSTOM_METADATA_KEYS
+                            custom_meta, BASE_CUSTOM_METADATA_KEYS
                         ),
                     },
                     folder_path=metadata.get("folder_path", ""),
@@ -409,16 +318,11 @@ async def upload_asset(
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
     """
-    Upload an asset (image or video) to Azure Blob Storage with optional metadata
+    Upload an image to Azure Blob Storage with optional metadata.
     Also creates metadata record in Cosmos DB if available
     """
     try:
-        # Validate file type
-        if media_type == MediaType.IMAGE:
-            valid_types = [".jpg", ".jpeg", ".png",
-                           ".gif", ".webp", ".svg", ".bmp"]
-        else:  # VIDEO
-            valid_types = [".mp4", ".mov", ".avi", ".wmv", ".webm", ".mkv"]
+        valid_types = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"]
 
         filename = file.filename.lower()
         if not any(filename.endswith(ext) for ext in valid_types):
@@ -449,7 +353,7 @@ async def upload_asset(
 
         # Upload to Azure Blob Storage (no metadata stored in blob)
         result = await azure_storage_service.upload_asset(
-            file, media_type.value, metadata=None, folder_path=folder_path
+            file, metadata=None, folder_path=folder_path
         )
 
         # Create metadata record in Cosmos DB if available
@@ -508,11 +412,7 @@ async def upload_asset(
 async def delete_asset(
     blob_name: str = Query(..., description="Name of the blob to delete"),
     media_type: MediaType = Query(
-        None, description="Type of media (image or video) to determine container"
-    ),
-    container: Optional[str] = Query(
-        None,
-        description="Container name (images or videos) - overrides media_type if provided",
+        ..., description="Asset type"
     ),
     azure_storage_service: AzureBlobStorageService = Depends(
         lambda: AzureBlobStorageService()
@@ -523,27 +423,11 @@ async def delete_asset(
     Delete an asset from Azure Blob Storage and Cosmos DB metadata
     """
     try:
-        # Determine container name
-        container_name = container
-        if not container_name:
-            if not media_type:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Either media_type or container must be specified",
-                )
-            container_name = (
-                settings.AZURE_BLOB_IMAGE_CONTAINER
-                if media_type == MediaType.IMAGE
-                else settings.AZURE_BLOB_VIDEO_CONTAINER
-            )
+        container_name = settings.AZURE_BLOB_IMAGE_CONTAINER
 
         # Extract asset ID for Cosmos DB deletion
         asset_id = blob_name.split(".")[0].split("/")[-1]
-        media_type_str = (
-            "image"
-            if container_name == settings.AZURE_BLOB_IMAGE_CONTAINER
-            else "video"
-        )
+        media_type_str = media_type.value
 
         # Delete from Cosmos DB first (if available)
         if cosmos_service:
@@ -596,11 +480,7 @@ async def get_asset_content(
 ):
     """Stream asset content directly from Azure Blob Storage"""
     try:
-        container_name = (
-            settings.AZURE_BLOB_IMAGE_CONTAINER
-            if media_type == MediaType.IMAGE
-            else settings.AZURE_BLOB_VIDEO_CONTAINER
-        )
+        container_name = settings.AZURE_BLOB_IMAGE_CONTAINER
         content, content_type = await asyncio.to_thread(
             azure_storage_service.get_asset_content, blob_name, container_name
         )
@@ -635,15 +515,6 @@ async def get_sas_tokens():
             key_expiry_time=expiry_time,
         )
 
-        video_token = generate_container_sas(
-            account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
-            container_name=settings.AZURE_BLOB_VIDEO_CONTAINER,
-            user_delegation_key=user_delegation_key,
-            permission=ContainerSasPermissions(read=True),
-            expiry=expiry_time,
-            start=start_time,
-        )
-
         image_token = generate_container_sas(
             account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
             container_name=settings.AZURE_BLOB_IMAGE_CONTAINER,
@@ -655,10 +526,8 @@ async def get_sas_tokens():
         base_url = settings.CDN_BLOB_URL or f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
         return {
             "success": True,
-            "message": "SAS tokens generated successfully",
-            "video_sas_token": video_token,
+            "message": "SAS token generated successfully",
             "image_sas_token": image_token,
-            "video_container_url": f"{base_url}/{settings.AZURE_BLOB_VIDEO_CONTAINER}",
             "image_container_url": f"{base_url}/{settings.AZURE_BLOB_IMAGE_CONTAINER}",
             "expiry": expiry_time,
         }
@@ -685,10 +554,7 @@ async def health_check(
     # Check Azure Blob Storage
     try:
         # Try to list containers to test connectivity
-        containers = [
-            settings.AZURE_BLOB_IMAGE_CONTAINER,
-            settings.AZURE_BLOB_VIDEO_CONTAINER,
-        ]
+        containers = [settings.AZURE_BLOB_IMAGE_CONTAINER]
         for container in containers:
             await asyncio.to_thread(
                 azure_storage_service._ensure_container_exists, container
@@ -732,11 +598,9 @@ async def health_check(
     # Check AI Services
     try:
         # Test if AI clients are properly initialized
-        from backend.core import sora_client, image_client, llm_client
+        from backend.core import image_client, llm_client
 
         ai_services = {}
-        if sora_client:
-            ai_services["sora"] = "available"
         if image_client:
             ai_services["dalle/gpt_image"] = "available"
         if llm_client:
@@ -778,12 +642,17 @@ async def metadata_service_status(
 
             # Test query capabilities
             test_query_result = await asyncio.to_thread(
-                cosmos_service.query_assets, limit=1, offset=0
+                cosmos_service.query_assets, media_type="image", limit=1, offset=0
             )
 
             # Test search capabilities
             try:
-                await asyncio.to_thread(cosmos_service.search_assets, "test", limit=1)
+                await asyncio.to_thread(
+                    cosmos_service.search_assets,
+                    "test",
+                    media_type="image",
+                    limit=1,
+                )
                 search_available = True
             except Exception:
                 search_available = False
@@ -846,7 +715,7 @@ async def metadata_service_status(
 @router.get("/folders", response_model=Dict[str, Any])
 async def list_folders(
     media_type: Optional[MediaType] = Query(
-        None, description="Filter folders by media type (image or video)"
+        None, description="Filter folders by asset type"
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
@@ -865,7 +734,7 @@ async def list_folders(
             )
 
         # Get folders from Cosmos DB
-        media_type_str = media_type.value if media_type else None
+        media_type_str = (media_type or MediaType.IMAGE).value
         result = await asyncio.to_thread(
             cosmos_service.get_all_folders, media_type=media_type_str
         )
@@ -943,9 +812,13 @@ async def create_folder(
                 existing_placeholder = await asyncio.to_thread(
                     lambda: list(
                         cosmos_service.container.query_items(
-                            query="SELECT * FROM c WHERE c.doc_type = 'folder_placeholder' AND c.folder_path = @folder_path",
+                            query="SELECT * FROM c WHERE c.doc_type = 'folder_placeholder' AND c.folder_path = @folder_path AND c.target_media_type = @target_media_type",
                             parameters=[
-                                {"name": "@folder_path", "value": normalized_folder}
+                                {"name": "@folder_path", "value": normalized_folder},
+                                {
+                                    "name": "@target_media_type",
+                                    "value": (media_type or MediaType.IMAGE).value,
+                                },
                             ],
                             enable_cross_partition_query=True,
                         )
@@ -960,7 +833,7 @@ async def create_folder(
                         "media_type": "folder_placeholder",  # Use as partition key
                         "folder_path": normalized_folder,
                         "folder_name": folder_path,  # Human readable name
-                        "target_media_type": media_type.value if media_type else "mixed",
+                        "target_media_type": (media_type or MediaType.IMAGE).value,
                         "created_at": datetime.utcnow().isoformat(),
                         "is_placeholder": True,
                         "asset_count": 0
@@ -985,7 +858,7 @@ async def create_folder(
             "success": True,
             "message": f"Folder '{folder_path}' created and is immediately available.",
             "folder_path": folder_path,
-            "media_type": media_type.value if media_type else "any",
+            "media_type": (media_type or MediaType.IMAGE).value,
             "created": True,
             "immediate_visibility": True
         }

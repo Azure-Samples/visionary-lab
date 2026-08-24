@@ -22,11 +22,9 @@ def env_status():
         'AI_FOUNDRY_ENDPOINT',
         'LLM_DEPLOYMENT',
         'IMAGEGEN_DEPLOYMENT',
-        'SORA_DEPLOYMENT',
         'AZURE_BLOB_SERVICE_URL',
         'AZURE_STORAGE_ACCOUNT_NAME',
         'AZURE_BLOB_IMAGE_CONTAINER',
-        'AZURE_BLOB_VIDEO_CONTAINER',
     ]
 
     # Optional variables (app can function without them)

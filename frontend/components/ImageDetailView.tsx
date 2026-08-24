@@ -14,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MediaType, deleteGalleryAsset, fetchFolders, moveAsset } from "@/services/api";
+import { deleteGalleryAsset, fetchFolders, moveAsset } from "@/services/api";
 import { OptimizedImage } from "@/components/OptimizedImage";
 
 interface ImageMetadata {
@@ -104,7 +104,7 @@ export function ImageDetailView({
     
     try {
       setIsFoldersLoading(true);
-      const result = await fetchFolders(MediaType.IMAGE);
+      const result = await fetchFolders();
       setFolders(result.folders);
     } catch (error) {
       console.error("Failed to fetch folders:", error);
@@ -266,7 +266,7 @@ export function ImageDetailView({
 
     try {
       setIsDeleting(true);
-      const result = await deleteGalleryAsset(image.name, MediaType.IMAGE);
+      const result = await deleteGalleryAsset(image.name);
       
       if (result.success) {
         toast.success("Image deleted", {
@@ -330,7 +330,7 @@ export function ImageDetailView({
 
     try {
       setIsMoving(true);
-      const result = await moveAsset(image.name, folderPath, MediaType.IMAGE);
+      const result = await moveAsset(image.name, folderPath);
       
       if (result.success) {
         toast.success("Image moved", {
