@@ -1,125 +1,9 @@
-import { fetchGalleryVideos, GalleryItem, MediaType, fetchGalleryImages } from "@/services/api";
+import { GalleryItem, fetchGalleryImages } from "@/services/api";
 import { sasTokenService } from "@/services/sas-token";
 
 function getOptionalNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
-
-export interface VideoMetadata {
-  src: string;
-  title: string;
-  description?: string;
-  size: "small" | "medium" | "large";
-  id: string;
-  name: string;
-  tags?: string[];
-  originalItem: GalleryItem;
-  width?: number;
-  height?: number;
-  // Analysis metadata from Azure Blob Storage
-  analysis?: {
-    summary?: string;
-    products?: string;
-    tags?: string[];
-    feedback?: string;
-    analyzed?: boolean;
-  };
-}
-
-/**
- * Convert GalleryItem to VideoMetadata
- */
-async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMetadata> {
-  // Extract title from prompt (preferred) or name
-  const title = item.metadata?.prompt || item.name.split('.')[0].replace(/_/g, ' ');
-  
-  // Extract description from metadata
-  const description = item.metadata?.description || '';
-  
-  // Get direct URL with SAS token
-  const src = await sasTokenService.getBlobUrl(item.name, item.media_type === MediaType.VIDEO);
-  console.log(`Using direct blob URL for ${item.name}`);
-  
-  // Extract analysis metadata from CosmosDB nested structure
-  let analysis: VideoMetadata['analysis'] = undefined;
-  if (item.metadata?.analysis) {
-    const analysisData = item.metadata.analysis;
-    analysis = {
-      summary: analysisData.summary as string,
-      products: analysisData.products as string,
-      feedback: analysisData.feedback as string,
-      tags: Array.isArray(analysisData.tags) ? analysisData.tags : [],
-      analyzed: item.metadata.has_analysis === true,
-    };
-  }
-
-  return {
-    id: item.id,
-    name: item.name,
-    src,
-    title: title.charAt(0).toUpperCase() + title.slice(1), // Capitalize first letter
-    description,
-    // We'll assign the size later in a structured way
-    size: "medium", // Default size, will be overridden
-    originalItem: item,
-    analysis,
-  };
-}
-
-/**
- * Assign sizes to videos in a structured pattern to create a visually interesting grid
- */
-function assignVideoSizes(videos: VideoMetadata[]): VideoMetadata[] {
-  return videos.map((video, index) => {
-    // Create a structured pattern of sizes
-    // Every 5th video is large, every 3rd is small, the rest are medium
-    let size: "small" | "medium" | "large" = "medium";
-    
-    if (index % 5 === 0) {
-      size = "large";
-    } else if (index % 3 === 0) {
-      size = "small";
-    }
-    
-    return {
-      ...video,
-      size
-    };
-  });
-}
-
-/**
- * Fetch videos from the gallery API
- */
-export async function fetchVideos(
-  limit: number = 50, 
-  offset: number = 0,
-  folderPath?: string
-): Promise<VideoMetadata[]> {
-  try {
-    // Try to fetch videos from the API
-    const response = await fetchGalleryVideos(limit, offset, undefined, undefined, folderPath);
-    
-    if (response.success && response.items.length > 0) {
-      // Map items to metadata with Promise.all to handle async mapping
-      const videoItemPromises = response.items
-        .filter(item => item.media_type === MediaType.VIDEO)
-        .map((item) => mapGalleryItemToVideoMetadata(item));
-      
-      const videoItems = await Promise.all(videoItemPromises);
-      
-      // Assign sizes in a structured way
-      return assignVideoSizes(videoItems);
-    } else {
-      console.warn("No videos found in gallery API");
-      return []; // Return empty array instead of mock videos
-    }
-  } catch (error) {
-    console.error("Error fetching videos from gallery API:", error);
-    return []; // Return empty array instead of mock videos
-  }
-}
-
 /**
  * Convert GalleryItem to ImageMetadata
  */
@@ -192,8 +76,8 @@ async function mapGalleryItemToImageMetadata(item: GalleryItem): Promise<ImageMe
     const descriptionSource = item.metadata?.analysis?.summary ?? item.metadata?.description ?? '';
     const description = normalizeToString(descriptionSource);
 
-    // Use direct SAS token URL (false for images, true for videos)
-    const src = await sasTokenService.getBlobUrl(item.name, false);
+    // Use a direct SAS token URL for the image
+    const src = await sasTokenService.getBlobUrl(item.name);
     console.log(`Using direct blob URL for ${item.name}`);
 
     // Extract tags from CosmosDB analysis structure
@@ -302,9 +186,7 @@ export async function fetchImages(
     if (response.success && response.items.length > 0) {
       console.log(`Received ${response.items.length} items from gallery API`);
       
-      // Filter for images only
-      const imageItems = response.items.filter(item => item.media_type === MediaType.IMAGE);
-      console.log(`Filtered to ${imageItems.length} image items`);
+      const imageItems = response.items;
       
       if (imageItems.length === 0) {
         console.warn("No image items found after filtering");

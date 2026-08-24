@@ -1,6 +1,6 @@
 import asyncio
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, BackgroundTasks
-from typing import Optional
+from typing import Literal, Optional
 import logging
 
 from backend.core.cosmos_client import CosmosDBService
@@ -22,6 +22,7 @@ from backend.models.metadata_models import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+IMAGE_MEDIA_TYPE = "image"
 
 
 def get_cosmos_service() -> CosmosDBService:
@@ -67,7 +68,7 @@ async def create_asset_metadata(
 @router.get("/{asset_id}", response_model=AssetMetadataResponse)
 async def get_asset_metadata(
     asset_id: str,
-    media_type: str = Query(..., description="Media type (partition key)"),
+    media_type: Literal["image"] = Query(..., description="Asset type (partition key)"),
     cosmos_service: CosmosDBService = Depends(get_cosmos_service),
 ):
     """Get metadata for a specific asset"""
@@ -94,7 +95,7 @@ async def get_asset_metadata(
 @router.put("/{asset_id}", response_model=AssetMetadataResponse)
 async def update_asset_metadata(
     asset_id: str,
-    media_type: str = Query(..., description="Media type (partition key)"),
+    media_type: Literal["image"] = Query(..., description="Asset type (partition key)"),
     request: AssetMetadataUpdateRequest = Body(...),
     cosmos_service: CosmosDBService = Depends(get_cosmos_service),
 ):
@@ -126,7 +127,7 @@ async def update_asset_metadata(
 @router.delete("/{asset_id}")
 async def delete_asset_metadata(
     asset_id: str,
-    media_type: str = Query(..., description="Media type (partition key)"),
+    media_type: Literal["image"] = Query(..., description="Asset type (partition key)"),
     cosmos_service: CosmosDBService = Depends(get_cosmos_service),
 ):
     """Delete metadata for an asset"""
@@ -153,8 +154,8 @@ async def delete_asset_metadata(
 
 @router.get("/", response_model=AssetMetadataListResponse)
 async def list_asset_metadata(
-    media_type: Optional[str] = Query(
-        None, description="Filter by media type"),
+    media_type: Optional[Literal["image"]] = Query(
+        None, description="Filter by asset type"),
     folder_path: Optional[str] = Query(
         None, description="Filter by folder path"),
     tags: Optional[str] = Query(
@@ -175,7 +176,7 @@ async def list_asset_metadata(
 
         result = await asyncio.to_thread(
             cosmos_service.query_assets,
-            media_type=media_type,
+            media_type=media_type or IMAGE_MEDIA_TYPE,
             folder_path=folder_path,
             tags=tag_list,
             limit=limit,
@@ -213,7 +214,7 @@ async def search_asset_metadata(
             items = await asyncio.to_thread(
                 cosmos_service.search_assets,
                 search_term=request.search_term,
-                media_type=request.media_type,
+                media_type=request.media_type or IMAGE_MEDIA_TYPE,
                 limit=request.limit,
             )
             total = len(items)
@@ -222,7 +223,7 @@ async def search_asset_metadata(
             # Use advanced query with filters
             result = await asyncio.to_thread(
                 cosmos_service.query_assets,
-                media_type=request.media_type,
+                media_type=request.media_type or IMAGE_MEDIA_TYPE,
                 folder_path=request.folder_path,
                 tags=request.tags,
                 limit=request.limit,
@@ -254,14 +255,14 @@ async def search_asset_metadata(
 
 @router.get("/stats/folders", response_model=FolderStatsResponse)
 async def get_folder_statistics(
-    media_type: Optional[str] = Query(
-        None, description="Filter by media type"),
+    media_type: Optional[Literal["image"]] = Query(
+        None, description="Filter by asset type"),
     cosmos_service: CosmosDBService = Depends(get_cosmos_service),
 ):
     """Get folder usage statistics"""
     try:
         stats = await asyncio.to_thread(
-            cosmos_service.get_folder_stats, media_type=media_type
+            cosmos_service.get_folder_stats, media_type=media_type or IMAGE_MEDIA_TYPE
         )
 
         return FolderStatsResponse(
@@ -277,8 +278,8 @@ async def get_folder_statistics(
 
 @router.get("/recent", response_model=RecentAssetsResponse)
 async def get_recent_assets(
-    media_type: Optional[str] = Query(
-        None, description="Filter by media type"),
+    media_type: Optional[Literal["image"]] = Query(
+        None, description="Filter by asset type"),
     limit: int = Query(
         20, description="Maximum number of results", ge=1, le=100),
     cosmos_service: CosmosDBService = Depends(get_cosmos_service),
@@ -287,7 +288,7 @@ async def get_recent_assets(
     try:
         items = await asyncio.to_thread(
             cosmos_service.get_recent_assets,
-            media_type=media_type,
+            media_type=media_type or IMAGE_MEDIA_TYPE,
             limit=limit,
         )
 
@@ -318,23 +319,10 @@ def _sync_metadata_background(
     details = []
 
     try:
-        # Determine containers to sync
-        containers = []
-        if sync_request.media_type:
-            if sync_request.media_type == "image":
-                containers = [settings.AZURE_BLOB_IMAGE_CONTAINER]
-            elif sync_request.media_type == "video":
-                containers = [settings.AZURE_BLOB_VIDEO_CONTAINER]
-        else:
-            containers = [
-                settings.AZURE_BLOB_IMAGE_CONTAINER,
-                settings.AZURE_BLOB_VIDEO_CONTAINER,
-            ]
+        containers = [settings.AZURE_BLOB_IMAGE_CONTAINER]
 
         for container in containers:
-            media_type = (
-                "image" if container == settings.AZURE_BLOB_IMAGE_CONTAINER else "video"
-            )
+            media_type = IMAGE_MEDIA_TYPE
             details.append(f"Starting sync for {container} container")
 
             # List all blobs in the container

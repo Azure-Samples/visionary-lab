@@ -168,7 +168,6 @@ async def test_save_is_bounded_concurrent_and_job_names_are_idempotent() -> None
         async def upload_asset(
             self,
             file: UploadFile,
-            asset_type: str,
             metadata=None,
             folder_path=None,
             *,
@@ -183,7 +182,7 @@ async def test_save_is_bounded_concurrent_and_job_names_are_idempotent() -> None
             active -= 1
             return {
                 "blob_name": f"{folder_path or ''}{file.filename}",
-                "container": asset_type,
+                "container": "images",
                 "url": f"https://storage/{file.filename}",
                 "original_filename": file.filename,
             }
@@ -234,7 +233,7 @@ async def test_save_is_bounded_concurrent_and_job_names_are_idempotent() -> None
 @pytest.mark.asyncio
 async def test_blob_upload_uses_native_async_sdk() -> None:
     blob_client = MagicMock()
-    blob_client.url = "https://storage/video.mp4"
+    blob_client.url = "https://storage/image.png"
     blob_client.exists = AsyncMock()
     blob_client.upload_blob = AsyncMock()
     container_client = MagicMock()
@@ -249,7 +248,6 @@ async def test_blob_upload_uses_native_async_sdk() -> None:
 
     service = object.__new__(AzureBlobStorageService)
     service.image_container = "images"
-    service.video_container = "videos"
     service._async_blob_service_client = async_blob_service_client
     service._async_credential = async_credential
     service.blob_service_client = sync_blob_service_client
@@ -257,14 +255,13 @@ async def test_blob_upload_uses_native_async_sdk() -> None:
     service._async_ready = True
     service._closed = False
 
-    upload = UploadFile(filename="video.mp4", file=io.BytesIO(b"video"))
+    upload = UploadFile(filename="image.png", file=io.BytesIO(_ONE_PIXEL_PNG))
     result = await service.upload_asset(
         upload,
-        "video",
         overwrite_existing=True,
     )
 
-    assert result["blob_name"] == "video.mp4"
+    assert result["blob_name"] == "image.png"
     blob_client.exists.assert_not_awaited()
     blob_client.upload_blob.assert_awaited_once()
 
@@ -283,7 +280,6 @@ async def test_save_waits_for_all_outputs_and_returns_partial_success() -> None:
         async def upload_asset(
             self,
             file: UploadFile,
-            asset_type: str,
             metadata=None,
             folder_path=None,
             *,
@@ -295,7 +291,7 @@ async def test_save_waits_for_all_outputs_and_returns_partial_success() -> None:
             completed.append(file.filename or "")
             return {
                 "blob_name": file.filename,
-                "container": asset_type,
+                "container": "images",
                 "url": f"https://storage/{file.filename}",
                 "original_filename": file.filename,
             }
@@ -332,10 +328,10 @@ async def test_save_waits_for_all_outputs_and_returns_partial_success() -> None:
 @pytest.mark.asyncio
 async def test_save_awaits_native_async_cosmos_metadata() -> None:
     class Storage:
-        async def upload_asset(self, file: UploadFile, asset_type: str, **kwargs):
+        async def upload_asset(self, file: UploadFile, **kwargs):
             return {
                 "blob_name": file.filename,
-                "container": asset_type,
+                "container": "images",
                 "url": f"https://storage/{file.filename}",
                 "original_filename": file.filename,
                 "size": 1,

@@ -8,7 +8,6 @@ from .sas import get_container_sas_token
 _CLIENT_EXPORTS = {
     "credential",
     "async_credential",
-    "sora_client",
     "image_client",
     "llm_client",
     "async_llm_client",

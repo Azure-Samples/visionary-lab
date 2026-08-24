@@ -19,7 +19,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { enhanceImagePrompt, createFolder, MediaType, fetchFolders } from "@/services/api";
+import { enhanceImagePrompt, createFolder, fetchFolders } from "@/services/api";
 import { toast } from "sonner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Input } from "@/components/ui/input";
@@ -198,7 +198,7 @@ export function ImageOverlay({
       setIsCreatingFolderLoading(true);
       
       // Call the API to create the folder
-      const result = await createFolder(newFolderName.trim(), MediaType.IMAGE);
+      const result = await createFolder(newFolderName.trim());
       
       if (result.success) {
         // Show success message
@@ -251,7 +251,7 @@ export function ImageOverlay({
     try {
       setIsRefreshingFolders(true);
       
-      const result = await fetchFolders(MediaType.IMAGE);
+      const result = await fetchFolders();
       
       if (result.folders && onFolderCreated) {
         // Update the parent component with the full folder list

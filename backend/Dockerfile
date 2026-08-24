@@ -1,11 +1,8 @@
 # Keep the runtime aligned with requires-python = ">=3.13" in pyproject.toml.
 FROM python:3.13-slim
 
-# Install system dependencies needed for OpenCV
+# Install the runtime dependency used by the Container health check.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
-    libglib2.0-0 \
-    libgthread-2.0-0 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,8 +23,8 @@ COPY backend ./backend
 ENV PATH="/app/.venv/bin:${PATH}"
 
 # Create necessary directories
-RUN mkdir -p /app/static/uploads /app/static/images /app/static/videos
-RUN mkdir -p /app/backend/static/uploads /app/backend/static/images /app/backend/static/videos
+RUN mkdir -p /app/static/uploads /app/static/images
+RUN mkdir -p /app/backend/static/uploads /app/backend/static/images
 
 # Verify the fastapi command is available
 RUN ls -la /app/.venv/bin/ && /app/.venv/bin/fastapi --version

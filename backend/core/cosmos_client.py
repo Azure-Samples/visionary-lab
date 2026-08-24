@@ -516,7 +516,7 @@ class CosmosDBService:
                 placeholder_query = f"""
                 SELECT c.folder_path, c.id
                 FROM c 
-                WHERE c.doc_type = 'folder_placeholder' AND c.media_type = 'folder_placeholder' AND (c.target_media_type = '{media_type}' OR c.target_media_type = 'mixed')
+                WHERE c.doc_type = 'folder_placeholder' AND c.media_type = 'folder_placeholder' AND c.target_media_type = '{media_type}'
                 """
             else:
                 placeholder_query = """

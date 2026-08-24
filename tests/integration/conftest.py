@@ -25,7 +25,6 @@ def azure_settings():
         "AI_FOUNDRY_ENDPOINT": _require_env("AI_FOUNDRY_ENDPOINT"),
         "LLM_DEPLOYMENT": _require_env("LLM_DEPLOYMENT"),
         "IMAGEGEN_DEPLOYMENT": _require_env("IMAGEGEN_DEPLOYMENT"),
-        "SORA_DEPLOYMENT": _require_env("SORA_DEPLOYMENT"),
         "AZURE_STORAGE_ACCOUNT_NAME": _require_env("AZURE_STORAGE_ACCOUNT_NAME"),
     }
 
@@ -45,22 +44,6 @@ async def image_client(azure_settings):
     yield client
     await client.close()
     credential.close()
-
-
-@pytest.fixture
-def sora_client(azure_settings):
-    """Real Sora client — fresh per test to avoid event loop issues."""
-    from backend.core.sora import Sora
-    from backend.core.config import settings
-    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-    credential = DefaultAzureCredential()
-    token_provider = get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
-    return Sora(
-        endpoint=settings.AI_FOUNDRY_ENDPOINT,
-        deployment_name=settings.SORA_DEPLOYMENT,
-        credential=credential,
-        token_provider=token_provider,
-    )
 
 
 @pytest.fixture(scope="session")

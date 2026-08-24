@@ -20,7 +20,6 @@ class Settings(BaseSettings):
     IMAGEGEN_15_DEPLOYMENT: Optional[str] = None
     IMAGEGEN_1_MINI_DEPLOYMENT: Optional[str] = None
     FLUX_KONTEXT_DEPLOYMENT: Optional[str] = None
-    SORA_DEPLOYMENT: Optional[str] = None
     DEFAULT_IMAGE_MODEL: str = "gpt-image-1.5"
 
     # OpenAI API for direct OpenAI usage (non-Azure)
@@ -36,7 +35,6 @@ class Settings(BaseSettings):
 
     # Container names
     AZURE_BLOB_IMAGE_CONTAINER: str = "images"
-    AZURE_BLOB_VIDEO_CONTAINER: str = "videos"
 
     # Durable image-generation jobs (managed identity — no queue keys)
     AZURE_STORAGE_QUEUE_URL: Optional[str] = None
@@ -70,7 +68,6 @@ class Settings(BaseSettings):
     # File storage paths
     UPLOAD_DIR: str = "./static/uploads"
     IMAGE_DIR: str = "./static/images"
-    VIDEO_DIR: str = "./static/videos"
 
     # Logging Configuration
     LOG_LEVEL: str = "INFO"

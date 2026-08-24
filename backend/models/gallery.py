@@ -7,17 +7,16 @@ from backend.models.common import BaseResponse
 
 
 class MediaType(str, Enum):
-    """Media type enumeration"""
+    """Supported gallery asset type."""
     IMAGE = "image"
-    VIDEO = "video"
 
 
 class GalleryItem(BaseModel):
-    """Gallery item model for both images and videos"""
+    """Gallery image model."""
     id: str = Field(..., description="Unique ID of the asset")
     name: str = Field(..., description="Name/filename of the asset")
     media_type: MediaType = Field(...,
-                                  description="Type of media (image or video)")
+                                  description="Gallery asset type")
     url: str = Field(..., description="URL to access the asset")
     container: str = Field(..., description="Storage container name")
     size: int = Field(..., description="Size of the asset in bytes")
@@ -98,8 +97,6 @@ class SasTokenResponse(BaseModel):
     """Response model for SAS token generation endpoint"""
     success: bool
     message: str
-    video_sas_token: str
     image_sas_token: str
-    video_container_url: str
     image_container_url: str
     expiry: datetime

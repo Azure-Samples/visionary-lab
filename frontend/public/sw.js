@@ -1,5 +1,7 @@
-const STATIC_CACHE = 'static-v1';
-const IMAGE_CACHE = 'images-v1';
+// Keep these versions aligned so activation removes every cache created by the
+// previous application surface, including pages and chunks that no longer exist.
+const STATIC_CACHE = 'static-v2';
+const IMAGE_CACHE = 'images-v2';
 
 // Assets to cache immediately
 const STATIC_ASSETS = [

@@ -8,7 +8,6 @@ import { cn } from "@/utils/utils";
 import {
   editImage,
   fetchFolders,
-  MediaType,
   PipelineAction,
   protectImagePrompt,
   saveGeneratedImages,
@@ -66,7 +65,7 @@ export function ImageCreationContainer({
   useEffect(() => {
     const loadFolders = async () => {
       try {
-        const result = await fetchFolders(MediaType.IMAGE);
+        const result = await fetchFolders();
         setFolders(result.folders);
       } catch (error) {
         console.error("Error loading folders:", error);

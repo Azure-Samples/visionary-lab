@@ -33,7 +33,6 @@ This guide shows how to deploy the Visionary Lab to Azure using the Azure Develo
    - **AI_FOUNDRY_LOCATION**: Azure region for AI Foundry (default: `swedencentral`)
    - **LLM_DEPLOYMENT**: LLM deployment name (default: `gpt-4o`)
    - **IMAGEGEN_DEPLOYMENT**: Image generation deployment name (default: `gpt-image-1-5`)
-   - **SORA_DEPLOYMENT**: Video generation deployment name (default: `sora`)
 
    > **No API keys required.** All services use Azure Managed Identity for authentication.
 
@@ -66,7 +65,6 @@ azd env set LLM_DEPLOYMENT "gpt-4o"
 azd env set IMAGEGEN_DEPLOYMENT "gpt-image-1-5"
 azd env set IMAGEGEN_15_DEPLOYMENT "gpt-image-1-5"
 azd env set IMAGEGEN_1_MINI_DEPLOYMENT "gpt-image-1-mini"
-azd env set SORA_DEPLOYMENT "sora"
 ```
 
 ### 3. Deploy Infrastructure
@@ -90,7 +88,7 @@ The deployment creates:
 - **Image Worker Container App**: No-ingress queue consumer that scales independently from zero
 - **Frontend Container App**: Next.js application (Node.js)
 - **Azure Container Registry**: Private registry for storing Docker images
-- **Azure Storage Account**: Blob storage for generated media and a durable image-generation job queue
+- **Azure Storage Account**: Blob storage for generated images and a durable image-generation job queue
 - **Azure Cosmos DB**: For metadata storage
 - **Log Analytics Workspace**: For monitoring and logging
 
@@ -120,7 +118,6 @@ The following environment variables are automatically configured by the infrastr
 - `IMAGEGEN_DEPLOYMENT`: Image generation deployment name
 - `IMAGEGEN_15_DEPLOYMENT`: GPT-Image-1.5 deployment name
 - `IMAGEGEN_1_MINI_DEPLOYMENT`: GPT-Image-1-mini deployment name
-- `SORA_DEPLOYMENT`: Sora deployment name
 - `AZURE_BLOB_SERVICE_URL`: Storage endpoint URL
 - `AZURE_STORAGE_ACCOUNT_NAME`: Storage account name
 - `AZURE_BLOB_IMAGE_CONTAINER`: Container for images (default: "images")
@@ -187,7 +184,7 @@ azd down
 
 1. **Credential errors locally**: Run `az login` to authenticate. `DefaultAzureCredential` requires an active Azure CLI session.
 2. **RBAC propagation delay**: After initial deployment, role assignments may take 1-5 minutes to propagate. If the app shows 403 errors on first start, wait and restart.
-3. **Region availability**: Some models (Sora, GPT-Image) may not be available in all regions. Default is `swedencentral`.
+3. **Region availability**: Some image models may not be available in all regions. Default is `swedencentral`.
 4. **Permission Issues**: You need Owner role on the resource group to create RBAC assignments.
 
 ### Getting Help

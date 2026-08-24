@@ -1,124 +1,71 @@
-# AI Content Lab Project Structure
+# Visionary Lab Project Structure
 
 ## Overview
-The AI Content Lab is a video generation platform utilizing Azure OpenAI's Sora model. It has a hybrid architecture consisting of a Python backend (FastAPI) and a Next.js frontend, with an additional Streamlit interface for video generation.
+
+Visionary Lab is an image generation, editing, analysis, and asset-management application. It combines a FastAPI backend with a Next.js frontend and uses Azure AI Foundry, Azure Blob Storage, and Azure Cosmos DB.
 
 ## Core Components
 
-### 1. Backend (Python)
-- **FastAPI Framework**: Main API server in `backend/main.py`
-- **API Endpoints**: Structured in `backend/api/endpoints/` with routes for:
-  - Videos: Sora video generation
-  - Images: Image generation (skeleton implementation)
-  - Gallery: Media asset gallery (skeleton implementation)
-  - Environment settings: Configuration validation
-- **Core Services**: All services are consolidated in `backend/core/`:
-  - `sora.py`: Azure OpenAI Sora video generation client
-  - `storage.py`: File storage and management
-  - `config.py`: Application configuration with environment variables
-  - `__init__.py`: Centralized service initialization
-- **Models**: Data models in `backend/models/`
-  - `videos.py`: Schemas for video generation endpoints
-  - `images.py`: Schemas for image endpoints
-  - `common.py`: Shared schema definitions
-- **Static Files**: Served from `static/` directory for:
-  - Generated videos
-  - Uploaded and generated images
-  - Other static assets
+### Backend (Python)
 
-### 2. Frontend (Next.js)
-- **Modern React (v19)**: Latest React framework
-- **Next.js 15**: App router architecture
-- **Tailwind CSS**: For styling
-- **UI Components**: 
-  - Radix UI primitives
-  - Custom components in `frontend/components/`
-- **Key Pages**:
-  - Dashboard
-  - Video Editor
-  - Video UI
-  - Gallery
-  - Settings
-- **Context API**: State management in `frontend/context/`
-- **Utilities**: Helper functions in `frontend/utils/`
-- **API Services**: API integrations in `frontend/services/`
+- `backend/main.py`: FastAPI application entry point and router registration.
+- `backend/api/endpoints/images.py`: Image generation, editing, analysis, and save operations.
+- `backend/api/endpoints/gallery.py`: Image gallery, folder, upload, download, and deletion operations.
+- `backend/api/endpoints/metadata_router.py`: Metadata synchronization and maintenance.
+- `backend/api/endpoints/env.py`: Environment configuration status.
+- `backend/core/gpt_image.py`: Azure OpenAI image-generation client.
+- `backend/core/image_pipeline.py`: Image workflow orchestration.
+- `backend/core/analyze.py`: Image analysis with a multimodal language model.
+- `backend/core/azure_storage.py`: Azure Blob Storage access.
+- `backend/core/cosmos_client.py`: Azure Cosmos DB metadata access.
+- `backend/models/`: Pydantic request and response models.
 
-### 3. Streamlit UI
-- **Creator App**: Main entry point in `creator.py`
-- **Video Generation**: Implemented in `video-gen.py`
-- **Jobs Management**: Handled in `jobs.py`
+### Frontend (Next.js)
 
-### 4. Core Video Functionality
-- **Sora Integration**: Client for Azure OpenAI's Sora in `backend/core/sora.py`
-  - Centralized client initialization in `backend/core/__init__.py`
-  - API connection handled using settings from `backend/core/config.py`
-- **Video Processing**:
-  - Download/export of generated videos
-  - File management with proper error handling
-- **Storage**: Local file storage with organized directories
+- `frontend/app/new-image/`: Image generation workflow and saved-image gallery.
+- `frontend/app/edit-image/`: Image editing workflow.
+- `frontend/app/analyze/`: Custom image analysis workflow.
+- `frontend/app/settings/`: Application and model status.
+- `frontend/components/`: Shared image and interface components.
+- `frontend/context/`: Shared client-side state.
+- `frontend/services/`: Backend API and storage URL clients.
+- `frontend/utils/`: Image, gallery, date, and environment helpers.
 
-### 5. External Dependencies
-- **Azure Services**:
-  - Azure OpenAI (Sora model for video generation)
-  - Optional: Azure OpenAI for LLM services
-  - Optional: Azure OpenAI for image generation
+### Infrastructure
 
-### 6. Configuration
-- **Environment Variables**: Service-specific variables in `.env` file:
-  - `SORA_AOAI_RESOURCE`: Azure OpenAI resource for Sora
-  - `SORA_DEPLOYMENT`: Sora deployment name
-  - `SORA_AOAI_API_KEY`: API key for Sora
-  - Optional LLM and image generation variables
-- **API Configuration**: Settings in `backend/core/config.py`
-- **Environment Validation**: Status check via `/api/v1/env/status` endpoint
+- `infra/main.bicep`: Top-level Azure deployment.
+- `infra/modules/`: Reusable modules for AI Foundry, Container Apps, Storage, Cosmos DB, networking, Front Door, and RBAC.
+- `azure.yaml`: Azure Developer CLI service definitions.
+- `docker-compose.yml`: Local multi-container setup.
 
-### 7. Development Tools
-- **UV Package Manager**: For Python dependency management
-- **Package Management**:
-  - `requirements.txt` for Python dependencies
-  - `package.json` for JavaScript/TypeScript
-- **Development Server**: FastAPI development server with hot reloading
+### Notebook
 
-## API Endpoints
+- `notebooks/gpt-image-1.ipynb`: Image-generation API examples.
+- `notebooks/utils.py`: Notebook image helpers.
+- `notebooks/images/`: Sample input images.
 
-### Videos Endpoints (`/api/v1/videos`)
-- **POST /jobs**: Create a video generation job with Sora
-- **GET /jobs/{job_id}**: Get status of a specific generation job
-- **GET /jobs**: List all video generation jobs
-- **DELETE /jobs/{job_id}**: Delete a specific job
-- **DELETE /jobs/failed**: Clean up failed jobs
-- **GET /generations/{generation_id}/content**: Download generated video or GIF
-- **POST /analyze**: Video content analysis (placeholder)
-- **POST /filename/generate**: Generate a filename based on content (placeholder)
+## Main API Areas
 
-### Images Endpoints (`/api/v1/images`)
-- **POST /generate**: Generate images (skeleton implementation)
-- **POST /list**: List available images (skeleton implementation)
-- **POST /delete**: Delete an image (skeleton implementation)
-
-### Gallery Endpoints (`/api/v1/gallery`)
-- **GET /**: List all gallery items (skeleton implementation)
-- **GET /images**: List image assets (skeleton implementation)
-- **GET /videos**: List video assets (skeleton implementation)
-
-### Environment Endpoints (`/api/v1/env`)
-- **GET /status**: Check the status of required environment variables
+- `/api/v1/images`: Generate, edit, save, and analyze images.
+- `/api/v1/gallery/images`: List stored image assets.
+- `/api/v1/gallery`: Manage image assets and folders.
+- `/api/v1/metadata`: Synchronize and update asset metadata.
+- `/api/v1/env/status`: Report required environment configuration.
+- `/api/v1/health`: Report application health.
 
 ## Data Flow
-1. User interacts with the frontend (Next.js)
-2. Requests are sent to the FastAPI backend
-3. Backend communicates with Azure OpenAI Sora service
-4. Generated videos are stored locally in the static directory
-5. Content is served back to the frontend for display
 
-## Development Workflow
-- Backend server started via `uv run fastapi dev`
-- Frontend development using `npm run dev` in the frontend directory
+1. A user starts an image workflow in the Next.js frontend.
+2. The frontend sends the request to the FastAPI backend.
+3. The backend calls the configured Azure AI Foundry deployment.
+4. Generated images are stored in the image Blob container.
+5. Searchable metadata is written to Cosmos DB.
+6. The frontend retrieves the saved assets and metadata for display.
 
-## Environment Setup
-1. Copy `.env.example` to `.env` in backend directory
-2. Set required environment variables:
-   - `SORA_AOAI_RESOURCE`
-   - `SORA_DEPLOYMENT`
-   - `SORA_AOAI_API_KEY`
-3. Optional: Configure LLM and Image Generation services if needed 
+## Local Development
+
+1. Copy `.env.example` to `.env` and configure the AI Foundry, Storage, and Cosmos DB values.
+2. Authenticate locally with `az login`.
+3. Start both services with `./scripts/dev.sh`, or run the backend and frontend separately.
+
+Python dependencies are managed by `uv` from the repository root. Frontend dependencies are managed with npm in `frontend/`.

@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { fetchFolders, createFolder, MediaType } from '@/services/api';
+import { fetchFolders, createFolder } from '@/services/api';
 import { toast } from 'sonner';
 
 interface ResultDisplayProps {
@@ -55,7 +55,7 @@ export default function ResultDisplay({
     const loadFolders = async () => {
       try {
         setIsRefreshingFolders(true);
-        const result = await fetchFolders(MediaType.IMAGE);
+        const result = await fetchFolders();
         setFolders(result.folders);
       } catch (error) {
         console.error("Error loading folders:", error);
@@ -91,10 +91,10 @@ export default function ResultDisplay({
 
     setIsCreatingFolderLoading(true);
     try {
-      await createFolder(newFolderName.trim(), MediaType.IMAGE);
+      await createFolder(newFolderName.trim());
 
       // Refresh folders
-      const result = await fetchFolders(MediaType.IMAGE);
+      const result = await fetchFolders();
       setFolders(result.folders);
 
       // Select the newly created folder
@@ -120,7 +120,7 @@ export default function ResultDisplay({
   const handleRefreshFolders = async () => {
     setIsRefreshingFolders(true);
     try {
-      const result = await fetchFolders(MediaType.IMAGE);
+      const result = await fetchFolders();
       setFolders(result.folders);
       toast.success("Folders refreshed");
     } catch (error) {

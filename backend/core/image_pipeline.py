@@ -21,7 +21,6 @@ from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.config import settings
 from backend.core.cosmos_client import CosmosDBService
 from backend.core.instructions import analyze_image_system_message
-from backend.models.gallery import MediaType
 from backend.models.images import (
     ImageEditRequest,
     ImageGenerationRequest,
@@ -364,7 +363,6 @@ class ImagePipelineService:
                         try:
                             result = await azure_storage_service.upload_asset(
                                 upload,
-                                MediaType.IMAGE.value,
                                 metadata=None,
                                 folder_path=request.folder_path,
                                 overwrite_existing=image_job_id is not None,

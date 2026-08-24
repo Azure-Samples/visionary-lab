@@ -13,11 +13,9 @@ os.environ.setdefault("MODEL_PROVIDER", "azure")
 os.environ.setdefault("AI_FOUNDRY_ENDPOINT", "https://test-foundry.cognitiveservices.azure.com/")
 os.environ.setdefault("LLM_DEPLOYMENT", "test-llm-deployment")
 os.environ.setdefault("IMAGEGEN_DEPLOYMENT", "test-deployment")
-os.environ.setdefault("SORA_DEPLOYMENT", "test-sora-deployment")
 os.environ.setdefault("AZURE_STORAGE_ACCOUNT_NAME", "teststorage")
 os.environ.setdefault("AZURE_BLOB_SERVICE_URL", "https://teststorage.blob.core.windows.net/")
 os.environ.setdefault("AZURE_BLOB_IMAGE_CONTAINER", "images")
-os.environ.setdefault("AZURE_BLOB_VIDEO_CONTAINER", "videos")
 os.environ.setdefault("AZURE_COSMOS_DB_ENDPOINT", "https://test.documents.azure.com:443/")
 os.environ.setdefault("IMAGE_JOB_MODE", "memory")
 os.environ.setdefault("IMAGE_JOB_ROLE", "api")
@@ -33,9 +31,15 @@ def mock_azure_storage():
     mock_service.get_container_client.return_value = mock_container
     mock_container.exists.return_value = True
 
+    # Patch the SDK symbols before importing backend.core. Using a backend-qualified
+    # patch target here would import backend.core first, which generates a SAS token
+    # at module import time and attempts a real Azure network call.
     with patch(
-        "backend.core.azure_storage.BlobServiceClient",
+        "azure.storage.blob.BlobServiceClient",
         return_value=mock_service,
+    ), patch(
+        "azure.storage.blob.generate_container_sas",
+        return_value="test-sas-token",
     ):
         yield mock_service
 

@@ -84,7 +84,7 @@ export function ImageJobOutputCard({ job, output }: ImageJobOutputCardProps) {
 
     const resolvePreview = async () => {
       try {
-        const url = await sasTokenService.getBlobUrl(asset.blob_name, false);
+        const url = await sasTokenService.getBlobUrl(asset.blob_name);
         if (!cancelled) setPreviewUrl(url);
       } catch {
         if (!cancelled) {

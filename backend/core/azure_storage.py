@@ -3,7 +3,6 @@ import inspect
 import os
 import uuid
 import logging
-import threading
 from typing import Dict, Optional, List, Tuple
 from fastapi import UploadFile
 from azure.identity import DefaultAzureCredential
@@ -18,16 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 class AzureBlobStorageService:
-    """Service for handling Azure Blob Storage operations"""
-    
-    # Class-level variables for CORS caching
-    _cors_configured = False
-    _cors_lock = threading.Lock()
+    """Service for handling image assets in Azure Blob Storage."""
 
     def __init__(self):
         """Initialize Azure Blob Storage client"""
         self.image_container = settings.AZURE_BLOB_IMAGE_CONTAINER
-        self.video_container = settings.AZURE_BLOB_VIDEO_CONTAINER
 
         self._account_url = settings.AZURE_BLOB_SERVICE_URL
         if not self._account_url and settings.AZURE_STORAGE_ACCOUNT_NAME:
@@ -79,33 +73,6 @@ class AzureBlobStorageService:
             self._get_async_blob_service_client()
             self._async_ready = True
 
-    async def _configure_cors_async(
-        self, service_client: AsyncBlobServiceClient
-    ) -> None:
-        """Configure frontend access through the async Blob service client."""
-        try:
-            from azure.storage.blob import CorsRule
-
-            origins_str = settings.CORS_ALLOWED_ORIGINS.strip()
-            allowed_origins = (
-                ["*"]
-                if origins_str == "*"
-                else [origin.strip() for origin in origins_str.split(",") if origin.strip()]
-            )
-            cors_rules = [
-                CorsRule(
-                    allowed_origins=allowed_origins,
-                    allowed_methods=["GET", "HEAD", "OPTIONS"],
-                    allowed_headers=["*"],
-                    exposed_headers=["*"],
-                    max_age_in_seconds=3600,
-                )
-            ]
-            await service_client.set_service_properties(cors=cors_rules)
-            logger.info("Configured CORS with origins: %s", allowed_origins)
-        except Exception as exc:
-            logger.warning("Could not configure CORS for Azure Blob Storage: %s", exc)
-
     async def close(self) -> None:
         """Release async and legacy sync Azure client resources."""
         if getattr(self, "_closed", False):
@@ -134,29 +101,6 @@ class AzureBlobStorageService:
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
         await self.close()
-
-    def _configure_cors(self) -> None:
-        """Configure CORS on the Azure Storage account for frontend access."""
-        try:
-            from azure.storage.blob import CorsRule
-
-            origins_str = settings.CORS_ALLOWED_ORIGINS.strip()
-            allowed_origins = ["*"] if origins_str == "*" else [o.strip() for o in origins_str.split(",") if o.strip()]
-
-            cors_rules = [
-                CorsRule(
-                    allowed_origins=allowed_origins,
-                    allowed_methods=["GET", "HEAD", "OPTIONS"],
-                    allowed_headers=["*"],
-                    exposed_headers=["*"],
-                    max_age_in_seconds=3600
-                )
-            ]
-
-            self.blob_service_client.set_service_properties(cors=cors_rules)
-            logger.info(f"Configured CORS with origins: {allowed_origins}")
-        except Exception as e:
-            logger.warning(f"Could not configure CORS for Azure Blob Storage: {e}")
 
     def list_blobs(self, container_name: str, prefix: Optional[str] = None,
                    limit: int = 100, marker: Optional[str] = None) -> Dict:
@@ -300,20 +244,18 @@ class AzureBlobStorageService:
     async def upload_asset(
         self,
         file: UploadFile,
-        asset_type: str = "image",
         metadata: Optional[Dict[str, str]] = None,
         folder_path: Optional[str] = None,
         *,
         overwrite_existing: bool = False,
     ) -> Dict[str, str]:
         """
-        Upload an asset (image or video) to Azure Blob Storage
+        Upload an image to Azure Blob Storage.
 
         Note: Metadata is no longer stored in blob storage - use Cosmos DB instead
 
         Args:
             file: The uploaded file
-            asset_type: Type of asset ("image" or "video")
             metadata: Optional metadata (ignored - kept for API compatibility)
             folder_path: Optional folder path to store the asset in
 
@@ -321,12 +263,11 @@ class AzureBlobStorageService:
             Dictionary with asset information
         """
         try:
-            # Determine container based on asset type
-            container_name = self.image_container if asset_type == "image" else self.video_container
+            container_name = self.image_container
 
             # Get file extension and determine content type
             _, ext = os.path.splitext(file.filename)
-            content_type = self._get_content_type(ext, asset_type)
+            content_type = self._get_content_type(ext)
 
             # Normalize folder path
             normalized_folder_path = self.normalize_folder_path(folder_path)
@@ -368,14 +309,13 @@ class AzureBlobStorageService:
 
             # Get image dimensions for return data (but don't store in blob metadata)
             width, height = None, None
-            if asset_type == "image":
-                try:
-                    width, height = await asyncio.to_thread(
-                        self._get_image_dimensions, file_content
-                    )
-                except Exception as e:
-                    # If we can't get dimensions, log but continue
-                    logger.warning(f"Could not get image dimensions: {str(e)}")
+            try:
+                width, height = await asyncio.to_thread(
+                    self._get_image_dimensions, file_content
+                )
+            except Exception as e:
+                # If we can't get dimensions, log but continue
+                logger.warning(f"Could not get image dimensions: {str(e)}")
 
             await blob_client.upload_blob(
                 data=file_content,
@@ -441,14 +381,12 @@ class AzureBlobStorageService:
         with Image.open(io.BytesIO(file_content)) as img:
             return img.width, img.height
 
-    def _get_content_type(self, extension: str, asset_type: str) -> str:
+    def _get_content_type(self, extension: str) -> str:
         """
         Determine content type based on file extension
 
         Args:
             extension: File extension including the dot
-            asset_type: Type of asset ("image" or "video")
-
         Returns:
             MIME type string
         """
@@ -465,20 +403,7 @@ class AzureBlobStorageService:
             ".bmp": "image/bmp"
         }
 
-        # Video content types
-        video_types = {
-            ".mp4": "video/mp4",
-            ".mov": "video/quicktime",
-            ".avi": "video/x-msvideo",
-            ".wmv": "video/x-ms-wmv",
-            ".webm": "video/webm",
-            ".mkv": "video/x-matroska"
-        }
-
-        if asset_type == "image":
-            return image_types.get(extension, "application/octet-stream")
-        else:
-            return video_types.get(extension, "application/octet-stream")
+        return image_types.get(extension, "application/octet-stream")
 
     def delete_asset(self, blob_name: str, container_name: str) -> bool:
         """

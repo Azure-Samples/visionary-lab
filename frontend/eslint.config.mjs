@@ -8,7 +8,7 @@ export default defineConfig([
   {
     // The app does not enable React Compiler yet. Keep the regular hooks rules
     // enforced while deferring compiler-only purity/ref migrations in legacy
-    // video and editor surfaces.
+    // image editor surfaces.
     rules: {
       "react-hooks/immutability": "off",
       "react-hooks/incompatible-library": "off",

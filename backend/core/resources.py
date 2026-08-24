@@ -26,7 +26,6 @@ _AZURE_OPENAI_SCOPE = "https://cognitiveservices.azure.com/.default"
 class CoreClients:
     credential: Any
     async_credential: Any
-    sora_client: Any
     image_client: Any
     llm_client: Any
     async_llm_client: Any
@@ -38,7 +37,6 @@ _clients_lock = threading.Lock()
 
 def _create_clients() -> CoreClients:
     from .gpt_image import GPTImageClient
-    from .sora import Sora
 
     credential = DefaultAzureCredential()
     token_provider = get_bearer_token_provider(credential, _AZURE_OPENAI_SCOPE)
@@ -47,12 +45,6 @@ def _create_clients() -> CoreClients:
         async_credential, _AZURE_OPENAI_SCOPE
     )
 
-    sora_client = Sora(
-        endpoint=settings.AI_FOUNDRY_ENDPOINT,
-        deployment_name=settings.SORA_DEPLOYMENT,
-        credential=credential,
-        token_provider=token_provider,
-    )
     image_client = GPTImageClient(
         credential=credential,
         token_provider=token_provider,
@@ -72,7 +64,6 @@ def _create_clients() -> CoreClients:
     return CoreClients(
         credential=credential,
         async_credential=async_credential,
-        sora_client=sora_client,
         image_client=image_client,
         llm_client=llm_client,
         async_llm_client=async_llm_client,
@@ -97,7 +88,6 @@ async def close_core_clients() -> None:
         return
 
     for resource in (
-        clients.sora_client,
         clients.image_client,
         clients.async_llm_client,
         clients.async_credential,

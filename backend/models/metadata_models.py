@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Literal, Optional
 
 from backend.models.common import BaseResponse
 
@@ -8,8 +8,8 @@ class AssetMetadata(BaseModel):
     """Asset metadata model for Cosmos DB storage"""
 
     id: str = Field(..., description="Unique asset identifier")
-    media_type: str = Field(
-        ..., description="Media type (image/video) - used as partition key"
+    media_type: Literal["image"] = Field(
+        ..., description="Asset type used as the partition key"
     )
     blob_name: str = Field(..., description="Blob name in Azure storage")
     container: str = Field(..., description="Storage container name")
@@ -22,7 +22,6 @@ class AssetMetadata(BaseModel):
     # AI-generated content metadata
     prompt: Optional[str] = Field(None, description="Generation prompt")
     model: Optional[str] = Field(None, description="AI model used")
-    generation_id: Optional[str] = Field(None, description="Generation job ID")
 
     # Analysis results
     summary: Optional[str] = Field(None, description="AI-generated summary")
@@ -38,11 +37,6 @@ class AssetMetadata(BaseModel):
     has_transparency: Optional[bool] = Field(
         None, description="Has transparent background"
     )
-
-    # Video-specific metadata
-    duration: Optional[float] = Field(None, description="Video duration in seconds")
-    fps: Optional[float] = Field(None, description="Frames per second")
-    resolution: Optional[str] = Field(None, description="Video resolution")
 
     # Custom metadata
     custom_metadata: Optional[Dict[str, str]] = Field(
@@ -60,7 +54,7 @@ class AssetMetadata(BaseModel):
 class AssetMetadataCreateRequest(BaseModel):
     """Request model for creating asset metadata"""
 
-    media_type: str = Field(..., description="Media type (image/video)")
+    media_type: Literal["image"] = Field(..., description="Asset type")
     blob_name: str = Field(..., description="Blob name in Azure storage")
     container: str = Field(..., description="Storage container name")
     url: str = Field(..., description="URL to access the asset")
@@ -72,7 +66,6 @@ class AssetMetadataCreateRequest(BaseModel):
     # AI-generated content metadata
     prompt: Optional[str] = Field(None, description="Generation prompt")
     model: Optional[str] = Field(None, description="AI model used")
-    generation_id: Optional[str] = Field(None, description="Generation job ID")
 
     # Analysis results
     summary: Optional[str] = Field(None, description="AI-generated summary")
@@ -88,11 +81,6 @@ class AssetMetadataCreateRequest(BaseModel):
     has_transparency: Optional[bool] = Field(
         None, description="Has transparent background"
     )
-
-    # Video-specific metadata
-    duration: Optional[float] = Field(None, description="Video duration in seconds")
-    fps: Optional[float] = Field(None, description="Frames per second")
-    resolution: Optional[str] = Field(None, description="Video resolution")
 
     # Custom metadata
     custom_metadata: Optional[Dict[str, str]] = Field(
@@ -140,7 +128,7 @@ class AssetSearchRequest(BaseModel):
     """Request model for searching assets"""
 
     search_term: str = Field(..., description="Text to search for")
-    media_type: Optional[str] = Field(None, description="Filter by media type")
+    media_type: Optional[Literal["image"]] = Field(None, description="Filter by asset type")
     folder_path: Optional[str] = Field(None, description="Filter by folder path")
     tags: Optional[List[str]] = Field(None, description="Filter by tags")
     limit: int = Field(50, description="Maximum number of results", ge=1, le=100)
@@ -177,7 +165,7 @@ class RecentAssetsResponse(BaseResponse):
 class MetadataSyncRequest(BaseModel):
     """Request model for syncing blob storage with Cosmos DB"""
 
-    media_type: Optional[str] = Field(None, description="Sync specific media type only")
+    media_type: Optional[Literal["image"]] = Field(None, description="Asset type to sync")
     force_update: bool = Field(False, description="Force update existing metadata")
     batch_size: int = Field(100, description="Batch size for processing", ge=1, le=1000)
 
