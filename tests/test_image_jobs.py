@@ -14,12 +14,14 @@ from backend.jobs.manager import (
 )
 from backend.jobs.queue import MemoryImageJobQueue
 from backend.jobs.store import MemoryImageJobStore
+from backend.jobs.store import CosmosImageJobStore
 from backend.models.image_jobs import (
     ImageJobCreateRequest,
     ImageJobOutputStatus,
     ImageJobStatus,
 )
 from backend.models.images import (
+    GPT_IMAGE_2_MODEL,
     ImagePipelineRequest,
     ImageSaveResponse,
     PipelineAnalysisOptions,
@@ -54,6 +56,23 @@ def saved_result(count: int) -> ImageSaveResponse:
         total_saved=count,
         analyzed=True,
     )
+
+
+@pytest.mark.asyncio
+async def test_queued_job_persists_gpt_image_2_default():
+    manager = manager_for(ConcurrentRunner(expected_concurrency=1), concurrency=1)
+    await manager.start(run_workers=False)
+    try:
+        submitted = await manager.submit(job_request(count=1), owner_id="owner-a")
+        persisted = await manager.get(submitted.id, owner_id="owner-a")
+        record = await manager.store.get(submitted.id, owner_id="owner-a")
+
+        assert submitted.model == GPT_IMAGE_2_MODEL
+        assert persisted.model == GPT_IMAGE_2_MODEL
+        assert record is not None
+        assert record.pipeline_request["model"] == GPT_IMAGE_2_MODEL
+    finally:
+        await manager.close()
 
 
 async def wait_for_status(
@@ -119,6 +138,43 @@ def manager_for(runner, *, concurrency: int = 2) -> ImageJobManager:
         visibility_timeout=1,
         cancellation_poll_interval=0.01,
     )
+
+
+@pytest.mark.asyncio
+async def test_async_cosmos_queries_do_not_forward_sync_only_options():
+    class AsyncItems:
+        def __init__(self, values):
+            self._values = iter(values)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._values)
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
+
+    class Container:
+        def query_items(self, **kwargs):
+            assert "enable_cross_partition_query" not in kwargs
+            if "COUNT" in kwargs["query"]:
+                return AsyncItems([0])
+            return AsyncItems([])
+
+    store = CosmosImageJobStore(
+        endpoint="https://example.documents.azure.com",
+        database_id="db",
+        container_id="container",
+    )
+    store._container = Container()
+
+    jobs, total = await store.list_jobs(owner_id="owner-a", limit=10)
+    pending = await store.list_pending_dispatch()
+
+    assert jobs == []
+    assert total == 0
+    assert pending == []
 
 
 @pytest.mark.asyncio

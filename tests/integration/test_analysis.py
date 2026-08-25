@@ -1,7 +1,7 @@
 """Integration tests for image analysis via LLM.
 
 These tests call the real Azure OpenAI LLM API.
-Run with:  uv run pytest tests/integration/test_analysis.py -v -s
+Run with:  uv run pytest -m integration tests/integration/test_analysis.py -v -s
 """
 
 import base64

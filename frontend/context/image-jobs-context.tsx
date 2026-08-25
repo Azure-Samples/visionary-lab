@@ -139,7 +139,7 @@ function createOptimisticJob(
       typeof request.metadata?.original_prompt === "string"
         ? request.metadata.original_prompt
         : request.prompt,
-    model: request.model ?? "gpt-image-1.5",
+    model: request.model ?? "gpt-image-2",
     folder_path: request.save_options.folder_path ?? "",
     size: request.size ?? "1024x1024",
     analysis_enabled: analysisEnabled,

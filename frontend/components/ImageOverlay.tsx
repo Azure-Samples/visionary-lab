@@ -2,8 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Wand2, Loader2, ArrowUp, Images, FolderTree, Plus, Check, RefreshCw, PlusCircle, Eye, AlertTriangle } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { X, Wand2, Loader2, ArrowUp, Images, FolderTree, Plus, Check, RefreshCw, PlusCircle, Eye } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -48,6 +47,20 @@ interface ImageOverlayProps {
   onFolderCreated?: (newFolder: string | string[]) => void;
 }
 
+const STANDARD_IMAGE_SIZES = [
+  ["auto", "Auto"],
+  ["1024x1024", "1024 × 1024"],
+  ["1536x1024", "1536 × 1024"],
+  ["1024x1536", "1024 × 1536"],
+] as const;
+
+const GPT_IMAGE_2_SIZES = [
+  ...STANDARD_IMAGE_SIZES,
+  ["2048x2048", "2048 × 2048"],
+  ["3840x2160", "3840 × 2160 (4K)"],
+  ["2160x3840", "2160 × 3840 (4K portrait)"],
+] as const;
+
 export function ImageOverlay({ 
   onGenerate, 
   isSubmitting = false,
@@ -56,7 +69,7 @@ export function ImageOverlay({
   onFolderCreated
 }: ImageOverlayProps) {
   const [prompt, setPrompt] = useState("");
-  const [model, setModel] = useState("gpt-image-1.5");
+  const [model, setModel] = useState("gpt-image-2");
   const [imageSize, setImageSize] = useState("1024x1024");
   const imageSettings = useImageSettings();
   const [aiAnalysisEnabled, setAiAnalysisEnabled] = useState(true);
@@ -69,10 +82,13 @@ export function ImageOverlay({
   const [isRefreshingFolders, setIsRefreshingFolders] = useState(false);
   const [background, setBackground] = useState("auto");
   const [outputFormat, setOutputFormat] = useState("png");
-  const [quality, setQuality] = useState("auto");
+  const [quality, setQuality] = useState("high");
   const [inputFidelity, setInputFidelity] = useState("low");
   const [sourceImages, setSourceImages] = useState<File[]>([]);
   const isFluxModel = model.toLowerCase().includes("flux");
+  const imageSizeOptions: ReadonlyArray<readonly [string, string]> = isFluxModel
+    ? STANDARD_IMAGE_SIZES
+    : GPT_IMAGE_2_SIZES;
   
   // Reference to the textarea element
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -97,6 +113,15 @@ export function ImageOverlay({
   useEffect(() => {
     setFolder(selectedFolder || "root");
   }, [selectedFolder]);
+
+  useEffect(() => {
+    if (
+      isFluxModel &&
+      !STANDARD_IMAGE_SIZES.some(([value]) => value === imageSize)
+    ) {
+      setImageSize("1024x1024");
+    }
+  }, [imageSize, isFluxModel]);
 
   // Focus the new folder input when creating folder
   useEffect(() => {
@@ -289,9 +314,9 @@ export function ImageOverlay({
         }
         
         // Validate file size
-        if (file.size > 25 * 1024 * 1024) {
+        if (file.size >= 50 * 1024 * 1024) {
           toast.error("File too large", {
-            description: `${file.name}: Images must be less than 25MB`
+            description: `${file.name}: Images must be less than 50MB`
           });
           continue;
         }
@@ -299,14 +324,14 @@ export function ImageOverlay({
         validFiles.push(file);
       }
       
-      // Limit to 5 images total (gpt-image-1 supports up to 10, but we'll be conservative)
-      if (sourceImages.length + validFiles.length > 5) {
+      // GPT-Image-2 supports up to 10 reference images.
+      if (sourceImages.length + validFiles.length > 10) {
         toast.warning("Too many images", {
-          description: "Maximum 5 images can be selected"
+          description: "Maximum 10 images can be selected"
         });
         
         // Take only what we can fit
-        const spaceLeft = 5 - sourceImages.length;
+        const spaceLeft = 10 - sourceImages.length;
         validFiles.splice(spaceLeft);
       }
       
@@ -416,16 +441,6 @@ export function ImageOverlay({
               </div>
             )}
             
-            {/* Warning for mini model with edit mode */}
-            {sourceImages.length > 0 && model === "gpt-image-1-mini" && (
-              <Alert variant="destructive" className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-2 duration-300">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  GPT-Image-1 Mini does not support image editing. Please switch to GPT-Image-1 or GPT-Image-1.5, or remove source images to use text-to-image generation.
-                </AlertDescription>
-              </Alert>
-            )}
-            
             {/* Input row with buttons */}
             <div className="flex items-start gap-1.5 sm:gap-3">
              <TooltipProvider>
@@ -451,7 +466,7 @@ export function ImageOverlay({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="left" className="font-medium">
-                    <p>Upload images to edit (max 5)</p>
+                    <p>Upload images to edit (max 10)</p>
                   </TooltipContent>
                 </Tooltip>
               
@@ -534,7 +549,7 @@ export function ImageOverlay({
                     "bg-gray-100 hover:bg-gray-200 text-gray-900",
                     "dark:bg-white/10 dark:hover:bg-white/20 dark:text-white"
                   )}
-                  disabled={isSubmitting || !prompt.trim() || (sourceImages.length > 0 && model === "gpt-image-1-mini")}
+                  disabled={isSubmitting || !prompt.trim()}
                 >
                   {isSubmitting ? (
                     <Loader2 className="h-4 w-4 sm:mr-2 motion-safe:animate-spin" />
@@ -554,20 +569,14 @@ export function ImageOverlay({
                     <Select value={model} onValueChange={setModel} disabled={isSubmitting}>
                       <SelectTrigger aria-label="Image model" className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted">
                         <span>{
-                          { "gpt-image-1.5": "GPT-Image-1.5", "gpt-image-1-mini": "GPT-Image-1 Mini", "flux-kontext-pro": "FLUX Kontext Pro" }[model] ?? model
+                          { "gpt-image-2": "GPT-Image-2", "flux-kontext-pro": "FLUX Kontext Pro" }[model] ?? model
                         }</span>
                       </SelectTrigger>
                       <SelectContent align="start">
-                        <SelectItem value="gpt-image-1.5" className="py-2">
+                        <SelectItem value="gpt-image-2" className="py-2">
                           <div className="flex flex-col">
-                            <span>GPT-Image-1.5</span>
-                            <span className="text-xs text-muted-foreground">Enhanced, 4x faster</span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="gpt-image-1-mini" className="py-2">
-                          <div className="flex flex-col">
-                            <span>GPT-Image-1 Mini</span>
-                            <span className="text-xs text-muted-foreground">Economical</span>
+                            <span>GPT-Image-2</span>
+                            <span className="text-xs text-muted-foreground">High fidelity, flexible sizes, 4K</span>
                           </div>
                         </SelectItem>
                         <SelectItem value="flux-kontext-pro" className="py-2">
@@ -587,10 +596,9 @@ export function ImageOverlay({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent align="start">
-                        <SelectItem value="auto">Auto</SelectItem>
-                        <SelectItem value="1024x1024">1024 × 1024</SelectItem>
-                        <SelectItem value="1536x1024">1536 × 1024</SelectItem>
-                        <SelectItem value="1024x1536">1024 × 1536</SelectItem>
+                        {imageSizeOptions.map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
 
@@ -617,7 +625,6 @@ export function ImageOverlay({
                       <SelectContent align="start">
                         <SelectItem value="png">PNG</SelectItem>
                         <SelectItem value="jpeg" disabled={background === "transparent"}>JPEG</SelectItem>
-                        <SelectItem value="webp">WebP</SelectItem>
                       </SelectContent>
                     </Select>
                     )}
@@ -629,7 +636,6 @@ export function ImageOverlay({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent align="start">
-                        <SelectItem value="auto">Auto</SelectItem>
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="medium">Medium</SelectItem>
                         <SelectItem value="high">High</SelectItem>

@@ -178,11 +178,12 @@ async def edit_image(request: ImageEditRequest):
 @router.post("/edit/upload", response_model=ImageGenerationResponse)
 async def edit_image_upload(
     prompt: str = Form(...),
-    model: str = Form("gpt-image-1.5"),
+    model: str = Form("gpt-image-2"),
     n: int = Form(1),
     size: str = Form("auto"),
-    quality: str = Form("auto"),
+    quality: str = Form("high"),
     output_format: str = Form("png"),
+    background: str = Form("auto"),
     input_fidelity: str = Form("low"),
     image: List[UploadFile] = File(...),
     mask: Optional[UploadFile] = File(None),
@@ -195,6 +196,7 @@ async def edit_image_upload(
         size=size,
         quality=quality,
         output_format=output_format,
+        background=background,
         input_fidelity=input_fidelity,
         images=image,
         mask=mask,

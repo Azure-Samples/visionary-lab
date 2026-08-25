@@ -21,6 +21,9 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = if (
   properties: {
     databaseAccountOfferType: 'Standard'
     enableFreeTier: false
+    disableLocalAuth: true
+    enableAutomaticFailover: true
+    minimalTlsVersion: 'Tls12'
     // Control public access
     publicNetworkAccess: publicNetworkAccess
     // Do not bypass network ACLs via trusted Azure services when PNA is disabled

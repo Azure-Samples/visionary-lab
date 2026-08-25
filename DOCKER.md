@@ -1,168 +1,144 @@
-# Docker Setup for AI Content Lab
+# Docker Setup for Visionary Lab
 
-This document provides instructions for building and running both the frontend and backend applications using Docker.
+Docker Compose runs the production-style backend and frontend images locally.
+This Compose path uses Azure AI Foundry and Blob Storage through
+`DefaultAzureCredential`; it does not use Azure OpenAI API keys or storage keys.
+For the host-development Azurite flow, use `scripts/dev.sh` instead.
 
 ## Prerequisites
 
-- Docker and Docker Compose installed on your system
-- Git to clone the repository
+- Docker with the Compose plugin
+- An Azure AI Foundry resource with `gpt-image-2` deployed
+- Azure Blob Storage reachable from the Docker host
+- Optional reachable Azure Queue and Cosmos DB endpoints when using durable jobs
+- A Microsoft Entra service principal for the backend container
 
-## Project Structure
+The host's `az login` session is not available inside a container. Configure the
+standard Azure Identity environment variables `AZURE_CLIENT_ID`,
+`AZURE_TENANT_ID`, and `AZURE_CLIENT_SECRET` for Docker Compose. In Azure,
+Container Apps uses managed identity instead.
 
-This project has a specific structure where:
-- The pyproject.toml file with dependencies is in the root folder
-- The backend code is in the `backend` folder
-- The frontend code is in the `frontend` folder
+`AZURE_STORAGE_CONNECTION_STRING=UseDevelopmentStorage=true` is intentionally a
+host-development setting: `scripts/dev.sh` starts Azurite at
+`http://127.0.0.1:10000`. Clear it when using this Compose configuration and set
+the Azure Blob URL and account name shown below.
 
-The Docker setup is configured to accommodate this structure.
+## Configure `.env`
 
-## Environment Variables
+Copy the template and replace its placeholders:
 
-Create a `.env` file in the root directory with the following variables:
+```bash
+cp .env.example .env
+```
+
+The relevant Compose settings are:
 
 ```env
-# Azure AI Foundry
+MODEL_PROVIDER=azure
 AI_FOUNDRY_ENDPOINT=https://your-foundry-name.cognitiveservices.azure.com/
 LLM_DEPLOYMENT=gpt-4o
-IMAGEGEN_DEPLOYMENT=gpt-image-1-5
+IMAGEGEN_2_DEPLOYMENT=gpt-image-2
+FLUX_KONTEXT_DEPLOYMENT=flux-kontext-pro
 
-# Azure Blob Storage
-AZURE_STORAGE_ACCOUNT_NAME=your-storage-account-name
-AZURE_STORAGE_ACCOUNT_KEY=your-storage-account-key
-AZURE_BLOB_SERVICE_URL=https://your-storage-account-name.blob.core.windows.net/
+AZURE_BLOB_SERVICE_URL=https://your-storage-account.blob.core.windows.net/
+AZURE_STORAGE_ACCOUNT_NAME=your-storage-account
+AZURE_BLOB_IMAGE_CONTAINER=images
+
+# Local queue/store mode. Use azure only with reachable Queue and Cosmos.
+IMAGE_JOB_MODE=memory
+AZURE_STORAGE_QUEUE_URL=
+AZURE_COSMOS_DB_ENDPOINT=
+
+# DefaultAzureCredential inside the backend container.
+AZURE_CLIENT_ID=your-service-principal-client-id
+AZURE_TENANT_ID=your-tenant-id
+AZURE_CLIENT_SECRET=your-service-principal-secret
 ```
 
-## Building and Running the Applications
+Grant the service principal the same data-plane roles used by the deployed
+Container Apps: Cognitive Services OpenAI User, Storage Blob Data Contributor,
+Storage Blob Delegator, and—when `IMAGE_JOB_MODE=azure`—Storage Queue Data
+Contributor and Cosmos DB Data Contributor.
 
-### Using Docker Compose (Recommended)
+## Build and Run
 
-From the root directory, run:
+From the repository root:
 
 ```bash
-docker-compose up -d
+docker compose up --build
 ```
 
-This will build and start both the frontend and backend containers. The applications will be available at:
+The services are available at:
+
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:8000 (mapped to internal port 80)
-- API Documentation: http://localhost:8000/docs
+- Backend: http://localhost:8000
+- OpenAPI schema: http://localhost:8000/api/v1/openapi.json
 
-To stop the containers:
+The frontend calls the backend through its same-origin Next.js proxy. Inside the
+Compose network, that proxy uses `http://backend:80`; browser code never needs to
+address the Docker service directly.
+
+Stop the stack with:
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
-### Completely Rebuilding (If Issues Occur)
-
-If you encounter PATH issues or other problems, completely rebuild from scratch with:
+To force a clean image rebuild without deleting unrelated Docker data:
 
 ```bash
-# Remove containers, networks, and images
-docker-compose down --rmi all
-docker system prune -f
-
-# Rebuild and start with no cache
-docker-compose build --no-cache
-docker-compose up -d
+docker compose build --no-cache
+docker compose up
 ```
 
-### Building and Running Individually
+## Build Services Individually
 
-#### Backend
-
-To build and run the backend individually, you need to build from the root directory:
+Backend image:
 
 ```bash
-docker build -t ai-content-lab-backend -f backend/Dockerfile .
-docker run -p 8000:80 \
-  -e PYTHONPATH=/app \
-  -e PATH=/app/.venv/bin:${PATH} \
-  -e AI_FOUNDRY_ENDPOINT=https://your-foundry-name.cognitiveservices.azure.com/ \
-  -e LLM_DEPLOYMENT=gpt-4o \
-  -e IMAGEGEN_DEPLOYMENT=gpt-image-1-5 \
-  -e AZURE_STORAGE_ACCOUNT_NAME=your-storage-account-name \
-  -e AZURE_STORAGE_ACCOUNT_KEY=your-storage-account-key \
-  ai-content-lab-backend
+docker build -t visionary-lab-backend -f backend/Dockerfile .
+docker run --rm --env-file .env -p 8000:80 visionary-lab-backend
 ```
 
-#### Frontend
+Frontend image:
 
 ```bash
-cd frontend
-docker build -t ai-content-lab-frontend .
-docker run -p 3000:3000 \
+docker build -t visionary-lab-frontend frontend
+docker run --rm -p 3000:3000 \
+  -e BACKEND_API_URL=http://host.docker.internal:8000 \
   -e NEXT_PUBLIC_API_PROTOCOL=http \
-  -e NEXT_PUBLIC_API_HOSTNAME=localhost \
-  -e NEXT_PUBLIC_API_PORT=80 \
-  -e NEXT_PUBLIC_STORAGE_ACCOUNT_NAME=your-storage-account-name \
-  ai-content-lab-frontend
+  -e NEXT_PUBLIC_API_HOSTNAME=host.docker.internal \
+  -e NEXT_PUBLIC_API_PORT=8000 \
+  visionary-lab-frontend
 ```
 
-## Multi-Service Deployment
+## Local Networking Limitations
 
-The docker-compose.yml file is configured to build and run both services from the root directory by:
+Azure resources provisioned by this repository use private endpoints for Blob,
+Queue, and Cosmos DB. A local Docker container cannot reach those endpoints
+unless the host is connected to the virtual network. Use one of these options:
 
-1. **Setting the build context for backend to the root folder**: This allows access to the pyproject.toml file
-2. **Using the correct path to the Dockerfile**: `dockerfile: backend/Dockerfile`
-3. **Setting volume mounts appropriately**: Static files are mapped to the correct path in the container
-4. **Environment variables**: PYTHONPATH and PATH are set to ensure proper module imports and command execution
-5. **Service networking**: The frontend references the backend by service name
+- keep `IMAGE_JOB_MODE=memory` and point Blob Storage at a development account
+  reachable from the host;
+- run `scripts/dev.sh` to use its managed local Azurite container;
+- connect the host to the Azure virtual network;
+- validate the complete persisted job flow through the deployed application.
 
-## Development vs. Production
-
-The Dockerfiles are configured for production use. For development:
-
-1. Backend: For development with hot reload, modify the CMD in the Dockerfile to:
-   ```
-   CMD ["exec /app/.venv/bin/fastapi run backend/main.py --port 80 --host 0.0.0.0 --reload"]
-   ```
-
-2. Frontend: Change the CMD in the Dockerfile to `["npm", "run", "dev"]`
-
-## Backend Dockerfile Notes
-
-The backend Dockerfile:
-- Uses the official uv package manager approach as recommended in the [uv documentation](https://docs.astral.sh/uv/guides/integration/fastapi/#deployment)
-- Creates a virtual environment with `uv venv .venv`
-- Installs the fastapi-cli package in the virtual environment
-- Adds the virtual environment bin directory to PATH
-- Uses a shell wrapper to execute the fastapi command to avoid PATH issues
-- Sets environment variables to ensure imports and commands work correctly
-- Exposes port 80 internally, mapped to port 8000 externally
-
-## Persistent Storage
-
-The Docker Compose setup includes a volume mount for the backend's static directory to persist generated content between container restarts:
-
-```yaml
-volumes:
-  - ./backend/static:/app/backend/static
-```
-
-## Accessing Logs
-
-To view logs for a specific service:
-
-```bash
-docker-compose logs backend
-docker-compose logs frontend
-```
-
-Add the `-f` flag to follow the logs in real-time.
+GPT-Image-2 generation and editing only require the AI Foundry endpoint and can
+be exercised without Queue or Cosmos DB.
 
 ## Troubleshooting
 
-### Backend Container Fails to Start
+Inspect resolved configuration without printing secret values from the running
+container:
 
-If the backend container fails to start, check:
-1. Environment variables are correctly set
-2. The AI Foundry endpoint and model deployment names are valid
-3. Logs with `docker-compose logs backend`
-4. Make sure the PYTHONPATH and PATH environment variables are set correctly
-5. Try rebuilding from scratch as mentioned in the "Completely Rebuilding" section
-6. Check if the fastapi command exists in the virtual environment with `docker exec -it <container_id> /bin/sh -c "ls -la /app/.venv/bin/"`
+```bash
+docker compose config --quiet
+docker compose logs -f backend
+docker compose logs -f frontend
+```
 
-### Frontend Cannot Connect to Backend
-
-By default, the frontend is configured to connect to the backend using the service name `backend` and port 80. If running the containers separately, modify the frontend environment variables to use the correct hostname and port.
+If authentication fails, verify that all three `AZURE_CLIENT_*` variables are
+set and that the service principal has the required data-plane roles. If the
+backend health check fails in Azure job mode, verify that both
+`AZURE_STORAGE_QUEUE_URL` and `AZURE_COSMOS_DB_ENDPOINT` are set and reachable.

@@ -47,7 +47,10 @@ class SasTokenService {
   async getBlobUrl(blobName: string): Promise<string> {
     try {
       const tokens = await this.getTokens();
-      return `${tokens.imageContainerUrl}/${blobName}?${tokens.imageSasToken}`;
+      const blobUrl = `${tokens.imageContainerUrl}/${blobName}`;
+      return tokens.imageSasToken
+        ? `${blobUrl}?${tokens.imageSasToken}`
+        : blobUrl;
     } catch (error) {
       console.error("Failed to get SAS token for blob:", error);
       throw error;

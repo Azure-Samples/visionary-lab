@@ -1,6 +1,10 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import Optional
 from pydantic import Extra, Field, validator
+
+
+_REPOSITORY_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
@@ -16,11 +20,9 @@ class Settings(BaseSettings):
 
     # Model deployment names
     LLM_DEPLOYMENT: Optional[str] = None
-    IMAGEGEN_DEPLOYMENT: Optional[str] = None
-    IMAGEGEN_15_DEPLOYMENT: Optional[str] = None
-    IMAGEGEN_1_MINI_DEPLOYMENT: Optional[str] = None
+    IMAGEGEN_2_DEPLOYMENT: Optional[str] = None
     FLUX_KONTEXT_DEPLOYMENT: Optional[str] = None
-    DEFAULT_IMAGE_MODEL: str = "gpt-image-1.5"
+    DEFAULT_IMAGE_MODEL: str = "gpt-image-2"
 
     # OpenAI API for direct OpenAI usage (non-Azure)
     OPENAI_API_KEY: Optional[str] = None
@@ -28,7 +30,9 @@ class Settings(BaseSettings):
     OPENAI_ORG_VERIFIED: bool = False
     GPT_IMAGE_MAX_TOKENS: int = 150000
 
-    # Azure Blob Storage Settings (managed identity — no keys)
+    # Azure Blob Storage Settings. Azure uses managed identity; local
+    # development can opt into Azurite with UseDevelopmentStorage=true.
+    AZURE_STORAGE_CONNECTION_STRING: Optional[str] = None
     AZURE_BLOB_SERVICE_URL: Optional[str] = None
     AZURE_STORAGE_ACCOUNT_NAME: Optional[str] = None
     CDN_BLOB_URL: Optional[str] = None
@@ -73,12 +77,12 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
 
-    # GPT-Image-1 Default Settings
+    # GPT-Image-2 default settings
     GPT_IMAGE_DEFAULT_SIZE: str = "1024x1024"
     GPT_IMAGE_DEFAULT_QUALITY: str = "high"
     GPT_IMAGE_DEFAULT_FORMAT: str = "PNG"
     GPT_IMAGE_ALLOW_TRANSPARENT: bool = True
-    GPT_IMAGE_MAX_FILE_SIZE_MB: int = 25
+    GPT_IMAGE_MAX_FILE_SIZE_MB: int = 50
 
     @validator('CORS_ALLOWED_ORIGINS')
     def validate_cors_origins(cls, v):
@@ -101,7 +105,7 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        env_file = "../.env"
+        env_file = _REPOSITORY_ENV_FILE
         case_sensitive = True
         extra = Extra.allow
 

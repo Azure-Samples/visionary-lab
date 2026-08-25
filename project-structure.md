@@ -13,7 +13,7 @@ Visionary Lab is an image generation, editing, analysis, and asset-management ap
 - `backend/api/endpoints/gallery.py`: Image gallery, folder, upload, download, and deletion operations.
 - `backend/api/endpoints/metadata_router.py`: Metadata synchronization and maintenance.
 - `backend/api/endpoints/env.py`: Environment configuration status.
-- `backend/core/gpt_image.py`: Azure OpenAI image-generation client.
+- `backend/core/gpt_image.py`: Azure AI Foundry GPT-Image-2 client.
 - `backend/core/image_pipeline.py`: Image workflow orchestration.
 - `backend/core/analyze.py`: Image analysis with a multimodal language model.
 - `backend/core/azure_storage.py`: Azure Blob Storage access.
@@ -40,7 +40,7 @@ Visionary Lab is an image generation, editing, analysis, and asset-management ap
 
 ### Notebook
 
-- `notebooks/gpt-image-1.ipynb`: Image-generation API examples.
+- `notebooks/gpt-image-2.ipynb`: GPT-Image-2 generation and editing examples.
 - `notebooks/utils.py`: Notebook image helpers.
 - `notebooks/images/`: Sample input images.
 

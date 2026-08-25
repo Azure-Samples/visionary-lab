@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .resources import close_core_clients, get_core_clients, warm_core_clients
-from .sas import get_container_sas_token
+from .sas import get_blob_container_url, get_container_sas_token
 
 _CLIENT_EXPORTS = {
     "credential",
@@ -40,6 +40,7 @@ def __getattr__(name: str):
 
 __all__ = [
     "close_core_clients",
+    "get_blob_container_url",
     "get_container_sas_token",
     "get_core_clients",
     "warm_core_clients",

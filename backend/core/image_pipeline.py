@@ -29,10 +29,14 @@ from backend.models.images import (
     ImagePipelineResponse,
     ImageSaveRequest,
     ImageSaveResponse,
+    GPT_IMAGE_2_MODEL,
     PipelineAction,
     PipelineStepResult,
     TokenUsage,
     InputTokensDetails,
+    validate_image_model,
+    validate_image_options,
+    validate_image_size,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +60,7 @@ class ImagePipelineService:
     # Generation / Edit helpers
     # ------------------------------------------------------------------
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResponse:
-        """Generate images via the configured DALL-E/GPT-image client."""
+        """Generate images via the configured GPT Image or FLUX client."""
         try:
             client = await self._get_image_client(request.model)
             
@@ -67,7 +71,7 @@ class ImagePipelineService:
                 "size": request.size,
             }
 
-            # Add model-specific parameters (supported by all gpt-image models)
+            # Add generation controls supported by GPT-Image-2.
             if request.quality:
                 params["quality"] = request.quality
             params["background"] = request.background
@@ -101,13 +105,6 @@ class ImagePipelineService:
     async def edit(self, request: ImageEditRequest) -> ImageGenerationResponse:
         """Edit images via the configured client using JSON payload data."""
         try:
-            # Validate mini model restrictions
-            if request.model == "gpt-image-1-mini":
-                raise HTTPException(
-                    status_code=400,
-                    detail="gpt-image-1-mini does not support image editing. Please use gpt-image-1 or gpt-image-1.5 for image editing operations."
-                )
-            
             raw_images = (
                 request.image if isinstance(request.image, list) else [request.image]
             )
@@ -146,6 +143,8 @@ class ImagePipelineService:
                 params["quality"] = request.quality
             if request.output_format != "png":
                 params["output_format"] = request.output_format
+            if request.background != "auto":
+                params["background"] = request.background
             if (
                 request.output_format in ["webp", "jpeg"]
                 and request.output_compression != 100
@@ -188,18 +187,25 @@ class ImagePipelineService:
         size: str,
         quality: str,
         output_format: str,
+        background: str,
         input_fidelity: str,
         images: List[UploadFile],
         mask: Optional[UploadFile] = None,
     ) -> ImageGenerationResponse:
         """Edit images using uploaded multipart files."""
 
-        # Validate mini model restrictions
-        if model == "gpt-image-1-mini":
-            raise HTTPException(
-                status_code=400,
-                detail="gpt-image-1-mini does not support image editing. Please use gpt-image-1 or gpt-image-1.5 for image editing operations."
+        try:
+            validate_image_model(model)
+            validate_image_size(model, size)
+            validate_image_options(
+                model,
+                quality=quality,
+                output_format=output_format,
+                response_format="b64_json",
+                background=background,
             )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         if input_fidelity not in ["low", "high"]:
             raise HTTPException(
@@ -218,7 +224,7 @@ class ImagePipelineService:
             for idx, upload in enumerate(images):
                 contents = await upload.read()
                 file_size_mb = len(contents) / (1024 * 1024)
-                if file_size_mb > max_file_size_mb:
+                if file_size_mb >= max_file_size_mb:
                     raise HTTPException(
                         status_code=400,
                         detail=(
@@ -237,7 +243,7 @@ class ImagePipelineService:
             if mask:
                 mask_contents = await mask.read()
                 mask_size_mb = len(mask_contents) / (1024 * 1024)
-                if mask_size_mb > max_file_size_mb:
+                if mask_size_mb >= max_file_size_mb:
                     raise HTTPException(
                         status_code=400,
                         detail=f"Mask exceeds maximum size of {max_file_size_mb}MB",
@@ -257,10 +263,12 @@ class ImagePipelineService:
                 "size": size,
             }
 
-            # Add quality and input_fidelity for all gpt-image models
+            # Add GPT-Image-2 quality and input-fidelity controls.
             params["quality"] = quality
             if output_format != "png":
                 params["output_format"] = output_format
+            if background != "auto":
+                params["background"] = background
             if input_fidelity != "low":
                 params["input_fidelity"] = input_fidelity
 
@@ -513,8 +521,9 @@ class ImagePipelineService:
                         model=pipeline_request.model,
                         n=pipeline_request.n,
                         size=pipeline_request.size,
-                        quality=pipeline_request.quality or "auto",
+                        quality=pipeline_request.quality or "high",
                         output_format=pipeline_request.output_format or "png",
+                        background=pipeline_request.background or "auto",
                         input_fidelity=pipeline_request.input_fidelity or "low",
                         images=source_images,
                         mask=mask,
@@ -707,7 +716,7 @@ class ImagePipelineService:
     # ------------------------------------------------------------------
     @staticmethod
     def _provider_http_exception(exc: Exception) -> HTTPException:
-        status_code = getattr(exc, "status_code", 500)
+        status_code = 400 if isinstance(exc, ValueError) else getattr(exc, "status_code", 500)
         if not isinstance(status_code, int) or not 400 <= status_code <= 599:
             status_code = 500
         return HTTPException(status_code=status_code, detail=str(exc))
@@ -837,7 +846,7 @@ class ImagePipelineService:
                 content_type = f"image/{extension}"
 
         max_bytes = settings.GPT_IMAGE_MAX_FILE_SIZE_MB * 1024 * 1024
-        if len(contents) > max_bytes:
+        if len(contents) >= max_bytes:
             raise HTTPException(
                 status_code=400,
                 detail=(
