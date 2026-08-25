@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import inspect
 import logging
+from math import gcd
 from typing import Any, Optional
 
+import httpx
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 
 from backend.core.config import settings
@@ -19,6 +22,15 @@ from backend.models.images import (
 logger = logging.getLogger(__name__)
 
 _AZURE_OPENAI_SCOPE = "https://cognitiveservices.azure.com/.default"
+_FLUX_PROVIDER_PATH = "/providers/blackforestlabs/v1/flux-kontext-pro"
+
+
+class ImageProviderError(RuntimeError):
+    """Provider failure with an HTTP status that the API layer can preserve."""
+
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class GPTImageClient:
@@ -47,8 +59,20 @@ class GPTImageClient:
         self.token_provider = token_provider
         self._owns_credential = False
         self._closed = False
+        self.endpoint = (
+            settings.AI_FOUNDRY_ENDPOINT.rstrip("/")
+            if self.provider == "azure" and settings.AI_FOUNDRY_ENDPOINT
+            else ""
+        )
 
         if client is not None:
+            if self.provider == "azure":
+                if self.token_provider is not None:
+                    self.token_provider = self._ensure_async_token_provider(
+                        self.token_provider
+                    )
+                elif self.credential is not None:
+                    self.token_provider = self._token_provider_for(self.credential)
             self.client = client
             return
 
@@ -71,11 +95,19 @@ class GPTImageClient:
                     self.token_provider
                 )
 
-            self.endpoint = (
-                settings.AI_FOUNDRY_ENDPOINT.rstrip("/")
-                if settings.AI_FOUNDRY_ENDPOINT
-                else ""
-            )
+            if self.model == FLUX_KONTEXT_PRO_MODEL:
+                self.client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(120.0, connect=10.0),
+                    follow_redirects=True,
+                )
+                logger.info(
+                    "Initialized async Azure FLUX provider client "
+                    "(model: %s, deployment: %s)",
+                    self.model,
+                    self.deployment_name,
+                )
+                return
+
             self.client = AsyncAzureOpenAI(
                 azure_ad_token_provider=self.token_provider,
                 azure_endpoint=self.endpoint,
@@ -178,6 +210,14 @@ class GPTImageClient:
         )
         if not provider_model:
             raise ValueError("An image model deployment must be configured")
+        if self.provider == "azure" and requested_model == FLUX_KONTEXT_PRO_MODEL:
+            return await self._generate_flux_image(
+                prompt=prompt,
+                deployment_name=provider_model,
+                n=n,
+                size=size,
+                output_format=output_format,
+            )
 
         params: dict[str, Any] = {
             "prompt": prompt,
@@ -241,6 +281,16 @@ class GPTImageClient:
         )
         if not provider_model:
             raise ValueError("An image model deployment must be configured")
+        if self.provider == "azure" and requested_model == FLUX_KONTEXT_PRO_MODEL:
+            return await self._edit_flux_image(
+                prompt=str(params.get("prompt") or ""),
+                deployment_name=provider_model,
+                image=params.get("image"),
+                mask=params.get("mask"),
+                n=int(params.get("n") or 1),
+                size=str(params.get("size") or "auto"),
+                output_format=output_format,
+            )
         params["model"] = provider_model
 
         image_count = (
@@ -256,6 +306,131 @@ class GPTImageClient:
         )
         response = await self.client.images.edit(**params)
         return self._format_response(response)
+
+    async def _generate_flux_image(
+        self,
+        *,
+        prompt: str,
+        deployment_name: str,
+        n: int,
+        size: str,
+        output_format: str,
+    ) -> dict[str, Any]:
+        if n != 1:
+            raise ValueError("FLUX Kontext supports one image per request")
+        payload = {
+            "model": deployment_name,
+            "prompt": prompt,
+            "aspect_ratio": self._flux_aspect_ratio(size),
+            "output_format": self._flux_output_format(output_format),
+        }
+        return await self._request_flux(payload)
+
+    async def _edit_flux_image(
+        self,
+        *,
+        prompt: str,
+        deployment_name: str,
+        image: Any,
+        mask: Any,
+        n: int,
+        size: str,
+        output_format: str,
+    ) -> dict[str, Any]:
+        if n != 1:
+            raise ValueError("FLUX Kontext supports one image per request")
+        if mask is not None:
+            raise ValueError("FLUX Kontext does not support mask-based edits")
+        image_bytes = await self._flux_image_bytes(image)
+        payload = {
+            "model": deployment_name,
+            "prompt": prompt,
+            "input_image": base64.b64encode(image_bytes).decode("ascii"),
+            "aspect_ratio": self._flux_aspect_ratio(size),
+            "output_format": self._flux_output_format(output_format),
+        }
+        return await self._request_flux(payload)
+
+    async def _request_flux(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self.endpoint:
+            raise ValueError("AI_FOUNDRY_ENDPOINT must be configured for FLUX Kontext")
+        if self.token_provider is None:
+            raise ValueError("Azure authentication must be configured for FLUX Kontext")
+
+        token = self.token_provider()
+        if inspect.isawaitable(token):
+            token = await token
+        response = await self.client.post(
+            self._flux_provider_url(),
+            params={"api-version": "preview"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        try:
+            body = response.json()
+        except Exception as exc:
+            raise ImageProviderError(
+                response.status_code,
+                "FLUX Kontext returned an invalid response",
+            ) from exc
+        if response.is_error:
+            error = body.get("error") if isinstance(body, dict) else None
+            message = error.get("message") if isinstance(error, dict) else None
+            raise ImageProviderError(
+                response.status_code,
+                str(message or "FLUX Kontext request failed"),
+            )
+        return self._format_response(body)
+
+    def _flux_provider_url(self) -> str:
+        endpoint = self.endpoint
+        for suffix in (".cognitiveservices.azure.com", ".openai.azure.com"):
+            if endpoint.endswith(suffix):
+                endpoint = endpoint[: -len(suffix)] + ".services.ai.azure.com"
+                break
+        return f"{endpoint}{_FLUX_PROVIDER_PATH}"
+
+    @staticmethod
+    def _flux_aspect_ratio(size: str) -> str:
+        if size == "auto":
+            return "1:1"
+        try:
+            width_text, height_text = size.lower().split("x", 1)
+            width = int(width_text)
+            height = int(height_text)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("FLUX Kontext size must be auto or WIDTHxHEIGHT") from exc
+        divisor = gcd(width, height)
+        return f"{width // divisor}:{height // divisor}"
+
+    @staticmethod
+    def _flux_output_format(output_format: str) -> str:
+        if output_format not in {"png", "jpeg"}:
+            raise ValueError("FLUX Kontext output_format must be png or jpeg")
+        return output_format
+
+    @staticmethod
+    async def _flux_image_bytes(image: Any) -> bytes:
+        sources = image if isinstance(image, list) else [image]
+        if len(sources) != 1:
+            raise ValueError("FLUX Kontext supports exactly one reference image")
+        source = sources[0]
+        if isinstance(source, tuple) and len(source) >= 2:
+            source = source[1]
+        if isinstance(source, (bytes, bytearray)):
+            return bytes(source)
+        read = getattr(source, "read", None)
+        if read is None:
+            raise ValueError("FLUX Kontext reference image must contain binary data")
+        contents = read()
+        if inspect.isawaitable(contents):
+            contents = await contents
+        if not isinstance(contents, (bytes, bytearray)):
+            raise ValueError("FLUX Kontext reference image must contain binary data")
+        return bytes(contents)
 
     def _validate_provider_options(
         self,
@@ -321,7 +496,9 @@ class GPTImageClient:
             return
         self._closed = True
 
-        close_client = getattr(self.client, "close", None)
+        close_client = getattr(self.client, "close", None) or getattr(
+            self.client, "aclose", None
+        )
         if close_client is not None:
             result = close_client()
             if inspect.isawaitable(result):

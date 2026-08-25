@@ -1,6 +1,6 @@
 "use client"
 
-import { ReactNode } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/utils/cn";
 import { useSidebar } from "@/components/ui/sidebar";
 
@@ -21,10 +21,16 @@ export function PageHeader({
   
   return (
     <div 
-      className={cn("fixed top-0 z-10 h-14 flex items-center transition-all duration-200", className)}
+      className={cn(
+        "fixed left-16 top-0 z-10 flex h-14 items-center transition-all duration-200 sm:left-[var(--page-header-left)]",
+        className,
+      )}
       style={{
-        left: state === "expanded" ? "calc(var(--sidebar-width) + 4.5rem)" : "calc(var(--sidebar-width-icon) + 4.5rem)",
-      }}
+        "--page-header-left":
+          state === "expanded"
+            ? "calc(var(--sidebar-width) + 4.5rem)"
+            : "calc(var(--sidebar-width-icon) + 4.5rem)",
+      } as CSSProperties}
     >
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
@@ -35,4 +41,4 @@ export function PageHeader({
       {children}
     </div>
   );
-} 
+}

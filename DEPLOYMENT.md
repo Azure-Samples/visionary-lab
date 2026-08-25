@@ -42,7 +42,7 @@ That's it! The `azd up` command will:
 - Create a new environment
 - Provision the AI Foundry resource with all model deployments
 - Provision Storage, Cosmos DB, Container Registry, Container Apps
-- Assign RBAC roles (Cognitive Services OpenAI User, Storage Blob Data Contributor, etc.)
+- Assign RBAC roles (Foundry User, Storage Blob Data Contributor, etc.)
 - Build and deploy Docker images for frontend and backend
 - Configure networking and environment variables
 - Provide you with the application URLs
@@ -92,12 +92,12 @@ The deployment creates:
 
 | Principal | Role | Scope |
 |-----------|------|-------|
-| Backend Container App | Cognitive Services OpenAI User | AI Foundry |
+| Backend Container App | Foundry User | AI Foundry |
 | Backend Container App | Storage Blob Data Contributor | Storage Account |
 | Backend Container App | Storage Blob Delegator | Storage Account |
 | Backend Container App | Storage Queue Data Contributor | Storage Account |
 | Backend Container App | Cosmos DB Data Contributor | Cosmos DB Account |
-| Image Worker Container App | Cognitive Services OpenAI User | AI Foundry |
+| Image Worker Container App | Foundry User | AI Foundry |
 | Image Worker Container App | Storage Blob Data Contributor | Storage Account |
 | Image Worker Container App | Storage Blob Delegator | Storage Account |
 | Image Worker Container App | Storage Queue Data Contributor | Storage Account |

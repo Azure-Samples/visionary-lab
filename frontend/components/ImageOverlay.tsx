@@ -123,6 +123,12 @@ export function ImageOverlay({
     }
   }, [imageSize, isFluxModel]);
 
+  useEffect(() => {
+    if (!isFluxModel) return;
+    setVariations("1");
+    setSourceImages((current) => current.slice(0, 1));
+  }, [isFluxModel]);
+
   // Focus the new folder input when creating folder
   useEffect(() => {
     if (isCreatingFolder && newFolderInputRef.current) {
@@ -324,14 +330,16 @@ export function ImageOverlay({
         validFiles.push(file);
       }
       
-      // GPT-Image-2 supports up to 10 reference images.
-      if (sourceImages.length + validFiles.length > 10) {
+      const maxImages = isFluxModel ? 1 : 10;
+      if (sourceImages.length + validFiles.length > maxImages) {
         toast.warning("Too many images", {
-          description: "Maximum 10 images can be selected"
+          description: isFluxModel
+            ? "FLUX Kontext supports one reference image"
+            : "Maximum 10 images can be selected"
         });
         
         // Take only what we can fit
-        const spaceLeft = 10 - sourceImages.length;
+        const spaceLeft = maxImages - sourceImages.length;
         validFiles.splice(spaceLeft);
       }
       
@@ -466,7 +474,11 @@ export function ImageOverlay({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="left" className="font-medium">
-                    <p>Upload images to edit (max 10)</p>
+                    <p>
+                      {isFluxModel
+                        ? "Upload one reference image"
+                        : "Upload images to edit (max 10)"}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               
@@ -478,7 +490,7 @@ export function ImageOverlay({
                 className="hidden"
                 disabled={isSubmitting}
                 aria-label="Upload image files"
-                multiple
+                multiple={!isFluxModel}
               />
               
               <div className="relative min-w-0 flex-1">
@@ -644,7 +656,7 @@ export function ImageOverlay({
                     )}
 
                     {/* Fidelity — only when editing images */}
-                    {sourceImages.length > 0 && (
+                    {sourceImages.length > 0 && !isFluxModel && (
                       <Select value={inputFidelity} onValueChange={setInputFidelity} disabled={isSubmitting}>
                         <SelectTrigger aria-label="Input fidelity" className="h-7 w-auto gap-1 px-2.5 text-xs rounded-md border-0 bg-muted/50 hover:bg-muted motion-safe:animate-in motion-safe:fade-in-0 duration-200">
                           <SelectValue />
@@ -665,7 +677,7 @@ export function ImageOverlay({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent align="start">
-                        {Array.from({ length: 10 }, (_, i) => (
+                        {Array.from({ length: isFluxModel ? 1 : 10 }, (_, i) => (
                           <SelectItem key={i + 1} value={String(i + 1)}>{i + 1}</SelectItem>
                         ))}
                       </SelectContent>

@@ -25,6 +25,12 @@ def validate_image_model(model: str) -> None:
         raise ValueError(f"Model must be one of {list(SUPPORTED_IMAGE_MODELS)}")
 
 
+def validate_image_count(model: str, n: int) -> None:
+    """Apply per-model output-count limits."""
+    if model == FLUX_KONTEXT_PRO_MODEL and n != 1:
+        raise ValueError("FLUX Kontext supports one image per request")
+
+
 def validate_image_size(model: str, size: str) -> None:
     """Validate the flexible GPT-Image-2 dimensions documented by Azure."""
     if model != GPT_IMAGE_2_MODEL or size == "auto":
@@ -148,6 +154,7 @@ class ImageGenerationRequest(BaseModel):
     @model_validator(mode="after")
     def validate_model_capabilities(self):
         validate_image_model(self.model)
+        validate_image_count(self.model, self.n)
         validate_image_size(self.model, self.size)
         validate_image_options(
             self.model,
@@ -341,6 +348,7 @@ class ImageGenerateWithAnalysisRequest(BaseModel):
     @model_validator(mode="after")
     def validate_model_capabilities(self):
         validate_image_model(self.model)
+        validate_image_count(self.model, self.n)
         validate_image_size(self.model, self.size)
         validate_image_options(
             self.model,
@@ -554,6 +562,7 @@ class ImagePipelineRequest(BaseModel):
     @model_validator(mode="after")
     def validate_model_capabilities(self):
         validate_image_model(self.model)
+        validate_image_count(self.model, self.n)
         validate_image_size(self.model, self.size)
         validate_image_options(
             self.model,
