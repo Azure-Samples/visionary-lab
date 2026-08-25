@@ -60,25 +60,16 @@ param aiFoundryLocation string = 'swedencentral'
 // Model deployment names
 @description('Name of the LLM deployment')
 param LLM_DEPLOYMENT string = 'gpt-4o'
-@description('Name of the image generation deployment')
-param IMAGEGEN_DEPLOYMENT string = ''
-@description('Name of the gpt-image-1.5 deployment')
-param IMAGEGEN_15_DEPLOYMENT string = ''
-@description('Name of the gpt-image-1-mini deployment')
-param IMAGEGEN_1_MINI_DEPLOYMENT string = ''
+@description('Name of the GPT-Image-2 deployment')
+param IMAGEGEN_2_DEPLOYMENT string = 'gpt-image-2'
 @description('Name of the FLUX Kontext Pro deployment')
-param FLUX_KONTEXT_DEPLOYMENT string = ''
+param FLUX_KONTEXT_DEPLOYMENT string = 'flux-kontext-pro'
 
 // Model types and versions (for Bicep-managed deployments)
 param llmModelType string = 'gpt-4o'
 param llmModelVersion string = '2024-11-20'
-// Image models may be deployed via CLI when Bicep doesn't support the format
-@description('Set to true to deploy image gen models via Bicep (requires OpenAI-format models)')
-param deployImageGenModels bool = false
-param imageGenModelType string = 'gpt-image-1.5'
-param imageGenModelVersion string = '2024-04-01'
-param imageGen15ModelVersion string = '2024-04-01'
-param imageGen1MiniModelVersion string = '2024-04-01'
+param imageGen2ModelVersion string = '2026-04-21'
+param fluxKontextModelVersion string = '1'
 
 // Docker images for the backend and frontend container apps
 param DOCKER_IMAGE_BACKEND string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
@@ -327,45 +318,35 @@ module llmDeployment './modules/aiFoundryModelDeployment.bicep' = {
   ]
 }
 
-module imageGenDeployment './modules/aiFoundryModelDeployment.bicep' = if (deployImageGenModels && IMAGEGEN_DEPLOYMENT != '') {
-  name: 'imageGenDeployment'
+module imageGen2Deployment './modules/aiFoundryModelDeployment.bicep' = {
+  name: 'imageGen2Deployment'
   params: {
     aiFoundryName: aiFoundryName
-    deploymentName: IMAGEGEN_DEPLOYMENT
-    modelName: imageGenModelType
-    modelVersion: imageGenModelVersion
-    skuCapacity: 1
+    deploymentName: IMAGEGEN_2_DEPLOYMENT
+    modelName: 'gpt-image-2'
+    modelVersion: imageGen2ModelVersion
+    modelFormat: 'OpenAI'
+    skuName: 'GlobalStandard'
+    skuCapacity: 2
   }
   dependsOn: [
     llmDeployment
   ]
 }
 
-module imageGen15Deployment './modules/aiFoundryModelDeployment.bicep' = if (deployImageGenModels && IMAGEGEN_15_DEPLOYMENT != '') {
-  name: 'imageGen15Deployment'
+module fluxKontextDeployment './modules/aiFoundryModelDeployment.bicep' = if (FLUX_KONTEXT_DEPLOYMENT != '') {
+  name: 'fluxKontextDeployment'
   params: {
     aiFoundryName: aiFoundryName
-    deploymentName: IMAGEGEN_15_DEPLOYMENT
-    modelName: 'gpt-image-1.5'
-    modelVersion: imageGen15ModelVersion
+    deploymentName: FLUX_KONTEXT_DEPLOYMENT
+    modelName: 'FLUX.1-Kontext-pro'
+    modelVersion: fluxKontextModelVersion
+    modelFormat: 'Black Forest Labs'
+    skuName: 'GlobalStandard'
     skuCapacity: 1
   }
   dependsOn: [
-    imageGenDeployment
-  ]
-}
-
-module imageGen1MiniDeployment './modules/aiFoundryModelDeployment.bicep' = if (deployImageGenModels && IMAGEGEN_1_MINI_DEPLOYMENT != '') {
-  name: 'imageGen1MiniDeployment'
-  params: {
-    aiFoundryName: aiFoundryName
-    deploymentName: IMAGEGEN_1_MINI_DEPLOYMENT
-    modelName: 'gpt-image-1-mini'
-    modelVersion: imageGen1MiniModelVersion
-    skuCapacity: 1
-  }
-  dependsOn: [
-    imageGen15Deployment
+    imageGen2Deployment
   ]
 }
 
@@ -432,9 +413,7 @@ module containerAppBackend './modules/containerApp.bicep' = {
     AZURE_CONTAINER_REGISTRY_PASSWORD: containerRegistryMod.outputs.containerRegistryPassword
     AI_FOUNDRY_ENDPOINT: aiFoundryMod.outputs.aiFoundryEndpoint
     LLM_DEPLOYMENT: LLM_DEPLOYMENT
-    IMAGEGEN_DEPLOYMENT: IMAGEGEN_DEPLOYMENT
-    IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
-    IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
+    IMAGEGEN_2_DEPLOYMENT: IMAGEGEN_2_DEPLOYMENT
     FLUX_KONTEXT_DEPLOYMENT: FLUX_KONTEXT_DEPLOYMENT
     COSMOS_ENDPOINT: cosmosDbMod.outputs.cosmosAccountEndpoint
     COSMOS_DATABASE_NAME: cosmosDbMod.outputs.databaseName
@@ -483,9 +462,7 @@ module containerAppImageWorker './modules/containerApp.bicep' = {
     registryIdentityResourceId: imageWorkerRegistryIdentity.id
     AI_FOUNDRY_ENDPOINT: aiFoundryMod.outputs.aiFoundryEndpoint
     LLM_DEPLOYMENT: LLM_DEPLOYMENT
-    IMAGEGEN_DEPLOYMENT: IMAGEGEN_DEPLOYMENT
-    IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
-    IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
+    IMAGEGEN_2_DEPLOYMENT: IMAGEGEN_2_DEPLOYMENT
     FLUX_KONTEXT_DEPLOYMENT: FLUX_KONTEXT_DEPLOYMENT
     COSMOS_ENDPOINT: cosmosDbMod.outputs.cosmosAccountEndpoint
     COSMOS_DATABASE_NAME: cosmosDbMod.outputs.databaseName
@@ -519,13 +496,11 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     AZURE_CONTAINER_REGISTRY_PASSWORD: containerRegistryMod.outputs.containerRegistryPassword
     AI_FOUNDRY_ENDPOINT: aiFoundryMod.outputs.aiFoundryEndpoint
     LLM_DEPLOYMENT: LLM_DEPLOYMENT
-    IMAGEGEN_DEPLOYMENT: IMAGEGEN_DEPLOYMENT
-    IMAGEGEN_15_DEPLOYMENT: IMAGEGEN_15_DEPLOYMENT
-    IMAGEGEN_1_MINI_DEPLOYMENT: IMAGEGEN_1_MINI_DEPLOYMENT
+    IMAGEGEN_2_DEPLOYMENT: IMAGEGEN_2_DEPLOYMENT
     FLUX_KONTEXT_DEPLOYMENT: FLUX_KONTEXT_DEPLOYMENT
     API_PROTOCOL: API_PROTOCOL == '' ? 'https' : API_PROTOCOL
     API_PORT: API_PORT == '' ? '443' : API_PORT
-    API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
+    API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.internal.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
     enableAuth: AUTH_CLIENT_ID != ''
     authClientId: AUTH_CLIENT_ID
     authClientSecret: AUTH_CLIENT_SECRET

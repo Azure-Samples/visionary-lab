@@ -1,3 +1,5 @@
+import re
+
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 from typing import List, Optional, Dict, Any, Union, Literal
 from enum import Enum
@@ -5,6 +7,75 @@ from backend.models.common import BaseResponse
 from pydantic import model_validator, validator
 
 # TODO: Implement full image models with all required parameters and fields
+
+GPT_IMAGE_2_MODEL = "gpt-image-2"
+FLUX_KONTEXT_PRO_MODEL = "flux-kontext-pro"
+SUPPORTED_IMAGE_MODELS = (GPT_IMAGE_2_MODEL, FLUX_KONTEXT_PRO_MODEL)
+
+GPT_IMAGE_2_MIN_PIXELS = 655_360
+GPT_IMAGE_2_MAX_PIXELS = 8_294_400
+GPT_IMAGE_2_MAX_EDGE = 3_840
+GPT_IMAGE_2_MAX_ASPECT_RATIO = 3
+_IMAGE_SIZE_PATTERN = re.compile(r"^(?P<width>[1-9]\d*)x(?P<height>[1-9]\d*)$")
+
+
+def validate_image_model(model: str) -> None:
+    """Reject model identifiers that are not exposed by the application."""
+    if model not in SUPPORTED_IMAGE_MODELS:
+        raise ValueError(f"Model must be one of {list(SUPPORTED_IMAGE_MODELS)}")
+
+
+def validate_image_size(model: str, size: str) -> None:
+    """Validate the flexible GPT-Image-2 dimensions documented by Azure."""
+    if model != GPT_IMAGE_2_MODEL or size == "auto":
+        return
+
+    match = _IMAGE_SIZE_PATTERN.fullmatch(size)
+    if not match:
+        raise ValueError("GPT-Image-2 size must be 'auto' or WIDTHxHEIGHT")
+
+    width = int(match.group("width"))
+    height = int(match.group("height"))
+    if width % 16 or height % 16:
+        raise ValueError("GPT-Image-2 width and height must be multiples of 16")
+    if max(width, height) > GPT_IMAGE_2_MAX_EDGE:
+        raise ValueError(
+            f"GPT-Image-2 long edge must not exceed {GPT_IMAGE_2_MAX_EDGE} pixels"
+        )
+    if max(width, height) > GPT_IMAGE_2_MAX_ASPECT_RATIO * min(width, height):
+        raise ValueError("GPT-Image-2 aspect ratio must be between 1:3 and 3:1")
+
+    pixels = width * height
+    if not GPT_IMAGE_2_MIN_PIXELS <= pixels <= GPT_IMAGE_2_MAX_PIXELS:
+        raise ValueError(
+            "GPT-Image-2 total pixels must be between "
+            f"{GPT_IMAGE_2_MIN_PIXELS:,} and {GPT_IMAGE_2_MAX_PIXELS:,}"
+        )
+
+
+def validate_image_options(
+    model: str,
+    *,
+    quality: Optional[str],
+    output_format: Optional[str],
+    response_format: str,
+    background: Optional[str],
+) -> None:
+    """Validate GPT-Image-2 output controls shared across providers."""
+    if model != GPT_IMAGE_2_MODEL:
+        return
+    if quality not in {"auto", "low", "medium", "high"}:
+        raise ValueError("GPT-Image-2 quality must be auto, low, medium, or high")
+    if output_format not in {"png", "jpeg", "webp"}:
+        raise ValueError("GPT-Image-2 output_format must be png, jpeg, or webp")
+    if response_format != "b64_json":
+        raise ValueError("GPT-Image-2 response_format must be b64_json")
+    if background not in {"auto", "transparent", "opaque"}:
+        raise ValueError("GPT-Image-2 background must be auto, transparent, or opaque")
+    if background == "transparent" and output_format not in {"png", "webp"}:
+        raise ValueError(
+            "GPT-Image-2 transparent backgrounds require png or webp output"
+        )
 
 
 class ImagePromptEnhancementRequest(BaseModel):
@@ -32,47 +103,41 @@ class ImagePromptBrandProtectionRequest(BaseModel):
 class ImagePromptBrandProtectionResponse(BaseModel):
     """Response model for rewritten image generation prompts"""
     enhanced_prompt: str = Field(...,
-                                 # Using OpenAI DALL-E as placeholder for gpt-image-1 because of API similarity
                                  description="Rewritten prompt for image generation")
 
 
 class ImageGenerationRequest(BaseModel):
     """Request model for image generation"""
 
-    # common parameters for gpt-image-1.5:
+    # Common GPT-Image-2 generation parameters.
     prompt: str = Field(...,
-                        description="User prompt for image generation. Maximum 32000 characters for gpt-image-1.5.",
+                        max_length=32000,
+                        description="User prompt for image generation. Maximum 32000 characters for GPT-Image-2.",
                         examples=["A futuristic city skyline at sunset"])
-    model: str = Field("gpt-image-1.5",
+    model: str = Field(GPT_IMAGE_2_MODEL,
                        description="Image generation model to use",
-                       examples=["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"])
-    
-    @validator('model')
-    def validate_model(cls, v):
-        """Validate that the model is one of the supported models"""
-        valid_models = ["gpt-image-1.5", "gpt-image-1-mini", "flux-kontext-pro"]
-        if v not in valid_models:
-            raise ValueError(f"Model must be one of {valid_models}")
-        return v
+                       examples=list(SUPPORTED_IMAGE_MODELS))
     n: int = Field(1,
+                   ge=1,
+                   le=10,
                    description="Number of images to generate (1-10)")
     size: str = Field("auto",
-                      description="Output image dimensions. Must be one of 1024x1024, 1536x1024 (landscape), 1024x1536 (portrait), or auto.",
-                      examples=["1024x1024", "1536x1024", "1024x1536", "auto"])
+                      description="GPT-Image-2 dimensions: auto or WIDTHxHEIGHT, with both edges divisible by 16, a 1:3 to 3:1 aspect ratio, 655,360-8,294,400 total pixels, and a maximum 3,840-pixel long edge.",
+                      examples=["1024x1024", "3840x2160", "1024x1536", "auto"])
     response_format: str = Field("b64_json",
-                                 description="Response format for the generated image. Note: gpt-image-1.5 always returns b64_json regardless of this setting.",
+                                 description="Response format for the generated image. GPT-Image-2 returns b64_json.",
                                  examples=["b64_json"])
-    # gpt-image-1.5 specific parameters:
-    quality: Optional[str] = Field("auto",
-                                   description="Quality setting: 'low', 'medium', 'high', 'auto'. Defaults to auto.",
-                                   examples=["low", "medium", "high", "auto"])
+    # GPT-Image-2 output controls.
+    quality: Optional[str] = Field("high",
+                                   description="Quality setting: 'auto', 'low', 'medium', or 'high'. Defaults to high.",
+                                   examples=["auto", "low", "medium", "high"])
     output_format: Optional[str] = Field("png",
-                                         description="Output format: 'png', 'webp', 'jpeg'. Defaults to png.",
-                                         examples=["png", "webp", "jpeg"])
+                                         description="GPT-Image-2 output format: 'png', 'jpeg', or 'webp'. Defaults to png. Azure availability can vary by API surface.",
+                                         examples=["png", "jpeg", "webp"])
     output_compression: Optional[int] = Field(100,
                                               description="Compression rate percentage for WEBP and JPEG (0-100). Only valid with webp or jpeg output formats.")
     background: Optional[str] = Field("auto",
-                                      description="Background setting: 'transparent', 'opaque', 'auto'. For transparent, output_format should be png or webp.",
+                                      description="Background setting: 'transparent', 'opaque', or 'auto'. Transparent output requires png or webp.",
                                       examples=["transparent", "opaque", "auto"])
     moderation: Optional[str] = Field("auto",
                                       description="Moderation strictness: 'auto', 'low'. Controls content filtering level.",
@@ -80,12 +145,25 @@ class ImageGenerationRequest(BaseModel):
     user: Optional[str] = Field(None,
                                 description="A unique identifier representing your end-user, which helps OpenAI monitor and detect abuse.")
 
+    @model_validator(mode="after")
+    def validate_model_capabilities(self):
+        validate_image_model(self.model)
+        validate_image_size(self.model, self.size)
+        validate_image_options(
+            self.model,
+            quality=self.quality,
+            output_format=self.output_format,
+            response_format=self.response_format,
+            background=self.background,
+        )
+        return self
+
 
 class ImageEditRequest(ImageGenerationRequest):
     """Request model for image editing"""
 
     image: Union[str, HttpUrl, List[Union[str, HttpUrl]]] = Field(...,
-                                                                  description="The image(s) to edit. For gpt-image-1.5, you can provide up to 10 images, each should be a png, webp, or jpg file less than 25MB. Can be local file path(s), Base64-encoded image(s) (data URI) or URL(s).",
+                                                                  description="The image(s) to edit. GPT-Image-2 accepts PNG, JPG, or WebP images smaller than 50MB. Sources can be local paths, Base64 data, or URLs.",
                                                                   examples=[
                                                                       "images/image.png",
                                                                       ["images/image1.png",
@@ -95,14 +173,14 @@ class ImageEditRequest(ImageGenerationRequest):
                                                                   ])
 
     mask: Optional[Union[str, HttpUrl]] = Field(None,
-                                                description="An additional image whose fully transparent areas indicate where the first image should be edited. Must be a valid PNG file with the same dimensions as the first image, and have an alpha channel.",
+                                                description="An additional PNG or WebP image whose fully transparent areas indicate where the first image should be edited. It should match the first image dimensions and include an alpha channel.",
                                                 examples=[
                                                     "images/mask.png",
                                                     "https://example.com/mask.png",
                                                     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
                                                 ])
 
-    # gpt-image-1.5 specific edit parameters:
+    # GPT-Image-2 edit controls.
     input_fidelity: Optional[str] = Field("low",
                                           description="Input fidelity setting for image editing: 'low' (default, faster), 'high' (better reproduction of input image features, additional cost). Only available for image editing operations.",
                                           examples=["low", "high"])
@@ -139,7 +217,7 @@ class ImageGenerationResponse(BaseResponse):
         None, description="JSON response from the image generation API"
     )
     token_usage: Optional[TokenUsage] = Field(
-        None, description="Token usage information (for gpt-image-1.5 only)"
+        None, description="Token usage information returned by the image model"
     )
 
 
@@ -220,21 +298,21 @@ class ImageGenerateWithAnalysisRequest(BaseModel):
     """Request model for generating, analyzing, and saving images in one call"""
     # Generation parameters (mirrors ImageGenerationRequest)
     prompt: str = Field(..., description="User prompt for image generation")
-    model: str = Field("gpt-image-1.5", description="Image generation model to use")
+    model: str = Field(GPT_IMAGE_2_MODEL, description="Image generation model to use")
     n: int = Field(1, description="Number of images to generate (1-10)")
     size: str = Field(
         "auto",
-        description="Output image dimensions. One of 1024x1024, 1536x1024, 1024x1536, or auto.",
+        description="GPT-Image-2 dimensions in WIDTHxHEIGHT form, or auto.",
     )
     response_format: str = Field(
         "b64_json",
-        description="Response format for generated image(s). gpt-image-1.5 returns b64_json",
+        description="Response format for generated image(s). GPT-Image-2 returns b64_json",
     )
     quality: Optional[str] = Field(
-        "auto", description="Quality setting: 'low', 'medium', 'high', 'auto'"
+        "high", description="Quality setting: 'auto', 'low', 'medium', or 'high'"
     )
     output_format: Optional[str] = Field(
-        "png", description="Output format: 'png', 'webp', 'jpeg'"
+        "png", description="Output format: 'png', 'jpeg', or 'webp'"
     )
     output_compression: Optional[int] = Field(
         100,
@@ -242,7 +320,7 @@ class ImageGenerateWithAnalysisRequest(BaseModel):
     )
     background: Optional[str] = Field(
         "auto",
-        description="Background: 'transparent', 'opaque', 'auto'. Transparent needs png/webp",
+        description="Background: 'transparent', 'opaque', or 'auto'. Transparent requires png or webp",
     )
     moderation: Optional[str] = Field(
         "auto", description="Moderation strictness: 'auto', 'low'"
@@ -259,6 +337,19 @@ class ImageGenerateWithAnalysisRequest(BaseModel):
     analyze: bool = Field(
         True, description="Whether to analyze images and store analysis results"
     )
+
+    @model_validator(mode="after")
+    def validate_model_capabilities(self):
+        validate_image_model(self.model)
+        validate_image_size(self.model, self.size)
+        validate_image_options(
+            self.model,
+            quality=self.quality,
+            output_format=self.output_format,
+            response_format=self.response_format,
+            background=self.background,
+        )
+        return self
 
 
 class ImageListRequest(BaseModel):
@@ -403,18 +494,18 @@ class ImagePipelineRequest(BaseModel):
         description="Prompt used for generation or editing",
     )
     model: str = Field(
-        "gpt-image-1.5", description="Model deployment identifier"
+        GPT_IMAGE_2_MODEL, description="Model deployment identifier"
     )
     n: int = Field(1, ge=1, le=10, description="Number of variants to produce (1-10)")
     size: str = Field(
         "auto",
-        description="Requested output size (1024x1024, 1536x1024, 1024x1536, or auto)",
+        description="GPT-Image-2 dimensions in WIDTHxHEIGHT form, or auto",
     )
     response_format: str = Field(
         "b64_json", description="Expected response format from the model"
     )
     quality: Optional[str] = Field(
-        "auto", description="Quality hint for gpt-image-1.5"
+        "high", description="Quality hint for GPT-Image-2"
     )
     output_format: Optional[str] = Field(
         "png", description="Desired output format"
@@ -459,6 +550,19 @@ class ImagePipelineRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(
         None, description="Arbitrary metadata forwarded through the pipeline"
     )
+
+    @model_validator(mode="after")
+    def validate_model_capabilities(self):
+        validate_image_model(self.model)
+        validate_image_size(self.model, self.size)
+        validate_image_options(
+            self.model,
+            quality=self.quality,
+            output_format=self.output_format,
+            response_format=self.response_format,
+            background=self.background,
+        )
+        return self
 
 
 class PipelineStepResult(BaseModel):

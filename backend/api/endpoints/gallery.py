@@ -17,7 +17,7 @@ import uuid
 import logging
 from datetime import datetime
 
-from backend.core import get_container_sas_token
+from backend.core import get_blob_container_url, get_container_sas_token
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.cosmos_client import CosmosDBService
 from backend.core.config import settings
@@ -145,15 +145,19 @@ async def get_gallery_images(
     tags: Optional[str] = Query(
         None, description="Comma-separated tags to filter by"),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
+    azure_storage_service: AzureBlobStorageService = Depends(
+        get_azure_storage_service
+    ),
 ):
-    """Get gallery images from Cosmos DB metadata ONLY"""
+    """Get gallery images from Cosmos metadata or Blob Storage locally."""
     try:
-        # Check if Cosmos DB service is available
         if not cosmos_service:
-            logger.error("Cosmos DB service is not available")
-            raise HTTPException(
-                status_code=503,
-                detail="Cosmos DB service is not available. Please check your configuration.",
+            return await _get_gallery_items_from_blob_storage(
+                limit=limit,
+                offset=offset,
+                folder_path=folder_path,
+                tags=_parse_tags(tags),
+                azure_storage_service=azure_storage_service,
             )
 
         # Parse tags if provided
@@ -228,17 +232,21 @@ async def get_gallery_items(
         None, description="Optional folder path to filter assets"
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
+    azure_storage_service: AzureBlobStorageService = Depends(
+        get_azure_storage_service
+    ),
 ):
     """
     Get gallery images from CosmosDB metadata.
     """
     try:
-        # Check if Cosmos DB service is available
         if not cosmos_service:
-            logger.error("Cosmos DB service is not available")
-            raise HTTPException(
-                status_code=503,
-                detail="Cosmos DB service is not available. Please check your configuration.",
+            return await _get_gallery_items_from_blob_storage(
+                limit=limit,
+                offset=offset,
+                folder_path=folder_path,
+                tags=None,
+                azure_storage_service=azure_storage_service,
             )
 
         return await _get_gallery_items_from_cosmos(
@@ -315,7 +323,74 @@ async def _get_gallery_items_from_cosmos(
         )
 
 
-# Removed legacy blob storage implementation - now using CosmosDB only
+async def _get_gallery_items_from_blob_storage(
+    *,
+    limit: int,
+    offset: int,
+    folder_path: Optional[str],
+    tags: Optional[list[str]],
+    azure_storage_service: AzureBlobStorageService,
+) -> GalleryResponse:
+    """List Blob assets when local development runs without Cosmos DB."""
+    normalized_folder = azure_storage_service.normalize_folder_path(folder_path)
+    result = await asyncio.to_thread(
+        azure_storage_service.list_blobs,
+        settings.AZURE_BLOB_IMAGE_CONTAINER,
+        normalized_folder or None,
+        5000,
+        None,
+    )
+    blobs = [
+        blob
+        for blob in result["blobs"]
+        if not blob["name"].endswith("/.folder")
+    ]
+    if tags:
+        requested_tags = {tag.casefold() for tag in tags}
+        blobs = [
+            blob
+            for blob in blobs
+            if requested_tags.issubset(
+                {
+                    tag.strip().casefold()
+                    for tag in str(blob.get("metadata", {}).get("tags", "")).split(",")
+                    if tag.strip()
+                }
+            )
+        ]
+
+    blobs.sort(
+        key=lambda blob: blob.get("last_modified") or blob.get("creation_time") or "",
+        reverse=True,
+    )
+    total = len(blobs)
+    page = blobs[offset : offset + limit]
+    items = [
+        GalleryItem(
+            id=blob["name"].rsplit("/", 1)[-1].rsplit(".", 1)[0],
+            name=blob["name"],
+            media_type=MediaType.IMAGE,
+            url=blob["url"],
+            container=result["container"],
+            size=blob["size"],
+            content_type=blob.get("content_type"),
+            creation_time=blob.get("creation_time"),
+            last_modified=blob.get("last_modified"),
+            metadata=blob.get("metadata") or {},
+            folder_path=blob.get("folder_path", ""),
+        )
+        for blob in page
+    ]
+    return GalleryResponse(
+        success=True,
+        message=f"Retrieved {len(items)} images from Blob Storage",
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=items,
+        continuation_token=None,
+        folders=None,
+    )
 
 
 @router.post("/upload", response_model=AssetUploadResponse)
@@ -519,12 +594,13 @@ async def get_sas_tokens():
         image_token, expiry_time = await get_container_sas_token(
             settings.AZURE_BLOB_IMAGE_CONTAINER
         )
-        base_url = settings.CDN_BLOB_URL or f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
         return {
             "success": True,
             "message": "SAS token generated successfully",
             "image_sas_token": image_token,
-            "image_container_url": f"{base_url}/{settings.AZURE_BLOB_IMAGE_CONTAINER}",
+            "image_container_url": get_blob_container_url(
+                settings.AZURE_BLOB_IMAGE_CONTAINER
+            ),
             "expiry": expiry_time,
         }
     except Exception as e:
@@ -716,6 +792,9 @@ async def list_folders(
         None, description="Filter folders by asset type"
     ),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
+    azure_storage_service: AzureBlobStorageService = Depends(
+        get_azure_storage_service
+    ),
 ):
     """
     List all folders from Cosmos DB metadata
@@ -723,13 +802,24 @@ async def list_folders(
     This endpoint returns all unique folder paths from assets stored in Cosmos DB.
     """
     try:
-        # Check if Cosmos DB service is available
         if not cosmos_service:
-            logger.error("Cosmos DB service is not available")
-            raise HTTPException(
-                status_code=503,
-                detail="Cosmos DB service is not available. Please check your configuration.",
+            folders = await asyncio.to_thread(
+                azure_storage_service.list_folders,
+                settings.AZURE_BLOB_IMAGE_CONTAINER,
             )
+            folder_hierarchy = {
+                folder.strip("/"): {}
+                for folder in folders
+                if "/" not in folder.strip("/")
+            }
+            return {
+                "success": True,
+                "message": "Folders retrieved successfully from Blob Storage",
+                "folders": folders,
+                "folder_hierarchy": folder_hierarchy,
+                "total_folders": len(folders),
+                "source": "blob_storage",
+            }
 
         # Get folders from Cosmos DB
         media_type_str = (media_type or MediaType.IMAGE).value
@@ -769,6 +859,9 @@ async def create_folder(
     folder_path: str = Body(..., embed=True),
     media_type: Optional[MediaType] = Body(None, embed=True),
     cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
+    azure_storage_service: AzureBlobStorageService = Depends(
+        get_azure_storage_service
+    ),
 ):
     """
     Create a folder placeholder in CosmosDB for immediate navbar visibility.
@@ -850,6 +943,16 @@ async def create_folder(
                 logger.warning(
                     f"Failed to create folder placeholder in CosmosDB: {e}")
                 # Continue anyway - folder will still work when assets are added
+        else:
+            await azure_storage_service._ensure_async_storage_ready()
+            marker = (
+                azure_storage_service._get_async_blob_service_client()
+                .get_blob_client(
+                    container=settings.AZURE_BLOB_IMAGE_CONTAINER,
+                    blob=f"{normalized_folder}.folder",
+                )
+            )
+            await marker.upload_blob(b"", overwrite=True)
 
         # Return success
         return {

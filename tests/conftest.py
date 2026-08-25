@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 os.environ.setdefault("MODEL_PROVIDER", "azure")
 os.environ.setdefault("AI_FOUNDRY_ENDPOINT", "https://test-foundry.cognitiveservices.azure.com/")
 os.environ.setdefault("LLM_DEPLOYMENT", "test-llm-deployment")
-os.environ.setdefault("IMAGEGEN_DEPLOYMENT", "test-deployment")
+os.environ.setdefault("IMAGEGEN_2_DEPLOYMENT", "test-gpt-image-2-deployment")
 os.environ.setdefault("AZURE_STORAGE_ACCOUNT_NAME", "teststorage")
 os.environ.setdefault("AZURE_BLOB_SERVICE_URL", "https://teststorage.blob.core.windows.net/")
 os.environ.setdefault("AZURE_BLOB_IMAGE_CONTAINER", "images")

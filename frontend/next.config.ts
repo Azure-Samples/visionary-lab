@@ -33,11 +33,24 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: '*.azurefd.net',
         pathname: '/**',
+      },
+      {
+        protocol: 'http',
+        hostname: '127.0.0.1',
+        port: '10000',
+        pathname: '/devstoreaccount1/**',
+      },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '10000',
+        pathname: '/devstoreaccount1/**',
       }
     ],
     // Image optimization settings
     minimumCacheTTL: 86400, // 24 hours
     formats: ['image/webp', 'image/avif'],
+    qualities: [75, 85],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     // Enable unoptimized images for external URLs with query params (SAS tokens)

@@ -1,12 +1,17 @@
 """Integration tests for image generation via GPTImageClient.
 
 These tests call the real Azure OpenAI API — they cost tokens and take ~10-30s each.
-Run with:  uv run pytest tests/integration/test_image_generation.py -v -s
+Run with:  uv run pytest -m integration tests/integration/test_image_generation.py -v -s
 """
 
 import base64
+import io
+
 import pytest
+from openai import BadRequestError
+from PIL import Image
 from backend.core.config import settings
+from backend.models.images import GPT_IMAGE_2_MODEL
 
 pytestmark = pytest.mark.integration
 
@@ -60,6 +65,54 @@ class TestImageGeneration:
             assert "b64_json" in result["data"][0]
 
     @pytest.mark.asyncio
+    async def test_generate_with_flexible_gpt_image_2_size(self, image_client):
+        """Generate a non-legacy aspect ratio supported by GPT-Image-2."""
+        result = await image_client.generate_image(
+            prompt="A minimal teal geometric pattern",
+            n=1,
+            size="1280x768",
+            quality="low",
+        )
+
+        assert len(result["data"]) == 1
+        assert "b64_json" in result["data"][0]
+        assert result["_model"] == GPT_IMAGE_2_MODEL
+
+    @pytest.mark.asyncio
+    async def test_edit_with_high_input_fidelity(self, image_client):
+        """Edit a real PNG with GPT-Image-2's native high-fidelity control."""
+        source = Image.new("RGB", (512, 512), "white")
+        for x in range(128, 384):
+            for y in range(128, 384):
+                source.putpixel((x, y), (20, 90, 200))
+        source_bytes = io.BytesIO()
+        source.save(source_bytes, format="PNG")
+
+        for attempt in range(2):
+            try:
+                result = await image_client.edit_image(
+                    prompt=(
+                        "Preserve the centered blue square exactly and change only "
+                        "the white background to a pale yellow background"
+                    ),
+                    model=GPT_IMAGE_2_MODEL,
+                    image=("blue-square.png", source_bytes.getvalue(), "image/png"),
+                    n=1,
+                    size="1024x1024",
+                    quality="low",
+                    output_format="png",
+                    input_fidelity="high",
+                )
+                break
+            except BadRequestError as exc:
+                if attempt == 1 or "moderation_blocked" not in str(exc):
+                    raise
+
+        assert len(result["data"]) == 1
+        assert "b64_json" in result["data"][0]
+        assert result["_model"] == GPT_IMAGE_2_MODEL
+
+    @pytest.mark.asyncio
     async def test_generate_with_transparent_background(self, image_client):
         """Test transparent background generation."""
         result = await image_client.generate_image(
@@ -101,4 +154,5 @@ class TestImageGeneration:
 
         assert "_deployment_name" in result
         assert "_model" in result
-        assert result["_deployment_name"] == settings.IMAGEGEN_DEPLOYMENT
+        assert result["_deployment_name"] == settings.IMAGEGEN_2_DEPLOYMENT
+        assert result["_model"] == GPT_IMAGE_2_MODEL

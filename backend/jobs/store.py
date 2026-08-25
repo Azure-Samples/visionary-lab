@@ -248,7 +248,6 @@ class CosmosImageJobStore:
             async for raw in container.query_items(
                 query=query,
                 parameters=parameters,
-                enable_cross_partition_query=True,
             )
         ]
         count_query = f"SELECT VALUE COUNT(1) FROM c WHERE {where}"
@@ -257,7 +256,6 @@ class CosmosImageJobStore:
             async for value in container.query_items(
                 query=count_query,
                 parameters=parameters,
-                enable_cross_partition_query=True,
             )
         ]
         return records, int(counts[0]) if counts else 0
@@ -276,7 +274,6 @@ class CosmosImageJobStore:
             self._record(raw)
             async for raw in container.query_items(
                 query=query,
-                enable_cross_partition_query=True,
             )
         ]
 

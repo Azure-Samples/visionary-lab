@@ -23,14 +23,8 @@
     "LLM_DEPLOYMENT": {
       "value": "${LLM_DEPLOYMENT}"
     },
-    "IMAGEGEN_DEPLOYMENT": {
-      "value": "${IMAGEGEN_DEPLOYMENT}"
-    },
-    "IMAGEGEN_15_DEPLOYMENT": {
-      "value": "${IMAGEGEN_15_DEPLOYMENT}"
-    },
-    "IMAGEGEN_1_MINI_DEPLOYMENT": {
-      "value": "${IMAGEGEN_1_MINI_DEPLOYMENT}"
+    "IMAGEGEN_2_DEPLOYMENT": {
+      "value": "${IMAGEGEN_2_DEPLOYMENT}"
     },
     "FLUX_KONTEXT_DEPLOYMENT": {
       "value": "${FLUX_KONTEXT_DEPLOYMENT}"

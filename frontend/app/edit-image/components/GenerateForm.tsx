@@ -27,8 +27,8 @@ export default function GenerateForm({
 }: GenerateFormProps) {
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [model] = useState('gpt-image-1.5');
-  const [quality, setQuality] = useState('auto');
+  const [model] = useState('gpt-image-2');
+  const [quality, setQuality] = useState('high');
   const [size, setSize] = useState('auto');
   const [outputFormat, setOutputFormat] = useState('png');
   const [inputFidelity, setInputFidelity] = useState('low');
@@ -131,11 +131,17 @@ export default function GenerateForm({
       });
       return;
     }
+
+    if (originalImage.file.size >= 50 * 1024 * 1024) {
+      toast.error("Image is too large", {
+        description: "GPT-Image-2 source images must be smaller than 50MB",
+      });
+      return;
+    }
     
     setIsLoading(true);
     
     try {
-      // Create form data for submission
       const formData = new FormData();
       formData.append('prompt', prompt);
       formData.append('model', model);
@@ -143,113 +149,28 @@ export default function GenerateForm({
       formData.append('size', size);
       formData.append('quality', quality);
       formData.append('output_format', outputFormat);
-      
-      // Check if the original image is too large and needs optimization
-      if (originalImage.file.size > 5 * 1024 * 1024) { // If larger than 5MB
-        
-        // Create a canvas to resize the image
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        if (ctx) {
-          // Create an image element to load the file
-          const img = new Image();
-          
-          // Set up a promise to handle the image loading
-          await new Promise<void>((resolve, reject) => {
-            img.onload = () => {
-              // Calculate a smaller size while preserving aspect ratio
-              const MAX_WIDTH = 1536;
-              const MAX_HEIGHT = 1536;
-              let width = img.width;
-              let height = img.height;
-              
-              if (width > MAX_WIDTH || height > MAX_HEIGHT) {
-                if (width > height) {
-                  height = Math.round(height * (MAX_WIDTH / width));
-                  width = MAX_WIDTH;
-                } else {
-                  width = Math.round(width * (MAX_HEIGHT / height));
-                  height = MAX_HEIGHT;
-                }
-              }
-              
-              canvas.width = width;
-              canvas.height = height;
-              
-              // Draw the image to the canvas at the new size
-              ctx.drawImage(img, 0, 0, width, height);
-              
-              // Convert the canvas to a blob
-              canvas.toBlob((blob) => {
-                if (blob) {
-                  // Create a new File from the blob
-                  const optimizedFile = new File([blob], originalImage.file.name, { 
-                    type: 'image/jpeg',
-                    lastModified: Date.now()
-                  });
-                  
+      formData.append('background', 'auto');
+      formData.append('input_fidelity', inputFidelity);
+      formData.append('image', originalImage.file);
 
-                  
-                  // Add to the form data
-                  formData.append('image', optimizedFile);
-                  resolve();
-                } else {
-                  reject(new Error('Failed to optimize image'));
-                }
-              }, 'image/jpeg', 0.85);
-            };
-            
-            img.onerror = () => reject(new Error('Failed to load image for optimization'));
-            
-            // Set the source of the image to the original file
-            img.src = URL.createObjectURL(originalImage.file);
-          });
-        } else {
-          // If context fails, use original
-          formData.append('image', originalImage.file);
-        }
-      } else {
-        // Append the original image if it's not too large
-        formData.append('image', originalImage.file);
-      }
-      
-      // Convert and append the mask
       const properMask = getProperMaskForAPI();
-      properMask.toBlob(async (blob) => {
-        try {
-          if (!blob) {
-            throw new Error('Failed to convert mask to blob');
-          }
-          
-          // Create a FormData object
-          const formData = new FormData();
-          formData.append('prompt', prompt);
-          formData.append('image', originalImage.file);
-          formData.append('mask', blob);
-          formData.append('model', model);
-          formData.append('quality', quality);
-          formData.append('size', size);
-          formData.append('output_format', outputFormat);
-          formData.append('input_fidelity', inputFidelity);
-          
-          // Submit the form data
-          await onSubmit(formData);
-          
-          console.log('Image edit request submitted successfully');
-        } catch (error) {
-          console.error('Error processing mask:', error);
-          throw error;
-        } finally {
-          setIsLoading(false);
-        }
-      }, 'image/png', 0.8);
+      const maskBlob = await new Promise<Blob>((resolve, reject) => {
+        properMask.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Failed to convert mask to PNG'));
+        }, 'image/png');
+      });
+      formData.append('mask', maskBlob, 'mask.png');
+
+      await onSubmit(formData);
+      console.log('Image edit request submitted successfully');
     } catch (error) {
       console.error('Error submitting form:', error);
-      setIsLoading(false);
       toast.error("Error submitting form", {
         description: error instanceof Error ? error.message : "An unknown error occurred"
       });
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -337,7 +258,6 @@ export default function GenerateForm({
                   <SelectItem value="low">Low</SelectItem>
                   <SelectItem value="medium">Medium</SelectItem>
                   <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="auto">Auto</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -355,7 +275,6 @@ export default function GenerateForm({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="png">PNG</SelectItem>
-                  <SelectItem value="webp">WebP</SelectItem>
                   <SelectItem value="jpeg">JPEG</SelectItem>
                 </SelectContent>
               </Select>
@@ -398,6 +317,9 @@ export default function GenerateForm({
                   <SelectItem value="1024x1024">1024x1024</SelectItem>
                   <SelectItem value="1536x1024">1536x1024 (landscape)</SelectItem>
                   <SelectItem value="1024x1536">1024x1536 (portrait)</SelectItem>
+                  <SelectItem value="2048x2048">2048x2048</SelectItem>
+                  <SelectItem value="3840x2160">3840x2160 (4K)</SelectItem>
+                  <SelectItem value="2160x3840">2160x3840 (4K portrait)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

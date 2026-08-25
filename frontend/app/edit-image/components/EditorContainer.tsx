@@ -29,6 +29,9 @@ export default function EditorContainer() {
     imageUrl: string;
     model: string;
     prompt: string;
+    outputFormat: string;
+    size: string;
+    background: string;
     tokenUsage?: {
       total: number;
       input: number;
@@ -91,7 +94,10 @@ export default function EditorContainer() {
       const response = await editImage(formData);
       
       // Get the image URL and token usage
-      const imageUrl = getImageFromResponse(response);
+      const outputFormat = String(formData.get('output_format') ?? 'png');
+      const size = String(formData.get('size') ?? 'auto');
+      const background = String(formData.get('background') ?? 'auto');
+      const imageUrl = getImageFromResponse(response, outputFormat);
       const tokenUsage = getTokenUsage(response);
       const prompt = formData.get('prompt') as string;
       const model = formData.get('model') as string;
@@ -101,6 +107,9 @@ export default function EditorContainer() {
         imageUrl,
         model,
         prompt,
+        outputFormat,
+        size,
+        background,
         tokenUsage: tokenUsage ?? null,
         rawResponse: response
       });
@@ -133,7 +142,9 @@ export default function EditorContainer() {
         {
           prompt: resultData.prompt,
           model: resultData.model,
-          output_format: 'png', // Default to PNG for best quality
+          output_format: resultData.outputFormat,
+          size: resultData.size,
+          background: resultData.background,
           save_all: false, // Only save the first image
           folder_path: folder // Use folder_path instead of folder
         }
@@ -191,7 +202,7 @@ export default function EditorContainer() {
                     <Alert>
                       <InfoIcon className="h-4 w-4" />
                       <AlertDescription>
-                        Upload an image to get started. Supported formats: PNG, JPEG, WebP. Maximum file size: 25MB.
+                        Upload an image to get started. Supported formats: PNG, JPEG, WebP. Maximum file size: 50MB.
                       </AlertDescription>
                     </Alert>
                     

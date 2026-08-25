@@ -19,8 +19,10 @@ export async function editImage(formData: FormData): Promise<ImageGenerationResp
 
   const n = Number(formData.get('n') ?? '1');
   const size = String(formData.get('size') ?? 'auto');
-  const model = String(formData.get('model') ?? 'gpt-image-1.5');
-  const quality = String(formData.get('quality') ?? 'auto');
+  const model = String(formData.get('model') ?? 'gpt-image-2');
+  const quality = String(formData.get('quality') ?? 'high');
+  const outputFormat = String(formData.get('output_format') ?? 'png');
+  const background = String(formData.get('background') ?? 'auto');
   const inputFidelity = String(formData.get('input_fidelity') ?? 'low');
 
   if (inputFidelity && !['low', 'high'].includes(inputFidelity)) {
@@ -46,6 +48,8 @@ export async function editImage(formData: FormData): Promise<ImageGenerationResp
     size,
     response_format: 'b64_json',
     quality,
+    output_format: outputFormat,
+    background,
     input_fidelity: inputFidelity,
     save_options: {
       enabled: false,
@@ -99,7 +103,7 @@ export async function saveGeneratedImage(
       options.save_all || false,
       options.folder_path || '',
       options.output_format || 'png',
-      options.model || 'gpt-image-1.5',
+      options.model || 'gpt-image-2',
       options.background || 'auto',
       options.size || '1024x1024',
       options.analyze ?? true // default to true to match older behavior
@@ -136,7 +140,10 @@ export async function enhancePrompt(originalPrompt: string): Promise<string> {
 /**
  * Extract base64 image data from a response
  */
-export function getImageFromResponse(response: ImageGenerationResponse): string {
+export function getImageFromResponse(
+  response: ImageGenerationResponse,
+  outputFormat: string = 'png',
+): string {
   if (!response.success || !response.imgen_model_response || !response.imgen_model_response.data || response.imgen_model_response.data.length === 0) {
     throw new Error('Invalid response from image generation API');
   }
@@ -144,7 +151,8 @@ export function getImageFromResponse(response: ImageGenerationResponse): string 
   const imageData = response.imgen_model_response.data[0];
   
   if (imageData.b64_json) {
-    return `data:image/png;base64,${imageData.b64_json}`;
+    const mimeType = outputFormat === 'jpeg' ? 'image/jpeg' : outputFormat === 'webp' ? 'image/webp' : 'image/png';
+    return `data:${mimeType};base64,${imageData.b64_json}`;
   } else if (imageData.url) {
     return imageData.url;
   } else {

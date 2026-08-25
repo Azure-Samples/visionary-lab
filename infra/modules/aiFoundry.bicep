@@ -23,7 +23,7 @@ resource aiFoundry 'Microsoft.CognitiveServices/accounts@2025-06-01' = if (deplo
   properties: {
     allowProjectManagement: true
     customSubDomainName: aiFoundryName
-    disableLocalAuth: false
+    disableLocalAuth: true
     publicNetworkAccess: 'Enabled'
   }
 }

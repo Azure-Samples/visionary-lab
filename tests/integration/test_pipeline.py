@@ -1,13 +1,15 @@
 """Integration tests for the image pipeline (generate → save → analyze).
 
 These tests exercise the full pipeline with real Azure services.
-Run with:  uv run pytest tests/integration/test_pipeline.py -v -s
+Run with:  uv run pytest -m integration tests/integration/test_pipeline.py -v -s
 """
 
 import base64
+import httpx
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from backend.core.config import settings
+from backend.models.images import GPT_IMAGE_2_MODEL
 
 pytestmark = pytest.mark.integration
 
@@ -16,7 +18,7 @@ class TestImagePipeline:
     """Test the ImagePipelineService with real image generation but mocked storage."""
 
     @pytest.mark.asyncio
-    async def test_generate_via_pipeline(self, image_client):
+    async def test_generate_via_pipeline(self, image_settings):
         """Generate an image through the pipeline service."""
         from backend.core.image_pipeline import ImagePipelineService
         from backend.models.images import ImageGenerationRequest
@@ -25,22 +27,25 @@ class TestImagePipeline:
 
         request = ImageGenerationRequest(
             prompt="A simple blue circle on white background",
-            model="gpt-image-1.5",
+            model=GPT_IMAGE_2_MODEL,
             size="1024x1024",
             quality="low",
             n=1,
         )
 
-        result = await service.generate(request)
+        try:
+            result = await service.generate(request)
 
-        assert result is not None
-        assert result.success is True
-        assert result.imgen_model_response is not None
-        assert "data" in result.imgen_model_response
-        assert len(result.imgen_model_response["data"]) >= 1
+            assert result is not None
+            assert result.success is True
+            assert result.imgen_model_response is not None
+            assert "data" in result.imgen_model_response
+            assert len(result.imgen_model_response["data"]) >= 1
+        finally:
+            await service.close()
 
     @pytest.mark.asyncio
-    async def test_pipeline_save_to_storage(self, azure_settings):
+    async def test_pipeline_save_to_storage(self, storage_settings):
         """Test saving a generated image to Azure Blob Storage."""
         from backend.core.image_pipeline import ImagePipelineService
         from backend.core.azure_storage import AzureBlobStorageService
@@ -70,19 +75,29 @@ class TestImagePipeline:
             folder_path="test-integration/",
         )
 
-        result = await service.save(
-            request=request,
-            azure_storage_service=storage,
-        )
+        result = None
+        try:
+            result = await service.save(
+                request=request,
+                azure_storage_service=storage,
+            )
 
-        assert result is not None
-        assert result.total_saved >= 1
-
-        # Clean up — delete the test blob
-        for saved in result.saved_images:
-            blob_name = saved.get("blob_name")
-            if blob_name:
-                storage.delete_asset(blob_name, settings.AZURE_BLOB_IMAGE_CONTAINER)
+            assert result is not None
+            assert result.total_saved >= 1
+            if storage_settings["is_emulator"]:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(result.saved_images[0].url)
+                assert response.status_code == 200
+                assert response.headers["content-type"] == "image/png"
+                assert response.content.startswith(b"\x89PNG")
+        finally:
+            if result is not None:
+                for saved in result.saved_images:
+                    storage.delete_asset(
+                        saved.blob_name,
+                        settings.AZURE_BLOB_IMAGE_CONTAINER,
+                    )
+            await storage.close()
 
     @pytest.mark.asyncio
     async def test_full_generate_and_analyze(self, image_client, llm_client, async_llm_client):

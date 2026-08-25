@@ -6,7 +6,7 @@ param aiFoundryName string
 @description('Deployment name (used to reference the model in API calls)')
 param deploymentName string
 
-@description('Model name (e.g., gpt-4o or gpt-image-1.5)')
+@description('Model name (e.g., gpt-4o or gpt-image-2)')
 param modelName string
 
 @description('Model format')
@@ -20,6 +20,12 @@ param skuName string = 'GlobalStandard'
 
 @description('SKU capacity (throughput units)')
 param skuCapacity int = 1
+
+@description('Responsible AI policy assigned to the deployment')
+param raiPolicyName string = 'Microsoft.DefaultV2'
+
+@description('Automatic model-version upgrade behavior')
+param versionUpgradeOption string = 'OnceNewDefaultVersionAvailable'
 
 resource aiFoundry 'Microsoft.CognitiveServices/accounts@2025-06-01' existing = {
   name: aiFoundryName
@@ -38,6 +44,8 @@ resource modelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-
       format: modelFormat
       version: modelVersion
     }
+    raiPolicyName: raiPolicyName
+    versionUpgradeOption: versionUpgradeOption
   }
 }
 

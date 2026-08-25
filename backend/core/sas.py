@@ -9,10 +9,26 @@ from azure.identity.aio import DefaultAzureCredential
 from azure.storage.blob import ContainerSasPermissions, generate_container_sas
 from azure.storage.blob.aio import BlobServiceClient
 
+from .azure_storage import _AZURITE_BLOB_SERVICE_URL, _is_development_storage
 from .config import settings
 
 _sas_cache: dict[str, tuple[str, datetime]] = {}
 _sas_lock = asyncio.Lock()
+
+
+def get_blob_container_url(container_name: str) -> str:
+    """Return the browser-facing URL for an Azure or local blob container."""
+    if _is_development_storage(settings.AZURE_STORAGE_CONNECTION_STRING):
+        return f"{_AZURITE_BLOB_SERVICE_URL}/{container_name}"
+
+    base_url = settings.CDN_BLOB_URL or settings.AZURE_BLOB_SERVICE_URL
+    if not base_url and settings.AZURE_STORAGE_ACCOUNT_NAME:
+        base_url = (
+            f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+        )
+    if not base_url:
+        raise RuntimeError("Azure Blob Storage is not configured")
+    return f"{base_url.rstrip('/')}/{container_name}"
 
 
 async def get_container_sas_token(
@@ -22,6 +38,11 @@ async def get_container_sas_token(
 ) -> tuple[str, datetime]:
     """Mint and cache a user-delegation read SAS token."""
     now = datetime.now(timezone.utc)
+    if _is_development_storage(settings.AZURE_STORAGE_CONNECTION_STRING):
+        # The local container is intentionally created with blob-level public
+        # access, so no account-key SAS is needed for browser previews.
+        return "", now + lifetime
+
     cached = _sas_cache.get(container_name)
     if cached and cached[1] > now + timedelta(minutes=5):
         return cached

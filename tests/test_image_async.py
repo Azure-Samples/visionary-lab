@@ -5,16 +5,21 @@ import subprocess
 import sys
 import threading
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from azure.core.exceptions import ResourceExistsError
+from fastapi import UploadFile
+from pydantic import ValidationError
 
 from backend.core.azure_storage import AzureBlobStorageService
+from backend.core.config import settings
 from backend.core.gpt_image import GPTImageClient
 from backend.core.image_pipeline import ImagePipelineService
+from backend.core.sas import get_blob_container_url, get_container_sas_token
 from backend.models.images import (
-    ImageEditRequest,
+    GPT_IMAGE_2_MODEL,
+    ImageGenerationRequest,
     ImageGenerationResponse,
     ImagePipelineRequest,
     ImageSaveRequest,
@@ -61,20 +66,29 @@ async def test_gpt_image_client_awaits_sdk_and_closes() -> None:
 
     client = GPTImageClient(
         provider="openai",
-        model="gpt-image-1.5",
+        model=GPT_IMAGE_2_MODEL,
         client=sdk_client,
     )
     async with client:
-        result = await client.generate_image(prompt="test prompt", n=2)
+        result = await client.generate_image(
+            prompt="test prompt",
+            n=2,
+            size="1280x768",
+            quality="low",
+        )
 
     sdk_client.images.generate.assert_awaited_once()
+    call = sdk_client.images.generate.await_args.kwargs
+    assert call["model"] == GPT_IMAGE_2_MODEL
+    assert call["size"] == "1280x768"
+    assert call["quality"] == "low"
     sdk_client.close.assert_awaited_once()
     assert result["data"] == [{"b64_json": "encoded"}]
-    assert result["_model"] == "gpt-image-1.5"
+    assert result["_model"] == GPT_IMAGE_2_MODEL
 
 
 @pytest.mark.asyncio
-async def test_azure_edit_uses_async_sdk_and_preview_extra_body() -> None:
+async def test_azure_edit_uses_native_input_fidelity() -> None:
     sdk_client = MagicMock()
     sdk_client.images.edit = AsyncMock(
         return_value=SimpleNamespace(
@@ -86,7 +100,7 @@ async def test_azure_edit_uses_async_sdk_and_preview_extra_body() -> None:
     client = GPTImageClient(
         provider="azure",
         deployment_name="image-deployment",
-        model="gpt-image-1.5",
+        model=GPT_IMAGE_2_MODEL,
         client=sdk_client,
     )
     result = await client.edit_image(
@@ -97,8 +111,69 @@ async def test_azure_edit_uses_async_sdk_and_preview_extra_body() -> None:
 
     call = sdk_client.images.edit.await_args.kwargs
     assert call["model"] == "image-deployment"
-    assert call["extra_body"] == {"input_fidelity": "high"}
+    assert call["input_fidelity"] == "high"
+    assert "extra_body" not in call
     assert result["data"][0]["b64_json"] == "edited"
+
+
+@pytest.mark.asyncio
+async def test_azure_gpt_image_2_rejects_webp_output() -> None:
+    sdk_client = MagicMock()
+    sdk_client.images.generate = AsyncMock()
+    client = GPTImageClient(
+        provider="azure",
+        deployment_name="image-deployment",
+        model=GPT_IMAGE_2_MODEL,
+        client=sdk_client,
+    )
+
+    with pytest.raises(ValueError, match="Azure GPT-Image-2 output_format"):
+        await client.generate_image(prompt="test", output_format="webp")
+
+    sdk_client.images.generate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_openai_gpt_image_2_passes_through_webp_output() -> None:
+    sdk_client = MagicMock()
+    sdk_client.images.generate = AsyncMock(
+        return_value=SimpleNamespace(
+            model_dump=lambda **_: {"data": [{"b64_json": "encoded"}]}
+        )
+    )
+    client = GPTImageClient(
+        provider="openai",
+        model=GPT_IMAGE_2_MODEL,
+        client=sdk_client,
+    )
+
+    await client.generate_image(
+        prompt="test",
+        quality="auto",
+        output_format="webp",
+        background="transparent",
+    )
+
+    call = sdk_client.images.generate.await_args.kwargs
+    assert call["output_format"] == "webp"
+    assert call["quality"] == "auto"
+    assert call["background"] == "transparent"
+
+
+def test_gpt_image_client_uses_explicit_gpt_image_2_deployment(monkeypatch) -> None:
+    monkeypatch.setattr(
+        settings,
+        "IMAGEGEN_2_DEPLOYMENT",
+        "gpt-image-2-deployment",
+    )
+
+    client = GPTImageClient(
+        provider="azure",
+        model=GPT_IMAGE_2_MODEL,
+        client=MagicMock(),
+    )
+
+    assert client.deployment_name == "gpt-image-2-deployment"
 
 
 @pytest.mark.asyncio
@@ -116,19 +191,96 @@ async def test_sync_azure_token_provider_is_kept_off_event_loop() -> None:
     assert provider_threads and provider_threads[0] != main_thread
 
 
-@pytest.mark.asyncio
-async def test_pipeline_preserves_http_exception_status() -> None:
-    service = ImagePipelineService()
-    request = ImageEditRequest(
-        prompt="edit",
-        model="gpt-image-1-mini",
-        image=base64.b64encode(_ONE_PIXEL_PNG).decode("ascii"),
+@pytest.mark.parametrize(
+    "size",
+    ["auto", "1024x1024", "1280x768", "3840x2160"],
+)
+def test_gpt_image_2_accepts_documented_sizes(size: str) -> None:
+    request = ImageGenerationRequest(prompt="test", size=size)
+
+    assert request.model == GPT_IMAGE_2_MODEL
+    assert request.size == size
+    assert request.quality == "high"
+
+
+@pytest.mark.parametrize(
+    ("size", "message"),
+    [
+        ("1025x1024", "multiples of 16"),
+        ("3072x768", "aspect ratio"),
+        ("800x800", "total pixels"),
+        ("3840x2176", "total pixels"),
+        ("3856x2160", "long edge"),
+        ("1024-by-1024", "WIDTHxHEIGHT"),
+    ],
+)
+def test_gpt_image_2_rejects_invalid_sizes(size: str, message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        ImageGenerationRequest(prompt="test", size=size)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("quality", "ultra", "quality"),
+        ("output_format", "gif", "output_format"),
+        ("response_format", "url", "response_format"),
+        ("background", "solid", "background"),
+    ],
+)
+def test_gpt_image_2_rejects_unsupported_options(
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    kwargs = {field: value}
+    with pytest.raises(ValidationError, match=message):
+        ImageGenerationRequest(prompt="test", **kwargs)
+
+
+def test_gpt_image_2_preserves_cross_provider_options() -> None:
+    request = ImageGenerationRequest(
+        prompt="test",
+        quality="auto",
+        output_format="webp",
+        background="opaque",
     )
 
-    with pytest.raises(HTTPException) as exc_info:
-        await service.edit(request)
+    assert request.quality == "auto"
+    assert request.output_format == "webp"
+    assert request.background == "opaque"
 
-    assert exc_info.value.status_code == 400
+
+def test_gpt_image_2_rejects_transparent_jpeg() -> None:
+    with pytest.raises(ValidationError, match="transparent backgrounds"):
+        ImageGenerationRequest(
+            prompt="test",
+            output_format="jpeg",
+            background="transparent",
+        )
+
+
+@pytest.mark.parametrize(
+    "legacy_model",
+    ["gpt-image-1", "gpt-image-1.5", "gpt-image-1-mini"],
+)
+def test_legacy_openai_image_models_are_rejected(legacy_model: str) -> None:
+    with pytest.raises(ValidationError, match="Model must be one of"):
+        ImageGenerationRequest(prompt="test", model=legacy_model)
+
+
+def test_flux_remains_a_supported_alternative() -> None:
+    request = ImageGenerationRequest(
+        prompt="test",
+        model="flux-kontext-pro",
+        size="1024x1024",
+        quality="auto",
+        output_format="webp",
+        response_format="url",
+        background="opaque",
+    )
+
+    assert request.model == "flux-kontext-pro"
 
 
 @pytest.mark.asyncio
@@ -270,6 +422,148 @@ async def test_blob_upload_uses_native_async_sdk() -> None:
     async_credential.close.assert_awaited_once()
     sync_blob_service_client.close.assert_called_once()
     sync_credential.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_blob_storage_uses_azurite_connection_string_and_creates_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "AZURE_STORAGE_CONNECTION_STRING",
+        "UseDevelopmentStorage=true",
+    )
+    monkeypatch.setattr(settings, "AZURE_BLOB_SERVICE_URL", None)
+    monkeypatch.setattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", None)
+
+    sync_client = MagicMock()
+    sync_client.url = "http://127.0.0.1:10000/devstoreaccount1/"
+    async_client = MagicMock()
+    async_client.close = AsyncMock()
+    container_client = MagicMock()
+    container_client.create_container = AsyncMock()
+    async_client.get_container_client.return_value = container_client
+
+    with (
+        patch(
+            "backend.core.azure_storage.BlobServiceClient.from_connection_string",
+            return_value=sync_client,
+        ) as sync_from_connection_string,
+        patch(
+            "backend.core.azure_storage.AsyncBlobServiceClient.from_connection_string",
+            return_value=async_client,
+        ) as async_from_connection_string,
+        patch("backend.core.azure_storage.DefaultAzureCredential") as sync_credential,
+        patch(
+            "backend.core.azure_storage.AsyncDefaultAzureCredential"
+        ) as async_credential,
+    ):
+        service = AzureBlobStorageService()
+        await service._ensure_async_storage_ready()
+        await service._ensure_async_storage_ready()
+        await service.close()
+
+    resolved = sync_from_connection_string.call_args.args[0]
+    assert "AccountName=devstoreaccount1" in resolved
+    assert "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1" in resolved
+    async_from_connection_string.assert_called_once_with(resolved)
+    container_client.create_container.assert_awaited_once_with(public_access="blob")
+    sync_credential.assert_not_called()
+    async_credential.assert_not_called()
+    sync_client.close.assert_called_once()
+    async_client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_blob_storage_accepts_existing_azurite_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "AZURE_STORAGE_CONNECTION_STRING",
+        "UseDevelopmentStorage=true",
+    )
+
+    sync_client = MagicMock()
+    sync_client.url = "http://127.0.0.1:10000/devstoreaccount1/"
+    async_client = MagicMock()
+    container_client = MagicMock()
+    container_client.create_container = AsyncMock(
+        side_effect=ResourceExistsError("container already exists")
+    )
+    container_client.set_container_access_policy = AsyncMock()
+    async_client.get_container_client.return_value = container_client
+
+    with (
+        patch(
+            "backend.core.azure_storage.BlobServiceClient.from_connection_string",
+            return_value=sync_client,
+        ),
+        patch(
+            "backend.core.azure_storage.AsyncBlobServiceClient.from_connection_string",
+            return_value=async_client,
+        ),
+    ):
+        service = AzureBlobStorageService()
+        await service._ensure_async_storage_ready()
+
+    assert service._async_ready is True
+    container_client.set_container_access_policy.assert_awaited_once_with(
+        signed_identifiers={},
+        public_access="blob",
+    )
+
+
+def test_blob_storage_preserves_managed_identity_without_connection_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "AZURE_STORAGE_CONNECTION_STRING", None)
+    monkeypatch.setattr(
+        settings,
+        "AZURE_BLOB_SERVICE_URL",
+        "https://managed.blob.core.windows.net/",
+    )
+
+    credential = MagicMock()
+    sync_client = MagicMock()
+    with (
+        patch(
+            "backend.core.azure_storage.DefaultAzureCredential",
+            return_value=credential,
+        ) as credential_factory,
+        patch(
+            "backend.core.azure_storage.BlobServiceClient",
+            return_value=sync_client,
+        ) as client_factory,
+    ):
+        service = AzureBlobStorageService()
+
+    credential_factory.assert_called_once_with()
+    client_factory.assert_called_once_with(
+        account_url="https://managed.blob.core.windows.net/",
+        credential=credential,
+    )
+    assert service._is_local_emulator is False
+
+
+@pytest.mark.asyncio
+async def test_azurite_browser_access_needs_no_sas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "AZURE_STORAGE_CONNECTION_STRING",
+        "UseDevelopmentStorage=true",
+    )
+    monkeypatch.setattr(settings, "AZURE_BLOB_SERVICE_URL", None)
+    monkeypatch.setattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", None)
+
+    token, _ = await get_container_sas_token("images")
+
+    assert token == ""
+    assert get_blob_container_url("images") == (
+        "http://127.0.0.1:10000/devstoreaccount1/images"
+    )
 
 
 @pytest.mark.asyncio

@@ -430,8 +430,8 @@ export async function generateImages(
   response_format: string = "b64_json",
   background: string = "auto",
   outputFormat: string = "png",
-  quality: string = "auto",
-  model: string = "gpt-image-1.5"
+  quality: string = "high",
+  model: string = "gpt-image-2"
 ): Promise<ImageGenerationResponse> {
   const pipelineRequest: ImagePipelineRequest = {
     action: PipelineAction.GENERATE,
@@ -472,7 +472,7 @@ export async function saveGeneratedImages(
   saveAll: boolean = true,
   folderPath: string = "",
   outputFormat: string = "png",
-  model: string = "gpt-image-1.5",
+  model: string = "gpt-image-2",
   background: string = "auto",
   size: string = "1024x1024",
   analyze: boolean = false
@@ -551,11 +551,11 @@ export async function generateImagesWithAnalysis(params: {
   const pipelineRequest: ImagePipelineRequest = {
     action: PipelineAction.GENERATE,
     prompt: params.prompt,
-    model: params.model || 'gpt-image-1.5',
+    model: params.model || 'gpt-image-2',
     n: params.n ?? 1,
     size: params.size || 'auto',
     response_format: 'b64_json',
-    quality: params.quality || 'auto',
+    quality: params.quality || 'high',
     output_format: params.output_format || 'png',
     output_compression: params.output_compression,
     background: params.background || 'auto',
@@ -891,20 +891,24 @@ export async function moveAsset(
  * @param prompt - Text prompt describing the desired edits
  * @param n - Number of variations to generate (default: 1)
  * @param size - Output image size (default: "auto")
- * @param quality - Image quality setting (default: "auto")
+ * @param quality - Image quality setting (default: "high")
  * @param inputFidelity - Input fidelity for better reproduction of input features:
  *   - 'low' (default): Standard fidelity, faster processing
  *   - 'high': Better reproduction of input image features, additional cost (~$0.04-$0.06 per image)
- * @param model - Image generation model to use (default: "gpt-image-1.5")
+ * @param model - Image generation model to use (default: "gpt-image-2")
+ * @param outputFormat - Output format requested from the image model
+ * @param background - Background handling requested from the image model
  */
 export async function editImage(
   sourceImages: File | File[],
   prompt: string, 
   n: number = 1,
   size: string = "auto",
-  quality: string = "auto",
+  quality: string = "high",
   inputFidelity: string = "low",
-  model: string = "gpt-image-1.5"
+  model: string = "gpt-image-2",
+  outputFormat: string = "png",
+  background: string = "auto",
 ): Promise<ImageGenerationResponse> {
   if (inputFidelity && !["low", "high"].includes(inputFidelity)) {
     throw new Error("input_fidelity must be either 'low' or 'high'");
@@ -924,6 +928,8 @@ export async function editImage(
     size,
     response_format: 'b64_json',
     quality,
+    output_format: outputFormat,
+    background,
     input_fidelity: inputFidelity,
     save_options: {
       enabled: false,

@@ -119,6 +119,8 @@ export function ImageCreationContainer({
         settings.quality,
         settings.inputFidelity,
         settings.model,
+        settings.outputFormat,
+        settings.background,
       );
 
       const existingMetadata =

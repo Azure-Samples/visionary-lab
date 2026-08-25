@@ -9,11 +9,36 @@ from azure.identity import DefaultAzureCredential
 from azure.identity.aio import DefaultAzureCredential as AsyncDefaultAzureCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from azure.storage.blob.aio import BlobServiceClient as AsyncBlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 
 from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+_DEVELOPMENT_STORAGE_SETTING = "UseDevelopmentStorage=true"
+_AZURITE_BLOB_SERVICE_URL = "http://127.0.0.1:10000/devstoreaccount1"
+# azure-storage-blob does not expand the cross-SDK Azurite shorthand itself.
+# Keep the public emulator credentials local to the development-only branch.
+_AZURITE_CONNECTION_STRING = (
+    "DefaultEndpointsProtocol=http;"
+    "AccountName=devstoreaccount1;"
+    "AccountKey="
+    "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/"
+    "K1SZFPTOtr/KBHBeksoGMGw==;"
+    f"BlobEndpoint={_AZURITE_BLOB_SERVICE_URL};"
+)
+
+
+def _is_development_storage(connection_string: Optional[str]) -> bool:
+    if not connection_string:
+        return False
+    return connection_string.strip().lower() == _DEVELOPMENT_STORAGE_SETTING.lower()
+
+
+def _resolve_connection_string(connection_string: str) -> str:
+    if _is_development_storage(connection_string):
+        return _AZURITE_CONNECTION_STRING
+    return connection_string
 
 
 class AzureBlobStorageService:
@@ -23,17 +48,27 @@ class AzureBlobStorageService:
         """Initialize Azure Blob Storage client"""
         self.image_container = settings.AZURE_BLOB_IMAGE_CONTAINER
 
+        self._connection_string = settings.AZURE_STORAGE_CONNECTION_STRING
+        self._is_local_emulator = _is_development_storage(self._connection_string)
+
         self._account_url = settings.AZURE_BLOB_SERVICE_URL
         if not self._account_url and settings.AZURE_STORAGE_ACCOUNT_NAME:
             self._account_url = (
                 f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
             )
 
-        self._sync_credential = DefaultAzureCredential()
-        self.blob_service_client = BlobServiceClient(
-            account_url=self._account_url,
-            credential=self._sync_credential,
-        )
+        if self._connection_string:
+            self._sync_credential = None
+            self.blob_service_client = BlobServiceClient.from_connection_string(
+                _resolve_connection_string(self._connection_string)
+            )
+            self._account_url = self.blob_service_client.url
+        else:
+            self._sync_credential = DefaultAzureCredential()
+            self.blob_service_client = BlobServiceClient(
+                account_url=self._account_url,
+                credential=self._sync_credential,
+            )
         self._async_credential = None
         self._async_blob_service_client = None
         self._async_setup_lock = asyncio.Lock()
@@ -48,17 +83,24 @@ class AzureBlobStorageService:
         """Lazily create the native async client used by upload operations."""
         client = getattr(self, "_async_blob_service_client", None)
         if client is None:
-            credential = AsyncDefaultAzureCredential()
-            client = AsyncBlobServiceClient(
-                account_url=self._account_url,
-                credential=credential,
-            )
+            connection_string = getattr(self, "_connection_string", None)
+            if connection_string:
+                credential = None
+                client = AsyncBlobServiceClient.from_connection_string(
+                    _resolve_connection_string(connection_string)
+                )
+            else:
+                credential = AsyncDefaultAzureCredential()
+                client = AsyncBlobServiceClient(
+                    account_url=self._account_url,
+                    credential=credential,
+                )
             self._async_credential = credential
             self._async_blob_service_client = client
         return client
 
     async def _ensure_async_storage_ready(self) -> None:
-        """Finish lazy async-client setup; infrastructure owns containers/CORS."""
+        """Finish lazy async setup and initialize the local emulator container."""
         if getattr(self, "_async_ready", False):
             return
 
@@ -70,7 +112,19 @@ class AzureBlobStorageService:
         async with setup_lock:
             if self._async_ready:
                 return
-            self._get_async_blob_service_client()
+            client = self._get_async_blob_service_client()
+            if getattr(self, "_is_local_emulator", False):
+                container_client = client.get_container_client(self.image_container)
+                try:
+                    # Production containers remain private and infrastructure-owned.
+                    # Blob-level public read is local-only so browser previews work
+                    # without requiring an account-key SAS endpoint.
+                    await container_client.create_container(public_access="blob")
+                except ResourceExistsError:
+                    await container_client.set_container_access_policy(
+                        signed_identifiers={},
+                        public_access="blob",
+                    )
             self._async_ready = True
 
     async def close(self) -> None:

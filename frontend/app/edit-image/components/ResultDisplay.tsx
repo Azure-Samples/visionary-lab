@@ -24,6 +24,8 @@ interface ResultDisplayProps {
     imageUrl: string;
     model: string;
     prompt: string;
+    outputFormat: string;
+    size: string;
     tokenUsage?: {
       total: number;
       input: number;
@@ -48,7 +50,12 @@ export default function ResultDisplay({
   const [isCreatingFolderLoading, setIsCreatingFolderLoading] = useState(false);
   const [isRefreshingFolders, setIsRefreshingFolders] = useState(false);
   const newFolderInputRef = React.useRef<HTMLInputElement>(null);
-  const aspectRatio = originalImage.height ? originalImage.width / originalImage.height : 1;
+  const explicitSize = /^(\d+)x(\d+)$/.exec(resultData.size);
+  const aspectRatio = explicitSize
+    ? Number(explicitSize[1]) / Number(explicitSize[2])
+    : originalImage.height
+      ? originalImage.width / originalImage.height
+      : 1;
 
   // Fetch available folders when component mounts
   useEffect(() => {
@@ -137,7 +144,9 @@ export default function ResultDisplay({
     // Create an anchor element and trigger download
     const a = document.createElement('a');
     a.href = resultData.imageUrl;
-    a.download = `edited_${originalImage.file.name}`;
+    const baseName = originalImage.file.name.replace(/\.[^.]+$/, '');
+    const extension = resultData.outputFormat === 'jpeg' ? 'jpg' : resultData.outputFormat;
+    a.download = `edited_${baseName}.${extension}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

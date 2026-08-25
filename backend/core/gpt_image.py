@@ -8,6 +8,13 @@ from typing import Any, Optional
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 
 from backend.core.config import settings
+from backend.models.images import (
+    FLUX_KONTEXT_PRO_MODEL,
+    GPT_IMAGE_2_MODEL,
+    validate_image_model,
+    validate_image_options,
+    validate_image_size,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +37,7 @@ class GPTImageClient:
     ) -> None:
         self.provider = (provider or settings.MODEL_PROVIDER).lower()
         self.model = model or settings.DEFAULT_IMAGE_MODEL
+        validate_image_model(self.model)
         self.deployment_name = (
             deployment_name or self._get_deployment_for_model(self.model)
             if self.provider == "azure"
@@ -123,22 +131,17 @@ class GPTImageClient:
 
         return async_token_provider
 
-    def _get_deployment_for_model(self, model: str) -> str:
+    def _get_deployment_for_model(self, model: str) -> Optional[str]:
         mapping = {
-            "gpt-image-1.5": (
-                settings.IMAGEGEN_15_DEPLOYMENT or settings.IMAGEGEN_DEPLOYMENT
-            ),
-            "gpt-image-1": settings.IMAGEGEN_DEPLOYMENT,
-            "gpt-image-1-mini": settings.IMAGEGEN_1_MINI_DEPLOYMENT,
-            "flux-kontext-pro": settings.FLUX_KONTEXT_DEPLOYMENT,
+            GPT_IMAGE_2_MODEL: settings.IMAGEGEN_2_DEPLOYMENT,
+            FLUX_KONTEXT_PRO_MODEL: settings.FLUX_KONTEXT_DEPLOYMENT,
         }
         deployment = mapping.get(model)
         if not deployment:
             logger.warning(
-                "No deployment configured for model %s; falling back to IMAGEGEN_DEPLOYMENT",
+                "No Azure deployment configured for model %s",
                 model,
             )
-            deployment = settings.IMAGEGEN_DEPLOYMENT
         return deployment
 
     async def generate_image(
@@ -148,7 +151,7 @@ class GPTImageClient:
         n: int = 1,
         size: str = "auto",
         response_format: str = "b64_json",
-        quality: str = "auto",
+        quality: str = "high",
         background: str = "auto",
         output_format: str = "png",
         output_compression: int = 100,
@@ -157,6 +160,19 @@ class GPTImageClient:
     ) -> dict[str, Any]:
         """Generate images without blocking the event loop."""
         requested_model = model or self.model
+        validate_image_model(requested_model)
+        validate_image_size(requested_model, size)
+        validate_image_options(
+            requested_model,
+            quality=quality,
+            output_format=output_format,
+            response_format=response_format,
+            background=background,
+        )
+        self._validate_provider_options(
+            requested_model,
+            output_format=output_format,
+        )
         provider_model = (
             self.deployment_name if self.provider == "azure" else requested_model
         )
@@ -205,20 +221,27 @@ class GPTImageClient:
         """Edit one or more images through the async OpenAI SDK."""
         params = {key: value for key, value in kwargs.items() if value is not None}
         requested_model = str(params.get("model") or self.model)
+        validate_image_model(requested_model)
+        validate_image_size(requested_model, str(params.get("size") or "auto"))
+        response_format = str(params.pop("response_format", "b64_json"))
+        output_format = str(params.get("output_format") or "png")
+        validate_image_options(
+            requested_model,
+            quality=str(params.get("quality") or "high"),
+            output_format=output_format,
+            response_format=response_format,
+            background=str(params.get("background") or "auto"),
+        )
+        self._validate_provider_options(
+            requested_model,
+            output_format=output_format,
+        )
         provider_model = (
             self.deployment_name if self.provider == "azure" else requested_model
         )
         if not provider_model:
             raise ValueError("An image model deployment must be configured")
         params["model"] = provider_model
-
-        # openai-python 1.91 supports this preview field through extra_body even
-        # though it is not yet present in the generated method signature.
-        input_fidelity = params.pop("input_fidelity", None)
-        if input_fidelity and input_fidelity != "low":
-            extra_body = dict(params.pop("extra_body", {}) or {})
-            extra_body["input_fidelity"] = input_fidelity
-            params["extra_body"] = extra_body
 
         image_count = (
             len(params["image"]) if isinstance(params.get("image"), list) else 1
@@ -233,6 +256,22 @@ class GPTImageClient:
         )
         response = await self.client.images.edit(**params)
         return self._format_response(response)
+
+    def _validate_provider_options(
+        self,
+        model: str,
+        *,
+        output_format: str,
+    ) -> None:
+        """Apply provider-specific restrictions after shared model validation."""
+        if (
+            self.provider == "azure"
+            and model == GPT_IMAGE_2_MODEL
+            and output_format == "webp"
+        ):
+            raise ValueError(
+                "Azure GPT-Image-2 output_format must be png or jpeg"
+            )
 
     def _format_response(self, response: Any) -> dict[str, Any]:
         if isinstance(response, dict):

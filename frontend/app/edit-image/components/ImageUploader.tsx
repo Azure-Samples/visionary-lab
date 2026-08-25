@@ -13,8 +13,8 @@ interface ImageUploaderProps {
   onImageUpload: (file: File) => void;
 }
 
-// Maximum file size in bytes (25MB)
-const MAX_FILE_SIZE = 25 * 1024 * 1024;
+// Maximum GPT-Image-2 source image size in bytes (50 MB).
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
 // Allowed file types
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 
@@ -49,8 +49,8 @@ export default function ImageUploader({ onImageUpload }: ImageUploaderProps) {
       }
 
       // Check file size
-      if (file.size > MAX_FILE_SIZE) {
-        setError(`File is too large. Maximum size is 25MB.`);
+      if (file.size >= MAX_FILE_SIZE) {
+        setError(`File is too large. Maximum size is 50MB.`);
         return false;
       }
 
@@ -194,7 +194,7 @@ export default function ImageUploader({ onImageUpload }: ImageUploaderProps) {
               </div>
               <div>
                 <p className="text-lg font-medium">Drag &amp; Drop your image here</p>
-                <p className="text-sm text-muted-foreground mt-1">PNG, JPEG, or WebP. Max 25MB.</p>
+                <p className="text-sm text-muted-foreground mt-1">PNG, JPEG, or WebP. Max 50MB.</p>
               </div>
               <div className="mt-4">
                 <Button onClick={handleButtonClick} className="gap-2">

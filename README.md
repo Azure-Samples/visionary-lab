@@ -1,14 +1,13 @@
 # Visionary Lab
 
-**Create high-quality image content with GPT-Image-1.5, FLUX Kontext Pro, and GPT-Image-1-Mini on Azure AI Foundry — tailored for professional use cases.**
+**Create and edit high-quality image content with GPT-Image-2 and FLUX Kontext Pro on Azure AI Foundry.**
 
 ## Key Features
 
-### Image Generation (GPT-Image-1.5 · FLUX Kontext Pro · GPT-Image-1-Mini)
+### Image Generation (GPT-Image-2 · FLUX Kontext Pro)
 - Generate polished image assets from text prompts, input images, or both
-- **GPT-Image-1.5**: OpenAI's latest image model with face preservation and high-quality editing
+- **GPT-Image-2**: Default OpenAI image model for generation and high-fidelity editing
 - **FLUX Kontext Pro**: Black Forest Labs model for fast, high-fidelity image generation
-- **GPT-Image-1-Mini**: Lightweight model for rapid prototyping
 - Refine prompts using AI best practices to ensure high-impact visuals
 - Analyze outputs with AI for quality control, metadata tagging, and asset optimization
 - Guardrails for content showing brand products (brand protection)
@@ -21,7 +20,7 @@
 
 > You can also get started with our notebooks to explore the models and APIs:
 >
-> - Image generation: [gpt-image-1.ipynb](notebooks/gpt-image-1.ipynb)
+> - Image generation and editing: [gpt-image-2.ipynb](notebooks/gpt-image-2.ipynb)
 
 ## Architecture
 
@@ -38,16 +37,19 @@ Visionary Lab uses **Azure AI Foundry** as a single unified AI resource with all
 
 ### Supported Model Deployments
 
+GPT-Image-2 is now the supported OpenAI image model for both generation and
+editing. The previous GPT-Image-1, GPT-Image-1.5, and GPT-Image-1-Mini
+deployments are no longer supported by this application.
+
 | Deployment | Model | Purpose |
 |-----------|-------|---------|
 | `gpt-4o` | GPT-4o | LLM for prompt enhancement and analysis |
-| `gpt-image-1.5` | GPT-Image-1.5 | Primary image generation |
-| `gpt-image-1-mini` | GPT-Image-1-Mini | Fast image generation |
+| `gpt-image-2` | GPT-Image-2 | Default image generation and editing |
 | `flux-kontext-pro` | FLUX.1-Kontext-pro | Alternative image generation |
 
 ## Prerequisites
 
-Azure resources:
+Azure deployment resources:
 
 - Azure AI Foundry resource with deployed models (see table above)
 - Azure Storage Account with a Blob container for images and an image-generation job queue
@@ -60,6 +62,7 @@ Compute environment:
 - Git
 - uv package manager
 - Azure CLI (`az login` required for local development)
+- Docker (used by `scripts/dev.sh` for the local Azurite Blob emulator)
 
 ## Step 1: Installation (One-time)
 
@@ -124,9 +127,9 @@ npm ci --registry=https://packagefeedproxy.microsoft.io/npm/
    |---------|-------------|
    | `AI_FOUNDRY_ENDPOINT` | Your AI Foundry endpoint (e.g., `https://your-foundry.cognitiveservices.azure.com/`) |
    | `LLM_DEPLOYMENT` | LLM deployment name (e.g., `gpt-4o`) |
-   | `IMAGEGEN_DEPLOYMENT` | Primary image model deployment (e.g., `gpt-image-1.5`) |
-   | `IMAGEGEN_1_MINI_DEPLOYMENT` | Mini image model deployment (e.g., `gpt-image-1-mini`) |
+   | `IMAGEGEN_2_DEPLOYMENT` | GPT-Image-2 deployment name (normally `gpt-image-2`) |
    | `FLUX_KONTEXT_DEPLOYMENT` | FLUX model deployment (e.g., `flux-kontext-pro`) |
+   | `AZURE_STORAGE_CONNECTION_STRING` | `UseDevelopmentStorage=true` for the local Azurite Blob emulator; leave empty in Azure |
    | `AZURE_BLOB_SERVICE_URL` | Blob Storage URL |
    | `AZURE_STORAGE_ACCOUNT_NAME` | Storage account name |
    | `AZURE_STORAGE_QUEUE_URL` | Storage Queue service URL |
@@ -134,9 +137,13 @@ npm ci --registry=https://packagefeedproxy.microsoft.io/npm/
    | `AZURE_STORAGE_POISON_QUEUE_NAME` | Terminal-failure diagnostics queue |
    | `AZURE_COSMOS_DB_ENDPOINT` | Cosmos DB endpoint URL |
 
-   > **No API keys needed.** All services authenticate via `DefaultAzureCredential` which uses your `az login` session locally and managed identity in Azure.
+   > **No Azure service API keys are needed.** `DefaultAzureCredential` uses your `az login` session for AI Foundry during host development and managed identity in Azure. The Azurite shortcut uses only the emulator's well-known local credentials.
 
-> **Note:** The app works with a subset of the image models; unavailable deployments are gracefully skipped.
+   Local development defaults to `IMAGE_JOB_MODE=memory`. Set it to `azure`
+   only when the configured Queue and Cosmos endpoints are reachable from your
+   machine. With `AZURE_STORAGE_CONNECTION_STRING=UseDevelopmentStorage=true`,
+   `scripts/dev.sh` starts a named Azurite Blob container and the backend creates
+   the `images` container on first use.
 
 ## Step 3: Running the Application
 
@@ -148,7 +155,9 @@ npm ci --registry=https://packagefeedproxy.microsoft.io/npm/
 
    The backend runs on http://localhost:8000 and the frontend on
    http://localhost:3000. Local mode runs the API and queue consumers in one
-   process; Azure deploys them independently.
+   process; Azure deploys them independently. If the development storage
+   shortcut is configured, the script reuses an already-running
+   `visionary-lab-azurite` container or starts and stops one with the stack.
 
 2. To run either side independently:
 
@@ -158,6 +167,10 @@ npm ci --registry=https://packagefeedproxy.microsoft.io/npm/
    ```
 
    The frontend will be available at http://localhost:3000.
+
+   For GPT-Image-2 generation/editing tests that do not persist assets, use
+   `./scripts/dev.sh --backend`; Blob, Queue, and Cosmos configuration is not
+   required for that backend-only path.
 
 ## 🚀 Deploy to Azure
 
@@ -173,9 +186,9 @@ azd auth login
 azd up
 ```
 
-During `azd up`, you'll be prompted for:
-- **AI Foundry name**: Globally unique name for your AI Foundry resource
-- **Model deployment names**: Which LLM and image models to deploy (for example, gpt-4o and gpt-image-1.5)
+During `azd up`, you'll be prompted for a globally unique AI Foundry name. The
+template deploys the fixed application model set: `gpt-4o`, `gpt-image-2`, and
+`flux-kontext-pro`.
 
 ✨ That's it! Your Visionary Lab will be running on Azure Container Apps with:
 - Azure AI Foundry with all model deployments

@@ -31,10 +31,12 @@ This guide shows how to deploy the Visionary Lab to Azure using the Azure Develo
 
    - **AI_FOUNDRY_NAME**: Name for your AI Foundry resource (must be globally unique)
    - **AI_FOUNDRY_LOCATION**: Azure region for AI Foundry (default: `swedencentral`)
-   - **LLM_DEPLOYMENT**: LLM deployment name (default: `gpt-4o`)
-   - **IMAGEGEN_DEPLOYMENT**: Image generation deployment name (default: `gpt-image-1-5`)
 
    > **No API keys required.** All services use Azure Managed Identity for authentication.
+
+   The template provisions GPT-Image-2 version `2026-04-21` with the
+   `GlobalStandard` SKU and capacity 2. FLUX Kontext Pro version `1` is retained
+   as the only alternative image deployment.
 
 That's it! The `azd up` command will:
 - Create a new environment
@@ -59,12 +61,6 @@ azd env new <environment-name>
 # AI Foundry
 azd env set AI_FOUNDRY_NAME "your-foundry-name"
 azd env set AI_FOUNDRY_LOCATION "swedencentral"
-
-# Model deployments (names must match what gets deployed)
-azd env set LLM_DEPLOYMENT "gpt-4o"
-azd env set IMAGEGEN_DEPLOYMENT "gpt-image-1-5"
-azd env set IMAGEGEN_15_DEPLOYMENT "gpt-image-1-5"
-azd env set IMAGEGEN_1_MINI_DEPLOYMENT "gpt-image-1-mini"
 ```
 
 ### 3. Deploy Infrastructure
@@ -115,9 +111,8 @@ The following environment variables are automatically configured by the infrastr
 ### Backend
 - `AI_FOUNDRY_ENDPOINT`: AI Foundry endpoint URL
 - `LLM_DEPLOYMENT`: LLM deployment name
-- `IMAGEGEN_DEPLOYMENT`: Image generation deployment name
-- `IMAGEGEN_15_DEPLOYMENT`: GPT-Image-1.5 deployment name
-- `IMAGEGEN_1_MINI_DEPLOYMENT`: GPT-Image-1-mini deployment name
+- `IMAGEGEN_2_DEPLOYMENT`: GPT-Image-2 deployment name
+- `FLUX_KONTEXT_DEPLOYMENT`: FLUX Kontext Pro deployment name
 - `AZURE_BLOB_SERVICE_URL`: Storage endpoint URL
 - `AZURE_STORAGE_ACCOUNT_NAME`: Storage account name
 - `AZURE_BLOB_IMAGE_CONTAINER`: Container for images (default: "images")
@@ -152,11 +147,17 @@ az login
 
 # Set environment variables in .env (see .env.example)
 cp .env.example .env
-# Edit .env with your AI Foundry endpoint and deployment names
+# Edit .env with your AI Foundry endpoint and GPT-Image-2 deployment name
 
-# Run the backend
-cd backend && uvicorn main:app --reload
+# Run the local stack (uses the Azure CLI credential)
+./scripts/dev.sh
 ```
+
+Local development defaults to `IMAGE_JOB_MODE=memory`. Use `azure` only when
+Blob, Queue, and Cosmos are reachable from the development machine. Production
+resources deployed with private endpoints are intentionally inaccessible from
+the public internet; validate the complete persisted job flow through the
+deployed application or from a runner attached to the Container Apps network.
 
 ## Monitoring
 
@@ -184,7 +185,7 @@ azd down
 
 1. **Credential errors locally**: Run `az login` to authenticate. `DefaultAzureCredential` requires an active Azure CLI session.
 2. **RBAC propagation delay**: After initial deployment, role assignments may take 1-5 minutes to propagate. If the app shows 403 errors on first start, wait and restart.
-3. **Region availability**: Some image models may not be available in all regions. Default is `swedencentral`.
+3. **Region availability**: GPT-Image-2 version `2026-04-21` and FLUX Kontext Pro must be available in the selected AI Foundry region. Default is `swedencentral`.
 4. **Permission Issues**: You need Owner role on the resource group to create RBAC assignments.
 
 ### Getting Help
