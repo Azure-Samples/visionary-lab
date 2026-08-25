@@ -121,9 +121,25 @@ function NewImagePageContent() {
         const isFreshCompletion =
           (job.status === "completed" || job.status === "partial") &&
           isFreshTerminalUpdate;
+        const firstFailureIndex =
+          job.outputs.find((output) => output.status === "failed")?.index ??
+          job.outputs[0]?.index;
 
         return job.outputs.flatMap((output) => {
           if (supersededJobIds.has(job.id) && output.status !== "ready") {
+            return [];
+          }
+          if (
+            (job.status === "failed" || job.status === "submission_failed") &&
+            output.index !== firstFailureIndex
+          ) {
+            return [];
+          }
+          if (
+            job.status === "partial" &&
+            output.status === "failed" &&
+            output.index !== firstFailureIndex
+          ) {
             return [];
           }
           if (

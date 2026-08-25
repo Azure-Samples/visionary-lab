@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ImageOverlay } from "./ImageOverlay";
 import { useImageJobs } from "@/context/image-jobs-context";
+import { formatImageJobError } from "@/types/image-jobs";
 import { cn } from "@/utils/utils";
 import {
   editImage,
@@ -230,14 +231,16 @@ export function ImageCreationContainer({
         submissionId,
         submissionId,
       );
-      toast.success("Image generation started", {
-        description: `${formatImageCount(job.requested_images)} queued. You can start another generation now.`,
+      toast.success("Added to generation queue", {
+        description: `${formatImageCount(job.requested_images)} will appear here as they finish.`,
       });
     } catch (error) {
       console.error("Error starting image operation:", error);
       if (!hasSourceImages) {
         toast.error("Could not start image generation", {
-          description: error instanceof Error ? error.message : "Unknown error occurred",
+          description:
+            formatImageJobError(error instanceof Error ? error.message : null) ??
+            "Unknown error occurred",
         });
       }
     } finally {

@@ -1,5 +1,5 @@
-// Role assignment: Cognitive Services OpenAI User on AI Foundry resource
-// Allows the Container App managed identity to call OpenAI APIs via the Foundry
+// Role assignment: Foundry User on AI Foundry resource
+// Allows the Container App identity to call OpenAI and provider-model APIs.
 
 @description('Resource ID of the AI Foundry resource')
 param aiFoundryId string
@@ -7,14 +7,14 @@ param aiFoundryId string
 @description('Principal ID of the Container App managed identity')
 param containerAppPrincipalId string
 
-// Cognitive Services OpenAI User role definition ID
-var cognitiveServicesOpenAIUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+// Foundry User role definition ID
+var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
 
 resource aiFoundryRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(aiFoundryId, containerAppPrincipalId, cognitiveServicesOpenAIUserRoleId)
+  name: guid(aiFoundryId, containerAppPrincipalId, foundryUserRoleId)
   scope: aiFoundryResource
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAIUserRoleId)
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryUserRoleId)
     principalId: containerAppPrincipalId
     principalType: 'ServicePrincipal'
   }

@@ -130,6 +130,53 @@ export function isFailedImageJob(status: ImageJobEntryStatus): boolean {
   return status === "failed" || status === "submission_failed";
 }
 
+function findErrorMessage(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (!value || typeof value !== "object") return null;
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["message", "detail", "error"]) {
+    const message = findErrorMessage(record[key]);
+    if (message) return message;
+  }
+  return null;
+}
+
+export function formatImageJobError(error?: string | null): string | null {
+  const raw = error?.trim();
+  if (!raw) return null;
+
+  const withoutStatus = raw.replace(/^Error code:\s*\d+\s*-\s*/i, "").trim();
+  for (const candidate of [raw, withoutStatus]) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      const message = findErrorMessage(parsed);
+      if (message) return message.slice(0, 240);
+    } catch {
+      // Some providers serialize Python-style dictionaries instead of JSON.
+    }
+  }
+
+  const fieldMatch = withoutStatus.match(
+    /["'](?:message|detail)["']\s*:\s*(["'])([\s\S]*?)\1(?:\s*[,}])/i,
+  );
+  if (fieldMatch?.[2]) {
+    return fieldMatch[2].replace(/\\(["'])/g, "$1").trim().slice(0, 240);
+  }
+
+  const simpleErrorMatch = withoutStatus.match(
+    /["']error["']\s*:\s*(["'])([\s\S]*?)\1(?:\s*[,}])/i,
+  );
+  if (simpleErrorMatch?.[2]) {
+    return simpleErrorMatch[2].replace(/\\(["'])/g, "$1").trim().slice(0, 240);
+  }
+
+  if (/^[{[]/.test(withoutStatus)) {
+    return "The image provider rejected this request.";
+  }
+  return withoutStatus.slice(0, 240);
+}
+
 export function createReservedOutputs(
   count: number,
   analysisEnabled: boolean,

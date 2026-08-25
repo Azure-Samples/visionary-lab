@@ -476,7 +476,15 @@ export function ImageJobsProvider({ children }: { children: React.ReactNode }) {
     () =>
       jobs
         .filter((job) => isActiveImageJob(job.status))
-        .reduce((total, job) => total + job.requested_images, 0),
+        .reduce(
+          (total, job) =>
+            total +
+            job.outputs.filter(
+              (output) =>
+                !["ready", "failed", "cancelled"].includes(output.status),
+            ).length,
+          0,
+        ),
     [jobs],
   );
   const optimisticCount = useMemo(

@@ -18,6 +18,7 @@ from backend.core.gpt_image import GPTImageClient
 from backend.core.image_pipeline import ImagePipelineService
 from backend.core.sas import get_blob_container_url, get_container_sas_token
 from backend.models.images import (
+    FLUX_KONTEXT_PRO_MODEL,
     GPT_IMAGE_2_MODEL,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -176,6 +177,133 @@ def test_gpt_image_client_uses_explicit_gpt_image_2_deployment(monkeypatch) -> N
     assert client.deployment_name == "gpt-image-2-deployment"
 
 
+def test_azure_kontext_client_binds_the_configured_deployment(monkeypatch) -> None:
+    monkeypatch.setattr(
+        settings,
+        "AI_FOUNDRY_ENDPOINT",
+        "https://example.cognitiveservices.azure.com",
+    )
+    monkeypatch.setattr(
+        settings,
+        "FLUX_KONTEXT_DEPLOYMENT",
+        "flux-kontext-deployment",
+    )
+
+    async def token_provider() -> str:
+        return "token"
+
+    with (
+        patch("backend.core.gpt_image.AsyncAzureOpenAI") as sdk_client_class,
+        patch("backend.core.gpt_image.httpx.AsyncClient") as http_client_class,
+    ):
+        client = GPTImageClient(
+            provider="azure",
+            model=FLUX_KONTEXT_PRO_MODEL,
+            credential=MagicMock(),
+            token_provider=token_provider,
+        )
+
+    sdk_client_class.assert_not_called()
+    http_client_class.assert_called_once()
+    assert client.deployment_name == "flux-kontext-deployment"
+
+
+@pytest.mark.asyncio
+async def test_azure_kontext_generation_uses_provider_api(monkeypatch) -> None:
+    monkeypatch.setattr(
+        settings,
+        "AI_FOUNDRY_ENDPOINT",
+        "https://example.cognitiveservices.azure.com",
+    )
+    response = MagicMock(status_code=200, is_error=False)
+    response.json.return_value = {
+        "created": 123,
+        "data": [{"url": "https://example.test/flux.png"}],
+    }
+    http_client = MagicMock()
+    http_client.post = AsyncMock(return_value=response)
+    http_client.close = None
+    http_client.aclose = AsyncMock()
+
+    async def token_provider() -> str:
+        return "token"
+
+    client = GPTImageClient(
+        provider="azure",
+        deployment_name="flux-kontext-deployment",
+        model=FLUX_KONTEXT_PRO_MODEL,
+        token_provider=token_provider,
+        client=http_client,
+    )
+    result = await client.generate_image(
+        prompt="A studio portrait",
+        size="1536x1024",
+    )
+
+    http_client.post.assert_awaited_once_with(
+        "https://example.services.ai.azure.com/providers/blackforestlabs/v1/flux-kontext-pro",
+        params={"api-version": "preview"},
+        headers={
+            "Authorization": "Bearer token",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": "flux-kontext-deployment",
+            "prompt": "A studio portrait",
+            "aspect_ratio": "3:2",
+            "output_format": "png",
+        },
+    )
+    assert result["data"] == [{"url": "https://example.test/flux.png"}]
+    assert result["_deployment_name"] == "flux-kontext-deployment"
+    assert result["_model"] == FLUX_KONTEXT_PRO_MODEL
+
+    await client.close()
+    http_client.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_azure_kontext_edit_uses_single_base64_reference(monkeypatch) -> None:
+    monkeypatch.setattr(
+        settings,
+        "AI_FOUNDRY_ENDPOINT",
+        "https://example.services.ai.azure.com",
+    )
+    response = MagicMock(status_code=200, is_error=False)
+    response.json.return_value = {
+        "data": [{"url": "https://example.test/edited.png"}]
+    }
+    http_client = MagicMock()
+    http_client.post = AsyncMock(return_value=response)
+
+    async def token_provider() -> str:
+        return "token"
+
+    client = GPTImageClient(
+        provider="azure",
+        deployment_name="flux-kontext-deployment",
+        model=FLUX_KONTEXT_PRO_MODEL,
+        token_provider=token_provider,
+        client=http_client,
+    )
+    result = await client.edit_image(
+        prompt="Keep the subject and change the background",
+        image=("source.png", _ONE_PIXEL_PNG, "image/png"),
+        size="1024x1536",
+        output_format="png",
+    )
+
+    call = http_client.post.await_args.kwargs
+    assert call["json"] == {
+        "model": "flux-kontext-deployment",
+        "prompt": "Keep the subject and change the background",
+        "input_image": base64.b64encode(_ONE_PIXEL_PNG).decode("ascii"),
+        "aspect_ratio": "2:3",
+        "output_format": "png",
+    }
+    assert result["data"] == [{"url": "https://example.test/edited.png"}]
+
+
 @pytest.mark.asyncio
 async def test_sync_azure_token_provider_is_kept_off_event_loop() -> None:
     main_thread = threading.get_ident()
@@ -281,6 +409,15 @@ def test_flux_remains_a_supported_alternative() -> None:
     )
 
     assert request.model == "flux-kontext-pro"
+
+
+def test_flux_rejects_multiple_outputs_per_request() -> None:
+    with pytest.raises(ValidationError, match="one image per request"):
+        ImageGenerationRequest(
+            prompt="test",
+            model=FLUX_KONTEXT_PRO_MODEL,
+            n=2,
+        )
 
 
 @pytest.mark.asyncio
