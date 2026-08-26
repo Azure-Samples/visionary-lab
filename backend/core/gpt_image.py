@@ -4,6 +4,10 @@ import asyncio
 import base64
 import inspect
 import logging
+import math
+from collections.abc import Mapping
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from math import gcd
 from typing import Any, Optional
 
@@ -28,9 +32,56 @@ _FLUX_PROVIDER_PATH = "/providers/blackforestlabs/v1/flux-kontext-pro"
 class ImageProviderError(RuntimeError):
     """Provider failure with an HTTP status that the API layer can preserve."""
 
-    def __init__(self, status_code: int, message: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        *,
+        retry_after_seconds: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.retry_after_seconds = retry_after_seconds
+
+
+def parse_retry_after_seconds(
+    headers: Mapping[str, str] | None,
+    *,
+    now: datetime | None = None,
+) -> int | None:
+    """Return an Azure/provider retry delay normalized to whole seconds."""
+
+    if not headers:
+        return None
+
+    normalized_headers = {
+        str(key).lower(): str(value)
+        for key, value in headers.items()
+    }
+
+    retry_after_ms = normalized_headers.get("x-ms-retry-after-ms")
+    if retry_after_ms:
+        try:
+            return max(0, math.ceil(float(retry_after_ms) / 1000))
+        except (TypeError, ValueError):
+            pass
+
+    retry_after = normalized_headers.get("retry-after")
+    if not retry_after:
+        return None
+    try:
+        return max(0, math.ceil(float(retry_after)))
+    except (TypeError, ValueError):
+        pass
+
+    try:
+        retry_at = parsedate_to_datetime(retry_after)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=timezone.utc)
+    reference = now or datetime.now(timezone.utc)
+    return max(0, math.ceil((retry_at - reference).total_seconds()))
 
 
 class GPTImageClient:
@@ -375,6 +426,7 @@ class GPTImageClient:
             raise ImageProviderError(
                 response.status_code,
                 "FLUX Kontext returned an invalid response",
+                retry_after_seconds=parse_retry_after_seconds(response.headers),
             ) from exc
         if response.is_error:
             error = body.get("error") if isinstance(body, dict) else None
@@ -382,6 +434,7 @@ class GPTImageClient:
             raise ImageProviderError(
                 response.status_code,
                 str(message or "FLUX Kontext request failed"),
+                retry_after_seconds=parse_retry_after_seconds(response.headers),
             )
         return self._format_response(body)
 

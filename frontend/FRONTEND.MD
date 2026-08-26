@@ -22,7 +22,8 @@ frontend/
 │   ├── ImageOverlay.tsx
 │   ├── image-gallery-card.tsx
 │   ├── image-job-output-card.tsx
-│   └── image-jobs-activity.tsx
+│   ├── image-jobs-activity.tsx
+│   └── storyline/           # Composer, plan editor, detail, and workspace
 ├── context/
 │   ├── image-jobs-context.tsx
 │   └── image-settings-context.tsx
@@ -31,9 +32,11 @@ frontend/
 │   ├── api.ts               # Image and gallery API client
 │   ├── imageJobs.ts         # Durable image-job HTTP client
 │   ├── imageService.ts      # Image-specific helpers
+│   ├── storylines.ts        # Storyline, reference, capability, and frame actions
 │   └── sas-token.ts         # Image storage access
 ├── types/
-│   └── image-jobs.ts        # Image-job and output-slot contracts
+│   ├── image-jobs.ts        # Image-job and output-slot contracts
+│   └── storyline.ts         # Storyline aggregate and capability contracts
 └── utils/                   # Gallery, image, and general helpers
 ```
 
@@ -49,11 +52,18 @@ frontend/
 ## Main Workflows
 
 - Create and browse images at `/new-image`.
+- Create and reopen ordered, multi-model storylines at `/new-image?mode=storyline`.
 - Edit existing images at `/edit-image`.
 - Run custom image analysis at `/analyze`.
 - Configure brand protection, analysis prompts, and API status at `/settings`.
 
 The home route renders the image creation page.
+
+## Storyline workflow
+
+Storyline mode extends the existing creation surface. The composer accepts a brief, reference images, or both; selects 2–10 frames; discovers configured model capabilities; offers multi-model comparison; and exposes channel, copy-depth, compatible size, and optional plan-review controls.
+
+References are uploaded sequentially through an owner-scoped backend endpoint before the storyline is created, preserving their priority order and attempting cleanup of completed uploads if a later upload fails. The workspace persists a list of storylines, polls only active generation states, displays ordered comparison lanes, obtains SAS-backed previews, and supports cancellation, planning recovery, exact failed-frame retry, and prompt/copy regeneration. Review-first storylines edit one logical frame plan shared across all model lanes, preserve unsaved edits during refreshes, and require explicit approval before generation starts. Regeneration without edits targets one model lane; changing prompt or copy regenerates the corresponding logical frame across every lane so the comparison remains aligned.
 
 ## Concurrent Image Generation
 
@@ -64,7 +74,7 @@ Text-to-image requests are submitted as durable backend jobs rather than being h
 - Output cards progressively move through queued, generating, saving, ready, failed, cancelled, and analysis states.
 - Partial jobs retain successful outputs and can retry only their failed images.
 - The composer snapshots and clears text prompts so another batch can be submitted while earlier batches continue.
-- Image editing remains a blocking workflow because uploaded source files are still processed by the existing edit endpoint.
+- Ordinary image editing remains a blocking workflow. Storyline reference edits run through durable background jobs because their uploads are first persisted as owner-scoped Blob assets.
 
 ## API, Identity, and Storage
 

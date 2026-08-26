@@ -20,6 +20,7 @@ def test_health_check(client):
     assert response.json() == {
         "status": "ok",
         "image_jobs": {"store": "ok", "queue": "ok"},
+        "storylines": "ok",
     }
 
 
@@ -45,6 +46,28 @@ def test_openapi_schema_contains_no_video_api(client):
         "/api/v1/gallery/videos",
     ):
         assert client.get(removed_path).status_code == 404
+
+
+def test_public_pipeline_rejects_internal_blob_coordinates(client):
+    payload = {
+        "action": "edit",
+        "prompt": "Use an internal source",
+        "source_image_blobs": [
+            {
+                "blob_name": "private/reference.png",
+                "container": "images",
+            }
+        ],
+        "save_options": {"enabled": False},
+        "analysis_options": {"enabled": False},
+    }
+
+    response = client.post(
+        "/api/v1/images/pipeline",
+        data={"payload": json.dumps(payload)},
+    )
+
+    assert response.status_code == 403
 
 
 def test_env_status_accepts_local_storage_connection_string(monkeypatch):

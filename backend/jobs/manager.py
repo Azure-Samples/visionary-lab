@@ -28,7 +28,7 @@ from backend.models.image_jobs import (
     ImageJobRecord,
     ImageJobStatus,
 )
-from backend.models.images import ImagePipelineRequest, ImageSaveResponse
+from backend.models.images import ImagePipelineRequest, ImageSaveResponse, PipelineAction
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +229,10 @@ class ImageJobManager:
         heartbeat_interval: float | None = None,
         reconcile_interval: float = 5.0,
         max_attempts: int = 3,
+        rate_limit_max_attempts: int = 8,
+        rate_limit_base_delay: int = 30,
+        rate_limit_max_delay: int = 300,
+        rate_limit_jitter: int = 15,
         retention_seconds: int = 60 * 60 * 24 * 30,
     ) -> None:
         if concurrency < 1:
@@ -248,6 +252,14 @@ class ImageJobManager:
         )
         self.reconcile_interval = max(0.25, reconcile_interval)
         self.max_attempts = max(1, max_attempts)
+        self.rate_limit_max_attempts = max(
+            self.max_attempts, rate_limit_max_attempts
+        )
+        self.rate_limit_base_delay = max(1, rate_limit_base_delay)
+        self.rate_limit_max_delay = max(
+            self.rate_limit_base_delay, rate_limit_max_delay
+        )
+        self.rate_limit_jitter = max(0, rate_limit_jitter)
         self.retention_seconds = max(60, retention_seconds)
         self._workers: list[asyncio.Task[None]] = []
         self._dispatcher: asyncio.Task[None] | None = None
@@ -339,7 +351,22 @@ class ImageJobManager:
         *,
         owner_id: str,
         parent_job_id: str | None = None,
+        allow_durable_edit: bool = False,
     ) -> ImageJob:
+        if request.request.action == PipelineAction.EDIT and not allow_durable_edit:
+            raise ImageJobConflictError(
+                "Durable edit jobs may only be submitted by a trusted server workflow"
+            )
+        if request.request.source_image_blobs:
+            from backend.core.config import settings
+
+            if any(
+                reference.container != settings.AZURE_BLOB_IMAGE_CONTAINER
+                for reference in request.request.source_image_blobs
+            ):
+                raise ImageJobConflictError(
+                    "Durable image-job sources must use the configured image container"
+                )
         canonical_request = json.dumps(
             request.request.model_dump(mode="json"),
             sort_keys=True,
@@ -367,9 +394,15 @@ class ImageJobManager:
         now = utcnow()
         record = ImageJobRecord(
             id=job_id,
+            storyline_id=(
+                str(metadata["storyline_id"])
+                if metadata.get("storyline_id")
+                else None
+            ),
             status=ImageJobStatus.QUEUED,
             stage=ImageJobStatus.QUEUED.value,
             progress=0,
+            action=pipeline_request.action,
             prompt=pipeline_request.prompt,
             model=pipeline_request.model,
             size=pipeline_request.size,
@@ -544,9 +577,10 @@ class ImageJobManager:
             await self.queue.release(message, delay_seconds=2)
             return
 
-        if claimed.attempt > self.max_attempts:
+        if claimed.attempt > self.rate_limit_max_attempts:
             reason = (
-                f"Image job exceeded the maximum of {self.max_attempts} worker attempts"
+                "Image job exceeded the maximum of "
+                f"{self.rate_limit_max_attempts} worker attempts"
             )
             await self._mark_failed(
                 claimed.id,
@@ -662,13 +696,25 @@ class ImageJobManager:
                 await self._mark_cancelled(claimed.id, worker_id=worker_id)
                 await self.queue.delete(message)
                 return
-            if self._is_transient_failure(exc) and claimed.attempt < self.max_attempts:
-                delay = min(60, 2 ** max(1, claimed.attempt))
+            rate_limited = self._is_rate_limit_failure(exc)
+            attempt_limit = (
+                self.rate_limit_max_attempts if rate_limited else self.max_attempts
+            )
+            if self._is_transient_failure(exc) and claimed.attempt < attempt_limit:
+                delay = (
+                    self._rate_limit_retry_delay(
+                        exc,
+                        job_id=claimed.id,
+                        attempt=claimed.attempt,
+                    )
+                    if rate_limited
+                    else min(60, 2 ** max(1, claimed.attempt))
+                )
                 logger.warning(
                     "Transient failure for image job %s (attempt %s/%s); retrying in %ss: %s",
                     claimed.id,
                     claimed.attempt,
-                    self.max_attempts,
+                    attempt_limit,
                     delay,
                     exc,
                 )
@@ -715,6 +761,48 @@ class ImageJobManager:
         if isinstance(status_code, int):
             return status_code in {408, 409, 425, 429} or status_code >= 500
         return isinstance(exc, (TimeoutError, ConnectionError))
+
+    @staticmethod
+    def _is_rate_limit_failure(exc: Exception) -> bool:
+        return getattr(exc, "status_code", None) == 429
+
+    @staticmethod
+    def _retry_after_seconds(exc: Exception) -> int | None:
+        value = getattr(exc, "retry_after_seconds", None)
+        if value is None and isinstance(exc, HTTPException) and exc.headers:
+            value = exc.headers.get("Retry-After") or exc.headers.get("retry-after")
+        try:
+            return max(0, int(float(value))) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _rate_limit_retry_delay(
+        self,
+        exc: Exception,
+        *,
+        job_id: str,
+        attempt: int,
+    ) -> int:
+        explicit_delay = self._retry_after_seconds(exc)
+        if explicit_delay is not None:
+            # Provider guidance takes precedence over the fallback cap. Retrying
+            # earlier than Retry-After would only extend the throttling window.
+            return max(1, explicit_delay)
+
+        exponent = max(0, attempt - 1)
+        base_delay = min(
+            self.rate_limit_max_delay,
+            self.rate_limit_base_delay * (2**exponent),
+        )
+        available_jitter = min(
+            self.rate_limit_jitter,
+            self.rate_limit_max_delay - base_delay,
+        )
+        if available_jitter <= 0:
+            return base_delay
+        digest = hashlib.sha256(f"{job_id}:{attempt}".encode("utf-8")).digest()
+        jitter = int.from_bytes(digest[:4], "big") % (available_jitter + 1)
+        return base_delay + jitter
 
     async def _claim(self, job_id: str, worker_id: str) -> ImageJobRecord | None:
         now = utcnow()

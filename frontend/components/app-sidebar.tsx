@@ -1,6 +1,6 @@
 "use client"
 
-import { ImageIcon, FolderIcon, ImagePlus, Settings, ChevronDown, Pencil, Loader2, Search } from "lucide-react"
+import { ImageIcon, FolderIcon, ImagePlus, Settings, ChevronDown, Pencil, Loader2, Search, PanelsTopLeft } from "lucide-react"
 import Link from 'next/link';
 import Image from 'next/image';
 import { useTheme } from "next-themes";
@@ -33,6 +33,12 @@ const createItems = [
     url: "/new-image",
     icon: ImagePlus,
     description: "Generate new images with AI"
+  },
+  {
+    title: "Storyline",
+    url: "/new-image?mode=storyline",
+    icon: PanelsTopLeft,
+    description: "Create a consistent multi-image campaign"
   },
   {
     title: "Edit Image",
@@ -81,6 +87,7 @@ export function AppSidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentFolderParam = searchParams.get('folder');
+  const currentModeParam = searchParams.get('mode');
   const { folderRefreshTrigger } = useFolderContext();
   
   // Only render logo after mounted on client to avoid hydration mismatch
@@ -119,11 +126,11 @@ export function AppSidebar() {
   const isImageFolderActive = (folderPath: string | null) => {
     if (!folderPath) {
       // "All Images" is active when no folder parameter is present
-      return pathname === '/new-image' && !currentFolderParam;
+      return pathname === '/new-image' && !currentFolderParam && currentModeParam !== 'storyline';
     }
     
     // Otherwise check if the folder parameter matches the current folder
-    return pathname === '/new-image' && currentFolderParam === folderPath;
+    return pathname === '/new-image' && currentFolderParam === folderPath && currentModeParam !== 'storyline';
   };
 
   // Render folder skeletons during loading

@@ -20,6 +20,7 @@ import { ImageJobOutputCard } from "@/components/image-job-output-card";
 import { ImageJobsInline } from "@/components/image-jobs-activity";
 import { PageHeader } from "@/components/page-header";
 import { RowBasedMasonryGrid } from "@/components/RowBasedMasonryGrid";
+import { StorylineWorkspace } from "@/components/storyline/storyline-workspace";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -512,11 +513,19 @@ function NewImagePageContent() {
   );
 }
 
+function NewImageModeRouter() {
+  const searchParams = useSearchParams();
+  if (searchParams.get("mode") === "storyline") {
+    return <StorylineWorkspace />;
+  }
+  return <NewImagePageContent />;
+}
+
 export default function NewImagePage() {
   return (
     <PageTransition>
       <Suspense fallback={<div className="p-6">Loading…</div>}>
-        <NewImagePageContent />
+        <NewImageModeRouter />
       </Suspense>
     </PageTransition>
   );

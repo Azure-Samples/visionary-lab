@@ -78,10 +78,20 @@ class ImageJobCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_async_generation(self) -> "ImageJobCreateRequest":
-        if self.request.action != PipelineAction.GENERATE:
+        if self.request.action not in {PipelineAction.GENERATE, PipelineAction.EDIT}:
             raise ValueError(
-                "Asynchronous jobs currently support image generation only"
+                "Asynchronous jobs support image generation and durable image edits"
             )
+        if self.request.action == PipelineAction.EDIT:
+            if not self.request.source_image_blobs:
+                raise ValueError(
+                    "Asynchronous edit jobs require durable source_image_blobs"
+                )
+            if self.request.source_image_base64 or self.request.source_image_urls:
+                raise ValueError(
+                    "Asynchronous edit jobs must use durable Blob references, not "
+                    "base64 data or URLs"
+                )
         if not 1 <= self.request.n <= 10:
             raise ValueError("request.n must be between 1 and 10")
         if not self.request.save_options.enabled:
@@ -105,9 +115,11 @@ class ImageJob(BaseModel):
     id: str
     revision: int = Field(default=1, ge=1)
     client_request_id: str | None = None
+    storyline_id: str | None = None
     status: ImageJobStatus
     stage: str
     progress: int = Field(ge=0, le=100)
+    action: PipelineAction = PipelineAction.GENERATE
     prompt: str
     model: str
     size: str

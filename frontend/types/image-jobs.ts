@@ -60,6 +60,7 @@ export interface ImageJob {
   id: string;
   revision: number;
   client_request_id?: string | null;
+  storyline_id?: string | null;
   status: ImageJobStatus;
   stage: string;
   progress: number;

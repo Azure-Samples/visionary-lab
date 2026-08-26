@@ -51,5 +51,9 @@ def create_image_job_manager(settings) -> ImageJobManager:
         heartbeat_interval=(settings.IMAGE_JOB_HEARTBEAT_INTERVAL_SECONDS or None),
         reconcile_interval=settings.IMAGE_JOB_RECONCILE_INTERVAL_SECONDS,
         max_attempts=settings.IMAGE_JOB_MAX_ATTEMPTS,
+        rate_limit_max_attempts=settings.IMAGE_JOB_RATE_LIMIT_MAX_ATTEMPTS,
+        rate_limit_base_delay=settings.IMAGE_JOB_RATE_LIMIT_BASE_DELAY_SECONDS,
+        rate_limit_max_delay=settings.IMAGE_JOB_RATE_LIMIT_MAX_DELAY_SECONDS,
+        rate_limit_jitter=settings.IMAGE_JOB_RATE_LIMIT_JITTER_SECONDS,
         retention_seconds=settings.IMAGE_JOB_RETENTION_SECONDS,
     )

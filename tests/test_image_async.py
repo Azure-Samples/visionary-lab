@@ -4,6 +4,8 @@ import io
 import subprocess
 import sys
 import threading
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,7 +16,11 @@ from pydantic import ValidationError
 
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.config import settings
-from backend.core.gpt_image import GPTImageClient
+from backend.core.gpt_image import (
+    GPTImageClient,
+    ImageProviderError,
+    parse_retry_after_seconds,
+)
 from backend.core.image_pipeline import ImagePipelineService
 from backend.core.sas import get_blob_container_url, get_container_sas_token
 from backend.models.images import (
@@ -23,7 +29,10 @@ from backend.models.images import (
     ImageGenerationRequest,
     ImageGenerationResponse,
     ImagePipelineRequest,
+    PipelineAction,
+    PipelineImageReference,
     ImageSaveRequest,
+    TokenUsage,
 )
 
 
@@ -31,6 +40,114 @@ _ONE_PIXEL_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
     "/x8AAusB9Y9Z0OkAAAAASUVORK5CYII="
 )
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        ({"Retry-After": "45"}, 45),
+        ({"x-ms-retry-after-ms": "2501"}, 3),
+    ],
+)
+def test_parse_retry_after_seconds(headers, expected) -> None:
+    assert parse_retry_after_seconds(headers) == expected
+
+
+def test_parse_retry_after_http_date() -> None:
+    now = datetime(2026, 8, 26, 10, 0, tzinfo=timezone.utc)
+    retry_at = now + timedelta(seconds=75)
+
+    assert parse_retry_after_seconds(
+        {"Retry-After": format_datetime(retry_at, usegmt=True)},
+        now=now,
+    ) == 75
+
+
+@pytest.mark.asyncio
+async def test_flux_rate_limit_preserves_retry_after_through_pipeline(monkeypatch) -> None:
+    monkeypatch.setattr(
+        settings,
+        "AI_FOUNDRY_ENDPOINT",
+        "https://example.services.ai.azure.com",
+    )
+    response = MagicMock(status_code=429, is_error=True)
+    response.headers = {"Retry-After": "90"}
+    response.json.return_value = {"error": {"message": "provider busy"}}
+    http_client = MagicMock()
+    http_client.post = AsyncMock(return_value=response)
+
+    async def token_provider() -> str:
+        return "token"
+
+    client = GPTImageClient(
+        provider="azure",
+        deployment_name="flux-kontext-deployment",
+        model=FLUX_KONTEXT_PRO_MODEL,
+        token_provider=token_provider,
+        client=http_client,
+    )
+
+    with pytest.raises(ImageProviderError) as provider_error:
+        await client.generate_image(prompt="A studio portrait")
+
+    http_error = ImagePipelineService._provider_http_exception(provider_error.value)
+    assert http_error.status_code == 429
+    assert http_error.headers == {"Retry-After": "90"}
+
+
+@pytest.mark.asyncio
+async def test_pipeline_resolves_durable_blob_references_at_execution_time() -> None:
+    storage = SimpleNamespace(
+        download_asset_async=AsyncMock(return_value=(_ONE_PIXEL_PNG, "image/png"))
+    )
+    service = ImagePipelineService()
+    request = ImagePipelineRequest(
+        action=PipelineAction.EDIT,
+        prompt="Preserve the subject",
+        source_image_blobs=[
+            PipelineImageReference(
+                blob_name="story/reference.png",
+                container="images",
+            )
+        ],
+    )
+
+    resolved = await service._resolve_edit_images(
+        request,
+        azure_storage_service=storage,
+    )
+
+    storage.download_asset_async.assert_awaited_once_with(
+        "story/reference.png",
+        "images",
+    )
+    assert resolved == [
+        f"data:image/png;base64,{base64.b64encode(_ONE_PIXEL_PNG).decode('ascii')}"
+    ]
+
+
+def test_save_metadata_preserves_provider_token_usage() -> None:
+    request = ImageSaveRequest(
+        generation_response=ImageGenerationResponse(
+            imgen_model_response={"data": [{"b64_json": "encoded"}]},
+            token_usage=TokenUsage(
+                total_tokens=120,
+                input_tokens=20,
+                output_tokens=100,
+            ),
+        ),
+        prompt="Campaign frame",
+        model="gpt-image-2",
+    )
+
+    metadata = ImagePipelineService._build_base_metadata(request)
+
+    assert metadata["token_usage"] == {
+        "total_tokens": 120,
+        "input_tokens": 20,
+        "output_tokens": 100,
+        "input_tokens_details": None,
+    }
 
 
 def test_core_import_does_not_initialize_azure_clients() -> None:
