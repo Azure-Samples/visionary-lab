@@ -488,6 +488,18 @@ class PipelineAnalysisOptions(BaseModel):
     )
 
 
+class PipelineImageReference(BaseModel):
+    """Durable Blob reference resolved by the worker at execution time."""
+
+    blob_name: str = Field(..., min_length=1, max_length=1024)
+    container: str = Field(..., min_length=1, max_length=128)
+    content_type: Optional[str] = Field(
+        None,
+        description="Optional persisted MIME type used when preparing model input",
+    )
+    original_filename: Optional[str] = Field(default=None, max_length=512)
+
+
 class ImagePipelineRequest(BaseModel):
     """Unified payload driving the image pipeline."""
 
@@ -543,6 +555,14 @@ class ImagePipelineRequest(BaseModel):
     source_image_base64: Optional[List[str]] = Field(
         None,
         description="Base64 encoded source images (without the data URL prefix)",
+    )
+    source_image_blobs: Optional[List[PipelineImageReference]] = Field(
+        None,
+        max_length=10,
+        description=(
+            "Durable Blob references loaded by the worker for edit operations. "
+            "Preferred for queued jobs."
+        ),
     )
     mask_image_url: Optional[HttpUrl] = Field(
         None, description="Optional mask image URL for edit operations"

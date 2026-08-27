@@ -22,11 +22,79 @@ from backend.models.image_jobs import (
 )
 from backend.models.images import (
     GPT_IMAGE_2_MODEL,
+    PipelineAction,
+    PipelineImageReference,
     ImagePipelineRequest,
     ImageSaveResponse,
     PipelineAnalysisOptions,
     PipelineSaveOptions,
 )
+
+
+def test_async_edit_job_accepts_only_durable_blob_references():
+    request = ImageJobCreateRequest(
+        request=ImagePipelineRequest(
+            action=PipelineAction.EDIT,
+            prompt="Keep the same character in a new setting",
+            source_image_blobs=[
+                PipelineImageReference(
+                    blob_name="storylines/reference.png",
+                    container="images",
+                    content_type="image/png",
+                )
+            ],
+            save_options=PipelineSaveOptions(enabled=True),
+        )
+    )
+
+    assert request.request.action == PipelineAction.EDIT
+    assert request.request.source_image_blobs[0].blob_name == "storylines/reference.png"
+
+
+def test_async_edit_job_rejects_non_durable_urls():
+    with pytest.raises(
+        ValueError,
+        match="durable source_image_blobs",
+    ):
+        ImageJobCreateRequest(
+            request=ImagePipelineRequest(
+                action=PipelineAction.EDIT,
+                prompt="Edit it",
+                source_image_urls=["https://example.test/reference.png"],
+                save_options=PipelineSaveOptions(enabled=True),
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_durable_edit_submission_requires_trusted_server_workflow():
+    manager = manager_for(ConcurrentRunner(expected_concurrency=1), concurrency=1)
+    await manager.start(run_workers=False)
+    request = ImageJobCreateRequest(
+        request=ImagePipelineRequest(
+            action=PipelineAction.EDIT,
+            prompt="Preserve the subject",
+            source_image_blobs=[
+                PipelineImageReference(
+                    blob_name="storyline-references/owner/reference.png",
+                    container="images",
+                )
+            ],
+            save_options=PipelineSaveOptions(enabled=True),
+        )
+    )
+    try:
+        with pytest.raises(ImageJobConflictError, match="trusted server workflow"):
+            await manager.submit(request, owner_id="owner-a")
+
+        submitted = await manager.submit(
+            request,
+            owner_id="owner-a",
+            allow_durable_edit=True,
+        )
+        assert submitted.action == PipelineAction.EDIT
+    finally:
+        await manager.close()
 
 
 def job_request(
@@ -71,6 +139,21 @@ async def test_queued_job_persists_gpt_image_2_default():
         assert persisted.model == GPT_IMAGE_2_MODEL
         assert record is not None
         assert record.pipeline_request["model"] == GPT_IMAGE_2_MODEL
+    finally:
+        await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_storyline_child_job_exposes_parent_storyline_id():
+    manager = manager_for(ConcurrentRunner(expected_concurrency=1), concurrency=1)
+    await manager.start(run_workers=False)
+    try:
+        request = job_request(count=1)
+        request.request.metadata = {"storyline_id": "storyline-123"}
+
+        submitted = await manager.submit(request, owner_id="owner-a")
+
+        assert submitted.storyline_id == "storyline-123"
     finally:
         await manager.close()
 
@@ -647,6 +730,135 @@ async def test_transient_provider_failure_retries_without_dead_lettering():
         assert calls == 2
         assert completed.attempt == 2
         assert queue.dead_letters == []
+    finally:
+        await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_retry_honors_retry_after_beyond_generic_attempt_limit():
+    class ImmediateRecordingQueue(MemoryImageJobQueue):
+        def __init__(self):
+            super().__init__()
+            self.release_delays: list[int] = []
+
+        async def release(self, message, delay_seconds: int = 0) -> None:
+            self.release_delays.append(delay_seconds)
+            await super().release(message, delay_seconds=0)
+
+    queue = ImmediateRecordingQueue()
+    calls = 0
+
+    async def runner(request, report_progress):
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            raise HTTPException(
+                status_code=429,
+                detail="provider rate limited",
+                headers={"Retry-After": "45"},
+            )
+        return saved_result(request.n)
+
+    manager = ImageJobManager(
+        store=MemoryImageJobStore(),
+        queue=queue,
+        runner=runner,
+        concurrency=1,
+        poll_interval=0.01,
+        visibility_timeout=1,
+        cancellation_poll_interval=0.01,
+        max_attempts=3,
+        rate_limit_max_attempts=8,
+    )
+    await manager.start()
+    try:
+        submitted = await manager.submit(job_request(count=1), owner_id="owner-a")
+        completed = await wait_for_status(
+            manager,
+            submitted.id,
+            ImageJobStatus.COMPLETED,
+        )
+
+        assert calls == 4
+        assert completed.attempt == 4
+        assert queue.release_delays == [45, 45, 45]
+        assert queue.dead_letters == []
+    finally:
+        await manager.close()
+
+
+def test_rate_limit_fallback_delay_is_deterministic_and_bounded():
+    manager = ImageJobManager(
+        store=MemoryImageJobStore(),
+        queue=MemoryImageJobQueue(),
+        runner=ConcurrentRunner(expected_concurrency=1),
+        rate_limit_base_delay=30,
+        rate_limit_max_delay=300,
+        rate_limit_jitter=15,
+    )
+    error = HTTPException(status_code=429, detail="provider rate limited")
+
+    first = manager._rate_limit_retry_delay(
+        error,
+        job_id="job-a",
+        attempt=1,
+    )
+    repeated = manager._rate_limit_retry_delay(
+        error,
+        job_id="job-a",
+        attempt=1,
+    )
+    capped = manager._rate_limit_retry_delay(
+        error,
+        job_id="job-a",
+        attempt=8,
+    )
+    provider_directed = manager._rate_limit_retry_delay(
+        HTTPException(
+            status_code=429,
+            detail="provider rate limited",
+            headers={"Retry-After": "900"},
+        ),
+        job_id="job-a",
+        attempt=8,
+    )
+
+    assert 30 <= first <= 45
+    assert repeated == first
+    assert capped == 300
+    assert provider_directed == 900
+
+
+@pytest.mark.asyncio
+async def test_permanent_http_4xx_is_terminal_without_retry():
+    queue = MemoryImageJobQueue()
+    calls = 0
+
+    async def runner(request, report_progress):
+        nonlocal calls
+        calls += 1
+        raise HTTPException(status_code=400, detail="invalid request")
+
+    manager = ImageJobManager(
+        store=MemoryImageJobStore(),
+        queue=queue,
+        runner=runner,
+        concurrency=1,
+        poll_interval=0.01,
+        visibility_timeout=1,
+        cancellation_poll_interval=0.01,
+        max_attempts=3,
+        rate_limit_max_attempts=8,
+    )
+    await manager.start()
+    try:
+        submitted = await manager.submit(job_request(count=1), owner_id="owner-a")
+        failed = await wait_for_status(manager, submitted.id, ImageJobStatus.FAILED)
+
+        assert calls == 1
+        assert failed.attempt == 1
+        assert queue.dead_letters[0]["job_id"] == submitted.id
+        assert queue.dead_letters[0]["reason"] == "400: invalid request"
     finally:
         await manager.close()
 

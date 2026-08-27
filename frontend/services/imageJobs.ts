@@ -109,9 +109,13 @@ export async function listImageJobs(
     throw new Error("The image jobs response was malformed");
   }
 
+  const jobs = response.jobs
+    .map(assertImageJob)
+    .filter((job) => !job.storyline_id);
   return {
     ...response,
-    jobs: response.jobs.map(assertImageJob),
+    jobs,
+    total: jobs.length,
   };
 }
 

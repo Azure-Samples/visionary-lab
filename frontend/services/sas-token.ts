@@ -47,7 +47,11 @@ class SasTokenService {
   async getBlobUrl(blobName: string): Promise<string> {
     try {
       const tokens = await this.getTokens();
-      const blobUrl = `${tokens.imageContainerUrl}/${blobName}`;
+      const encodedBlobName = blobName
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+      const blobUrl = `${tokens.imageContainerUrl.replace(/\/$/, '')}/${encodedBlobName}`;
       return tokens.imageSasToken
         ? `${blobUrl}?${tokens.imageSasToken}`
         : blobUrl;
@@ -62,7 +66,6 @@ class SasTokenService {
    */
   private async fetchNewTokens(): Promise<SasTokens> {
     try {
-      console.log("Fetching new SAS tokens...");
       const response = await fetch(`${API_BASE_URL}/gallery/sas-tokens`);
       
       if (!response.ok) {

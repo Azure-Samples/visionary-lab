@@ -14,6 +14,15 @@
 - Durable, cancellable image batches with per-image progress and partial-result retry
 - Generate several batches concurrently while continuing to compose new prompts
 
+### Multi-image Storylines
+- Build a persistent 2–10 frame campaign from text, one image, or several durable references
+- Generate one shared creative direction with ordered frame purposes, prompts, and editable copy
+- Start immediately or review, edit, add, remove, and reorder the plan before generation
+- Compare the same frozen plan across every configured image model in ordered lanes
+- Reuse stable visual anchors for continuity instead of chaining drift from frame to frame
+- Track progressive completion, cancel an active storyline, retry an exact failed frame, or regenerate a frame with revised prompt and copy
+- Use channel-aware copy depth and size suggestions without locking the image dimensions
+
 ### Asset Management
 - Manage your content in an organized asset library with folder support
 - Automatic image analysis and metadata tagging
@@ -43,7 +52,7 @@ deployments are no longer supported by this application.
 
 | Deployment | Model | Purpose |
 |-----------|-------|---------|
-| `gpt-4o` | GPT-4o | LLM for prompt enhancement and analysis |
+| `gpt-4o` | GPT-4o | LLM for prompt enhancement, analysis, and storyline planning |
 | `gpt-image-2` | GPT-Image-2 | Default image generation and editing |
 | `flux-kontext-pro` | FLUX.1-Kontext-pro | Alternative image generation |
 

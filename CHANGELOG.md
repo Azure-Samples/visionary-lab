@@ -1,5 +1,12 @@
 ## Visionary Lab Changelog
 
+## Unreleased
+
+*Features*
+* Added persistent multi-image Storylines with LLM planning, editable campaign copy, optional plan review, and 2–10 ordered frames
+* Added configured-model comparison lanes with shared plans, stable visual anchors, and explicit GPT-Image-2/FLUX capability handling
+* Added owner-scoped durable references, progressive background generation, exact frame retry, cancellation, planning recovery, and per-frame regeneration
+
 <a name="0.1.0"></a>
 # 0.1.0 (2024-04-28)
 

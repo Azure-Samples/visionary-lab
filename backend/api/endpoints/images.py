@@ -240,6 +240,11 @@ async def process_image_pipeline(
         pipeline_request = ImagePipelineRequest.parse_raw(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=json.loads(exc.json()))
+    if pipeline_request.source_image_blobs:
+        raise HTTPException(
+            status_code=403,
+            detail="Durable Blob references are reserved for trusted server workflows",
+        )
 
     storage_service = (
         azure_storage_service if pipeline_request.save_options.enabled else None

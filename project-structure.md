@@ -12,9 +12,13 @@ Visionary Lab is an image generation, editing, analysis, and asset-management ap
 - `backend/api/endpoints/images.py`: Image generation, editing, analysis, and save operations.
 - `backend/api/endpoints/gallery.py`: Image gallery, folder, upload, download, and deletion operations.
 - `backend/api/endpoints/metadata_router.py`: Metadata synchronization and maintenance.
+- `backend/api/endpoints/storylines.py`: Storyline creation, reference upload, plan review, progress, cancellation, retry, and regeneration.
 - `backend/api/endpoints/env.py`: Environment configuration status.
 - `backend/core/gpt_image.py`: Azure AI Foundry GPT-Image-2 client.
 - `backend/core/image_pipeline.py`: Image workflow orchestration.
+- `backend/core/storyline_planner.py`: Structured multi-image campaign planning.
+- `backend/core/image_capabilities.py`: Provider capability discovery and validation.
+- `backend/storylines/`: Persistent storyline state and durable frame coordination.
 - `backend/core/analyze.py`: Image analysis with a multimodal language model.
 - `backend/core/azure_storage.py`: Azure Blob Storage access.
 - `backend/core/cosmos_client.py`: Azure Cosmos DB metadata access.
@@ -23,6 +27,7 @@ Visionary Lab is an image generation, editing, analysis, and asset-management ap
 ### Frontend (Next.js)
 
 - `frontend/app/new-image/`: Image generation workflow and saved-image gallery.
+- `frontend/components/storyline/`: Storyline composer, plan editor, persistent workspace, and comparison lanes.
 - `frontend/app/edit-image/`: Image editing workflow.
 - `frontend/app/analyze/`: Custom image analysis workflow.
 - `frontend/app/settings/`: Application and model status.
@@ -47,6 +52,7 @@ Visionary Lab is an image generation, editing, analysis, and asset-management ap
 ## Main API Areas
 
 - `/api/v1/images`: Generate, edit, save, and analyze images.
+- `/api/v1/storylines`: Plan, persist, generate, reopen, cancel, retry, and regenerate storylines.
 - `/api/v1/gallery/images`: List stored image assets.
 - `/api/v1/gallery`: Manage image assets and folders.
 - `/api/v1/metadata`: Synchronize and update asset metadata.

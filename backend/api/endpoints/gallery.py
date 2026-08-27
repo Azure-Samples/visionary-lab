@@ -411,6 +411,15 @@ async def upload_asset(
     try:
         valid_types = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"]
 
+        if file.size is not None and file.size >= settings.GPT_IMAGE_MAX_FILE_SIZE_MB * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    "Uploaded images must be smaller than "
+                    f"{settings.GPT_IMAGE_MAX_FILE_SIZE_MB} MB"
+                ),
+            )
+
         filename = file.filename.lower()
         if not any(filename.endswith(ext) for ext in valid_types):
             raise HTTPException(
@@ -490,6 +499,8 @@ async def upload_asset(
             message=f"{media_type.value.capitalize()} uploaded successfully",
             **result,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Upload error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

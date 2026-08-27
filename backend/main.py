@@ -11,8 +11,16 @@ import os  # noqa: E402
 import uvicorn  # noqa: E402
 from .core.config import settings  # noqa: E402
 from .core import close_core_clients, warm_core_clients  # noqa: E402
-from .api.endpoints import image_jobs, images, metadata_router, gallery, env  # noqa: E402
+from .api.endpoints import (  # noqa: E402
+    env,
+    gallery,
+    image_jobs,
+    images,
+    metadata_router,
+    storylines,
+)
 from .jobs.factory import create_image_job_manager  # noqa: E402
+from .storylines.factory import create_storyline_manager  # noqa: E402
 
 
 # Create directories if they don't exist
@@ -31,9 +39,13 @@ async def lifespan(app: FastAPI):
     image_job_manager = create_image_job_manager(settings)
     app.state.image_job_manager = image_job_manager
     await image_job_manager.start(run_workers=role in {"worker", "all"})
+    storyline_manager = create_storyline_manager(settings, image_job_manager)
+    app.state.storyline_manager = storyline_manager
+    await storyline_manager.start()
     try:
         yield
     finally:
+        await storyline_manager.close()
         await image_job_manager.close()
         await images.pipeline_service.close()
         await close_core_clients()
@@ -71,6 +83,11 @@ app.include_router(
     image_jobs.router, prefix=f"{settings.API_V1_STR}/images", tags=["image jobs"]
 )
 app.include_router(
+    storylines.router,
+    prefix=f"{settings.API_V1_STR}/storylines",
+    tags=["storylines"],
+)
+app.include_router(
     gallery.router, prefix=f"{settings.API_V1_STR}/gallery", tags=["gallery"]
 )
 app.include_router(
@@ -89,13 +106,21 @@ async def health_check(request: Request):
     manager = getattr(request.app.state, "image_job_manager", None)
     if manager is None:
         raise HTTPException(status_code=503, detail="Image job service unavailable")
+    storyline_manager = getattr(request.app.state, "storyline_manager", None)
+    if storyline_manager is None:
+        raise HTTPException(status_code=503, detail="Storyline service unavailable")
     try:
         dependencies = await manager.health_check()
+        await storyline_manager.health_check()
     except Exception as exc:
         raise HTTPException(
             status_code=503, detail="Image job dependencies unavailable"
         ) from exc
-    return {"status": "ok", "image_jobs": dependencies}
+    return {
+        "status": "ok",
+        "image_jobs": dependencies,
+        "storylines": "ok",
+    }
 
 
 if __name__ == "__main__":

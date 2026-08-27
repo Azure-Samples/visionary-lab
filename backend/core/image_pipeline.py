@@ -12,6 +12,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import httpx
+from azure.core.exceptions import ResourceNotFoundError
 from fastapi import HTTPException, UploadFile
 from PIL import Image
 
@@ -29,7 +30,6 @@ from backend.models.images import (
     ImagePipelineResponse,
     ImageSaveRequest,
     ImageSaveResponse,
-    GPT_IMAGE_2_MODEL,
     PipelineAction,
     PipelineStepResult,
     TokenUsage,
@@ -529,6 +529,10 @@ class ImagePipelineService:
                         mask=mask,
                     )
                 else:
+                    resolved_images = await self._resolve_edit_images(
+                        pipeline_request,
+                        azure_storage_service=azure_storage_service,
+                    )
                     edit_request = ImageEditRequest(
                         prompt=pipeline_request.prompt,
                         model=pipeline_request.model,
@@ -542,7 +546,7 @@ class ImagePipelineService:
                         moderation=pipeline_request.moderation,
                         user=pipeline_request.user,
                         input_fidelity=pipeline_request.input_fidelity,
-                        image=self._resolve_edit_images(pipeline_request),
+                        image=resolved_images,
                         mask=pipeline_request.mask_image_url,
                     )
                     generation_response = await self.edit(edit_request)
@@ -719,7 +723,24 @@ class ImagePipelineService:
         status_code = 400 if isinstance(exc, ValueError) else getattr(exc, "status_code", 500)
         if not isinstance(status_code, int) or not 400 <= status_code <= 599:
             status_code = 500
-        return HTTPException(status_code=status_code, detail=str(exc))
+        retry_after_seconds = getattr(exc, "retry_after_seconds", None)
+        if retry_after_seconds is None:
+            response = getattr(exc, "response", None)
+            response_headers = getattr(response, "headers", None)
+            if response_headers is not None:
+                from backend.core.gpt_image import parse_retry_after_seconds
+
+                retry_after_seconds = parse_retry_after_seconds(response_headers)
+        headers = (
+            {"Retry-After": str(max(0, int(retry_after_seconds)))}
+            if isinstance(retry_after_seconds, (int, float))
+            else None
+        )
+        return HTTPException(
+            status_code=status_code,
+            detail=str(exc),
+            headers=headers,
+        )
 
     @staticmethod
     def _extract_token_usage(response: Dict[str, object]) -> Optional[TokenUsage]:
@@ -929,6 +950,10 @@ class ImagePipelineService:
             metadata["background"] = request.background
         if request.size:
             metadata["size"] = request.size
+        if request.generation_response.token_usage is not None:
+            metadata["token_usage"] = request.generation_response.token_usage.model_dump(
+                mode="json"
+            )
         if request.metadata:
             for key, value in request.metadata.items():
                 if value is not None:
@@ -1219,13 +1244,43 @@ class ImagePipelineService:
             metadata["analysis_prompt"] = request.analysis_options.custom_prompt
         return metadata
 
-    @staticmethod
-    def _resolve_edit_images(request: ImagePipelineRequest) -> List[str]:
+    async def _resolve_edit_images(
+        self,
+        request: ImagePipelineRequest,
+        *,
+        azure_storage_service: Optional[AzureBlobStorageService],
+    ) -> List[str]:
         images: List[str] = []
         if request.source_image_urls:
             images.extend([str(url) for url in request.source_image_urls])
         if request.source_image_base64:
             images.extend(request.source_image_base64)
+        if request.source_image_blobs:
+            if azure_storage_service is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Blob storage is required to resolve durable source images",
+                )
+            for reference in request.source_image_blobs:
+                try:
+                    content, detected_content_type = (
+                        await azure_storage_service.download_asset_async(
+                            reference.blob_name,
+                            reference.container,
+                        )
+                    )
+                except ResourceNotFoundError as exc:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Source image was not found: {reference.blob_name}",
+                    ) from exc
+                content_type = (
+                    reference.content_type
+                    or detected_content_type
+                    or "image/png"
+                )
+                encoded = base64.b64encode(content).decode("ascii")
+                images.append(f"data:{content_type};base64,{encoded}")
         if not images:
             raise HTTPException(
                 status_code=400,
