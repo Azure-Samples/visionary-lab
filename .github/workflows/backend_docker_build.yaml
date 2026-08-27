@@ -16,17 +16,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Login to Azure Container Registry
+        if: github.event_name == 'push'
         uses: azure/docker-login@v1
         with:
           login-server: aigbbemea.azurecr.io
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
-      - name: Build and push Docker image
+      - name: Build Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
           file: ./backend/Dockerfile
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: |
             aigbbemea.azurecr.io/visionarylab:${{ github.run_number }}
             aigbbemea.azurecr.io/visionarylab:latest
